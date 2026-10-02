@@ -9,7 +9,7 @@ import siteConfiguration from './.figma/make/site.json'
 export default defineConfig(/* Configura Vite según el modo con plugins, proxy de la API, alias y opciones de compilación. */ ({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
-  const apiTarget = process.env.VITE_API_TARGET || 'http://127.0.0.1:8000'
+  const apiTarget = process.env.VITE_API_TARGET || 'http://127.0.0.1:8444'
 
   return {
     base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
