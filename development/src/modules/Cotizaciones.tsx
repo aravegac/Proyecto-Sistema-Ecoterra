@@ -33,6 +33,7 @@ export type PurchaseOrder = {
   factura: string | null
 }
 
+
 export type Invoice = {
   id: string
   oc: string
