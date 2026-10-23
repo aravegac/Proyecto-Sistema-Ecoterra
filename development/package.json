@@ -1,0 +1,32 @@
+{
+  "name": "figma-make-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n backend,frontend -c blue,green \"pnpm backend\" \"pnpm frontend\"",
+    "backend": "py backend/manage.py runserver 0.0.0.0:8444",
+    "frontend": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview",
+    "format": "oxfmt"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^10.0.5",
+    "oxfmt": "^0.2.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^8.0.5"
+  }
+}

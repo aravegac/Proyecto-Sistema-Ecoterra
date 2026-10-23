@@ -1,0 +1,24 @@
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - .env.local
+    ports:
+      - "8444:8444"
+    volumes:
+      - ./backend:/app
+    command: python manage.py runserver 0.0.0.0:8444
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_TARGET=http://backend:8444
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - backend

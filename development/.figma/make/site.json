@@ -1,0 +1,10 @@
+{
+  "description": "Streamline B2B inventory management, quotations, and billing with AI-driven insights for polymer product companies, enhancing efficiency and decision-making.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
