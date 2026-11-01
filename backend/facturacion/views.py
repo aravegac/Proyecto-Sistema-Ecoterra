@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from rest_framework import viewsets, status
@@ -36,7 +37,7 @@ from reportlab.platypus import (
 from supabase import create_client
 
 from usuarios.permissions import PermisoModulo
-from .models import Factura
+from .models import Factura, DetalleFactura
 from ventas.views import OrdenCompraViewSet as VentasOrdenCompraViewSet
 from .serializers import FacturaSerializer, OrdenCompraSerializer
 
@@ -392,8 +393,13 @@ class OrdenCompraViewSet(VentasOrdenCompraViewSet):
 class FacturaViewSet(viewsets.ModelViewSet):
     queryset = Factura.objects.select_related(
         "id_cliente",
-        "id_orden_compra",
-    ).all()
+        "id_orden_compra"
+    ).prefetch_related(
+        Prefetch(
+            "detalles",
+            queryset=DetalleFactura.objects.select_related("id_producto")
+        )
+    )
 
     serializer_class = FacturaSerializer
     permission_classes = [PermisoModulo]
