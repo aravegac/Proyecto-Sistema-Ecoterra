@@ -337,7 +337,7 @@ def generar_pdf_factura(factura):
     cmds.append(("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black))
 
     # ---------------- 9. OBSERVACIONES (ocupa el resto de la hoja) ----------------
-    obs_text = "Mendoza, Argentina"
+    # obs_text = "Mendoza, Argentina"
     alto_total = 242 * mm
     alto_obs = max(25 * mm, alto_total - sum(alturas))
 
@@ -346,8 +346,7 @@ def generar_pdf_factura(factura):
             Paragraph("Observaciones:", s_bold),
             Spacer(1, 4 * mm),
             Paragraph(
-                f'<font name="Times-Roman">CIF:</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{escape(obs_text)}',
-                s_txt,
+                "",
             ),
         ],
         "", "", "", "", "", "",

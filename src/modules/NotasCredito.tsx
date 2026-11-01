@@ -129,68 +129,53 @@ export default function NotasCredito({
   }
 
   // Abre una ventana con el comprobante HTML de la nota de crédito para imprimirlo.
-  const downloadCreditNotePdf = (note: CreditNote) => {
-    const printWindow = window.open(
-      "",
-      "_blank",
-      "noopener,noreferrer,width=900,height=700",
-    )
-    if (!printWindow) return
+  const downloadCreditNotePdf = async (note: CreditNote) => {
+    const tab = window.open("about:blank", "_blank")
+    if (!tab) {
+      alert("Permite las ventanas emergentes para abrir el PDF.")
+      return
+    }
+    if (!authUser) {
+      tab.close()
+      alert("Tu sesión ha expirado. Inicia sesión nuevamente.")
+      return
+    }
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Nota de Crédito ${note.numero_nc}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 32px; color: #0f172a; }
-            .card { border: 1px solid #e2e8f0; padding: 24px; border-radius: 12px; }
-            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #dc2626; padding-bottom: 14px; margin-bottom: 18px; }
-            .brand { color: #dc2626; font-size: 20px; font-weight: 700; }
-            .meta { color: #64748b; font-size: 12px; margin-top: 6px; }
-            .totals { margin-top: 28px; border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: space-between; font-weight: 700; }
-            .muted { color: #64748b; }
-            .motivo { background: #f8fafc; padding: 12px; border-radius: 8px; margin-top: 16px; font-size: 13px; color: #475569; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="header">
-              <div>
-                <div class="brand">Ecoterra</div>
-                <div class="meta">Nota de Crédito Electrónica</div>
-              </div>
-              <strong>${note.numero_nc}</strong>
-            </div>
-            <p><strong>${note.cliente_nombre}</strong></p>
-            <p class="muted">Factura origen ${note.factura_numero} · Emisión ${note.fecha_emision}</p>
-            <div class="motivo"><strong>Motivo:</strong> ${note.motivo}</div>
-            <div class="totals">
-              <span>SUBTOTAL</span>
-              <span>${fmtCLP(-note.subtotal)}</span>
-            </div>
-            <div class="totals" style="border-top: none; padding-top: 0; margin-top: 4px;">
-              <span>IVA (19%)</span>
-              <span>${fmtCLP(-note.iva)}</span>
-            </div>
-            <div class="totals" style="border-top: 2px solid #dc2626; padding-top: 10px; margin-top: 10px;">
-              <span>TOTAL</span>
-              <span>${fmtCLP(-note.total)}</span>
-            </div>
-            <div class="totals" style="border-top: none; padding-top: 4px; margin-top: 0; font-weight: 400; color: #64748b; font-size: 12px;">
-              <span>Estado</span>
-              <span>${note.estado}</span>
-            </div>
-          </div>
-          <script>
-            window.onload = function () {
-              window.focus();
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
+    tab.document.title = `Nota de Crédito ${note.numero_nc}`
+    tab.opener = null
+    tab.document.body.textContent = "Cargando PDF..."
+
+    try {
+      // 1. Intentar obtener el PDF existente
+      let res = await fetch(`/api/notas-credito/${note.id}/pdf/`, {
+        headers: authHeaders(authUser),
+      })
+
+      // 2. Si no existe (404), generarlo
+      if (!res.ok && res.status === 404) {
+        const genRes = await fetch(`/api/notas-credito/${note.id}/generar-pdf/`, {
+          method: "POST",
+          headers: authHeaders(authUser),
+        })
+        if (!genRes.ok) throw new Error("No se pudo generar el PDF.")
+        
+        // Volver a pedir la URL ahora que ya está generado
+        res = await fetch(`/api/notas-credito/${note.id}/pdf/`, {
+          headers: authHeaders(authUser),
+        })
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error || "Error al obtener el PDF.")
+      }
+
+      const data = await res.json()
+      tab.location.href = data.url
+    } catch (error) {
+      tab.close()
+      alert(error instanceof Error ? error.message : "No se pudo abrir el PDF.")
+    }
   }
 
   return (
@@ -246,14 +231,43 @@ export default function NotasCredito({
                   <td className="nc-cliente">{note.cliente_nombre}</td>
                   <td>{note.fecha_emision}</td>
                   {/* Mostramos en negativo para mantener el diseño original */}
-                  <td>{fmtCLP(-note.subtotal)}</td>
-                  <td>{fmtCLP(-note.iva)}</td>
-                  <td className="nc-monto">{fmtCLP(-note.total)}</td>
+                  <td>{fmtCLP(note.subtotal)}</td> 
+                  <td>{fmtCLP(note.iva)}</td> 
+                  <td className="nc-monto">{fmtCLP(note.total)}</td> 
                   <td>{note.motivo}</td>
                   <td>
-                    <Badge t={note.estado === "ANULADA" ? "danger" : "ok"}>
-                      {note.estado}
-                    </Badge>
+                    <select
+                      className="select"
+                      value={note.estado}
+                      onChange={async (e) => {
+                        const nuevoEstado = e.target.value
+                        // Actualizar visualmente de inmediato
+                        setNotes((prev) =>
+                          prev.map((n) => (n.id === note.id ? { ...n, estado: nuevoEstado } : n))
+                        )
+                        // Enviar al backend
+                        try {
+                          if (!authUser) throw new Error("Sin sesión")
+                          const res = await fetch(`/api/notas-credito/${note.id}/estado/`, {
+                            method: "PATCH",
+                            headers: authHeaders(authUser),
+                            body: JSON.stringify({ estado: nuevoEstado }),
+                          })
+                          if (!res.ok) throw new Error("No se pudo actualizar")
+                        } catch (err) {
+                          alert("Error al actualizar el estado. Se revertirá.")
+                          // Revertir si falla
+                          setNotes((prev) =>
+                            prev.map((n) => (n.id === note.id ? { ...n, estado: note.estado } : n))
+                          )
+                        }
+                      }}
+                      style={{ width: "auto", fontSize: "0.75rem" }}
+                    >
+                      <option value="PENDIENTE">Pendiente</option>
+                      <option value="EMITIDA">Emitida</option>
+                      <option value="ANULADA">Anulada</option>
+                    </select>
                   </td>
                   <td>
                     <button
