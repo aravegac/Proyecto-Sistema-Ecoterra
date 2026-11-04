@@ -39,6 +39,14 @@ export function saveSession(user: AuthUser): void {
   }
 }
 
+export function sessionExpiresAt(): number {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null")?.expiresAt ?? Date.now() + SESSION_DURATION
+  } catch {
+    return Date.now() + SESSION_DURATION
+  }
+}
+
 export function clearSession(): void {
   try {
     sessionStorage.removeItem(SESSION_KEY)

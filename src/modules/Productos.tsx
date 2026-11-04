@@ -278,31 +278,6 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                 />
               </div>
 
-              {/* Tipo */}
-              <div className="field productos-span-1">
-                <label className="label">Tipo</label>
-                <input
-                  className="input"
-                  placeholder="Tipo"
-                  value={form.tipo}
-                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
-                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
-                  }
-                />
-              </div>
-
-              {/* Unidad (readonly) */}
-              <div className="field productos-span-1">
-                <label className="label">Unidad</label>
-                <input
-                  className="input"
-                  value="Litros"
-                  readOnly
-                  disabled
-                  style={{ background: "#F1F5F9", cursor: "not-allowed" }}
-                />
-              </div>
-
               {/* Stock Mínimo (min=0) */}
               <div className="field productos-span-1">
                 <label className="label">Stock Mínimo</label>
@@ -318,6 +293,32 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   }}
                 />
               </div>
+
+              {/* Unidad (readonly) */}
+              <div className="field productos-span-1">
+                <label className="label">Unidad</label>
+                <input
+                  className="input"
+                  value="Litros"
+                  readOnly
+                  disabled
+                  style={{ background: "#F1F5F9", cursor: "not-allowed" }}
+                />
+              </div>
+
+              {/* Tipo */}
+              <div className="field productos-span-1">
+                <label className="label">Tipo</label>
+                <input
+                  className="input"
+                  placeholder="Tipo"
+                  value={form.tipo}
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
+                  }
+                />
+              </div>
+
 
               {/* Estado */}
               <div className="field productos-span-1">

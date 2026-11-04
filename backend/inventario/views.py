@@ -21,6 +21,7 @@ from django.db.models.functions import Coalesce
 
 from .models import Inventario, Movimiento, Producto
 from .serializers import (
+    CAPACIDAD_ENVASE,
     InventarioSerializer,
     MovimientoSerializer,
     ProductoSerializer,
@@ -203,6 +204,13 @@ class MovimientoListView(ListCreateAPIView):
                 lote.cantidad = lote.cantidad - cantidad
             else:  # Ajuste → ESTABLECE la cantidad final
                 lote.cantidad = cantidad
+
+            capacidad = CAPACIDAD_ENVASE.get(lote.tipo_envase)
+            if capacidad is not None and lote.cantidad > capacidad and lote.cantidad > stock_anterior:
+                return Response(
+                    {"detail": f"El stock no puede superar {capacidad} L para este envase."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             stock_posterior = lote.cantidad
             lote.save(update_fields=["cantidad"])

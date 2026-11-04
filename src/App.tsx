@@ -23,7 +23,7 @@ import {
   Screen,
 } from "./shared"
 import Login from "./modules/Login"
-import { clearSession, readSession, saveSession } from "./session"
+import { clearSession, readSession, saveSession, sessionExpiresAt } from "./session"
 
 // ---------- Mappers API -> UI ----------
 // Adapta un cliente de la API y sus direcciones al formato utilizado por la interfaz.
@@ -224,8 +224,13 @@ const initialProductos = [
 // ---------- App ----------
 // Gestiona la sesión, carga los datos de la API y conecta la navegación con las operaciones de cada módulo.
 export default function App() {
+  const [sessionExpired, setSessionExpired] = useState(() => sessionExpiresAt() <= Date.now())
   const [authUser, setAuthUser] = useState<AuthUser | null>(readSession)
-  const [screen, setScreen] = useState<Screen>(() => authUser ? "dashboard" : "login")
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (!authUser) return "login"
+    const saved = window.location.hash.slice(1)
+    return Object.prototype.hasOwnProperty.call(SCREEN_TO_MODULE, saved) ? saved as Screen : "dashboard"
+  })
   const [productos, setProductos] = useState(initialProductos)
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
@@ -263,6 +268,7 @@ export default function App() {
   // ---------- Auth ----------
   // Guarda el usuario autenticado y abre el dashboard.
   const handleLogin = (user: AuthUser) => {
+    setSessionExpired(false)
     saveSession(user)
     setAuthUser(user)
     setScreen("dashboard")
@@ -274,6 +280,19 @@ export default function App() {
     setAuthUser(null)
     setScreen("login")
   }
+
+  useEffect(() => {
+    window.history.replaceState(null, "", screen === "login" ? window.location.pathname + window.location.search : "#" + screen)
+  }, [screen])
+
+  useEffect(() => {
+    if (!authUser) return
+    const timer = window.setTimeout(() => {
+      setSessionExpired(true)
+      handleLogout()
+    }, Math.max(0, sessionExpiresAt() - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [authUser])
 
   // Bloquear navegación a módulos sin permiso (redirige al dashboard)
   useEffect(/* Vuelve al dashboard si la sesión no tiene acceso al módulo de la pantalla actual. */ () => {
@@ -803,7 +822,7 @@ export default function App() {
 
   // ---------- Handlers Lotes ----------
   // Resuelve el producto, crea el lote mediante la API y lo añade al inventario local.
-  const createLote = async (input: LoteInput) => {
+  const createLote = async (input: LoteInput, id?: number) => {
     const producto = productos.find(/* Identifica el elemento buscado evaluando p.codigo === input.prod. */ (p: any) => p.codigo === input.prod)
     if (!producto) throw new Error("Producto no encontrado")
 
@@ -812,7 +831,7 @@ export default function App() {
       headers: authHeaders(authUser),
       body: JSON.stringify({
         id_producto: producto.id,
-        cantidad: input.qty,
+        ...(id === undefined ? { cantidad: input.qty } : {}),
         tipo_envase: input.envase || "Tambor 200 L",
         fecha_fabricacion: input.fabr,
         fecha_vencimiento: input.venc,
@@ -990,7 +1009,18 @@ export default function App() {
   }
 
   if (!authUser) {
-    return <Login onEnter={handleLogin} />
+    return <>
+      <Login onEnter={handleLogin} />
+      {sessionExpired && (
+        <div className="modal-backdrop">
+          <div className="modal" role="alertdialog" aria-labelledby="session-expired-title">
+            <h2 id="session-expired-title">Tu sesión se cerró</h2>
+            <p>La sesión expiró. Vuelve a iniciar sesión para continuar.</p>
+            <button className="btn btn-primary" onClick={() => setSessionExpired(false)} autoFocus>Aceptar</button>
+          </div>
+        </div>
+      )}
+    </>
   }
 
   return (

@@ -370,7 +370,7 @@ export default function Usuarios({
                 <button
                   key={roleId}
                   onClick={() => handleRoleChange(roleId)}
-                  className={`usuarios-role-card ${selectedRoleId === roleId && !editPermissionsUser ? "active" : "inactive"}`}
+                  className={`usuarios-role-card ${selectedRoleId === roleId ? "active" : "inactive"}`}
                 >
                   <div className="usuarios-role-title">{ROLE_DISPLAY[roleId]}</div>
                   <div className="usuarios-role-desc">
@@ -388,7 +388,7 @@ export default function Usuarios({
               </span>
               {/* 👇 BADGE DINÁMICO */}
               <Badge t="info">
-                {editPermissionsUser ? editPermissionsUser.email : ROLE_DISPLAY[selectedRoleId]}
+                {editPermissionsUser ? "Editando permisos de " + editPermissionsUser.nombre + " (" + editPermissionsUser.email + ")" : ROLE_DISPLAY[selectedRoleId]}
               </Badge>
             </div>
 
@@ -464,14 +464,6 @@ export default function Usuarios({
               <div className="field">
                 <label className="label">Correo electrónico</label>
                 <input className="input" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
-              </div>
-              <div className="field">
-                <label className="label">Rol</label>
-                <select className="select" value={editForm.rol} onChange={(e) => setEditForm({ ...editForm, rol: e.target.value })}>
-                  <option value="Superusuario / Admin">Superusuario / Admin</option>
-                  <option value="Usuario con privilegios">Usuario con privilegios</option>
-                  <option value="Usuario base">Usuario base</option>
-                </select>
               </div>
               <div className="field">
                 <label className="label">Estado</label>

@@ -219,7 +219,7 @@ export default function Proveedores({
                 <td>
                   <div className="proveedores-actions">
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm productos-edit-btn"
                       title="Editar proveedor"
                       aria-label="Editar proveedor"
                       onClick={/* Ejecuta openEdit(provider) al invocarse este callback. */ () => openEdit(provider)}
@@ -227,7 +227,7 @@ export default function Proveedores({
                       <Ico p={I.edit} size={13} />
                     </button>
                     <button
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm productos-delete-btn"
                       title="Eliminar proveedor"
                       aria-label="Eliminar proveedor"
                       onClick={/* Ejecuta handleDelete(provider) al invocarse este callback. */ () => handleDelete(provider)}

@@ -107,28 +107,7 @@ function Sidebar({
           flexShrink: 0,
         }}
       >
-        {collapsed ? (
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 7,
-              background: "white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              overflow: "hidden",
-              padding: 3,
-            }}
-          >
-            <img
-              src={logoEcoterra}
-              alt="Ecoterra"
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          </div>
-        ) : (
+        {!collapsed && (
           <div
             style={{
               flex: 1,
@@ -150,7 +129,7 @@ function Sidebar({
                 src={logoEcoterra}
                 alt="Ecoterra"
                 style={{
-                  height: 22,
+                  height: 36,
                   width: "auto",
                   objectFit: "contain",
                   display: "block",
@@ -161,9 +140,10 @@ function Sidebar({
         )}
         <button
           onClick={toggle}
+          aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
           style={{
             marginLeft: collapsed ? "auto" : 0,
-            color: "#475569",
+            color: "#CBD5E1",
             background: "none",
             border: "none",
             cursor: "pointer",

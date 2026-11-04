@@ -27,9 +27,11 @@ type Props = {
   lotes: Lote[]
   productos: Product[]
   loadError?: string
-  onCreate: (input: LoteInput) => Promise<Lote>
+  onCreate: (input: LoteInput, id?: number) => Promise<Lote>
   onDelete: (lote: Lote) => Promise<void>
 }
+
+const CAPACIDAD_ENVASE: Record<string, number> = { "Tambor 200 L": 200, "IBC 1000 L": 1000 }
 
 const EMPTY_FORM: LoteInput = {
   prod: "",
@@ -52,6 +54,7 @@ export default function Lotes({
   const [envase, setEnvase] = useState("")
   const [estado, setEstado] = useState("")
   const [showModal, setShowModal] = useState(false)
+  const [editId, setEditId] = useState<number>()
   const [form, setForm] = useState<LoteInput>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState("")
@@ -61,7 +64,6 @@ export default function Lotes({
       (!envase || lot.envase === envase) && (!estado || lot.estado === estado),
   )
 
-  const maxQty = Math.max(...lotes.map(/* Transforma cada elemento de la lista devolviendo lot.qty. */ (lot) => lot.qty), 1)
 
   // Indica si la fecha de vencimiento es futura y está a menos de 180 días.
   const expiringSoon = (date: string) => {
@@ -71,6 +73,7 @@ export default function Lotes({
 
   // Reinicia los campos y errores y abre el formulario de creación de lotes.
   const openNew = () => {
+    setEditId(undefined)
     setForm(EMPTY_FORM)
     setFormError("")
     setShowModal(true)
@@ -78,14 +81,23 @@ export default function Lotes({
 
   // Exige producto, cantidad y fechas, solicita la creación del lote y muestra los errores.
   const handleSave = async () => {
-    if (!form.prod || !form.qty || !form.fabr || !form.venc) {
+    if (!form.prod || (editId === undefined && form.qty <= 0) || !form.fabr || !form.venc) {
       setFormError("Producto, cantidad, fabricación y vencimiento son obligatorios.")
+      return
+    }
+    if (form.venc < form.fabr) {
+      setFormError("El vencimiento no puede ser anterior a la fabricación.")
+      return
+    }
+    const capacidad = CAPACIDAD_ENVASE[form.envase || "Tambor 200 L"]
+    if (form.qty > capacidad) {
+      setFormError(`La cantidad no puede superar ${capacidad} L para este envase.`)
       return
     }
     setSaving(true)
     setFormError("")
     try {
-      await onCreate(form)
+      await onCreate(form, editId)
       setShowModal(false)
       setForm(EMPTY_FORM)
     } catch (error) {
@@ -180,8 +192,10 @@ export default function Lotes({
             </tr>
           </thead>
           <tbody>
-            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (lot) => (
-              <tr key={lot.id}>
+            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (lot) => {
+              const capacidad = CAPACIDAD_ENVASE[lot.envase]
+              const ocupacion = capacidad ? Math.min(100, Math.max(0, 100 * lot.qty / capacidad)) : 0
+              return <tr key={lot.id}>
                 <td className="lotes-id">{lot.id}</td>
                 <td className="lotes-prod">{lot.prod}</td>
                 <td
@@ -193,8 +207,8 @@ export default function Lotes({
                       <div
                         className="progress-fill"
                         style={{
-                          width: `${(lot.qty / maxQty) * 100}%`,
-                          background: lot.qty === 0 ? "#DC2626" : "#00995A",
+                          width: `${ocupacion}%`,
+                          background: ocupacion >= 100 ? "#00995A" : ocupacion >= 40 ? "#D97706" : "#DC2626",
                         }}
                       />
                     </div>
@@ -234,7 +248,7 @@ export default function Lotes({
                   </button>
                 </td>
               </tr>
-            ))}
+            })}
           </tbody>
         </table>
       </div>
@@ -246,7 +260,7 @@ export default function Lotes({
             onClick={/* Ejecuta e.stopPropagation() al invocarse este callback. */ (e) => e.stopPropagation()}
           >
             <div className="lotes-modal-header">
-              <h2 className="lotes-modal-title">Registrar lote</h2>
+              <h2 className="lotes-modal-title">{editId === undefined ? "Registrar lote" : "Editar lote"}</h2>
               <button
                 onClick={/* Ejecuta setShowModal(false) al invocarse este callback. */ () => setShowModal(false)}
                 aria-label="Cerrar"
@@ -284,7 +298,9 @@ export default function Lotes({
                   className="input"
                   type="number"
                   min={0}
-                  value={form.qty || ""}
+                  max={CAPACIDAD_ENVASE[form.envase || "Tambor 200 L"]}
+                  disabled={editId !== undefined}
+                  value={editId === undefined ? form.qty || "" : form.qty}
                   onChange={/* Ejecuta setForm({ ...form, qty: Number(e.target.value) }) al invocarse este callback. */ (e) =>
                     setForm({ ...form, qty: Number(e.target.value) })
                   }
