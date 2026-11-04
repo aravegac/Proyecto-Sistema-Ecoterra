@@ -1032,8 +1032,59 @@ body,
   background: #0041a3;
 }
 .cotizaciones-preview-modal {
-  width: 680px;
+  width: min(960px, 100%);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.cotizaciones-preview-modal .cotizaciones-preview-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  margin: 0;
+}
+.cotizaciones-preview-body {
+  min-height: 0;
+  overflow: auto;
   padding: 24px;
+  color: #000;
+  background: white;
+}
+.cotizaciones-document {
+  width: 800px;
+  max-width: 100%;
+  min-width: 700px;
+  border: 2px solid #000;
+  margin: 0 auto;
+  overflow-wrap: anywhere;
+}
+.cotizaciones-document table {
+  table-layout: fixed;
+}
+.cotizaciones-document th:first-child {
+  white-space: nowrap;
+}
+.cotizaciones-document-logo {
+  position: relative;
+  width: 260px;
+  height: 60px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.cotizaciones-document-logo img {
+  position: absolute;
+  width: 590px;
+  max-width: none;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 .cotizaciones-preview-shell {
   border: 1px solid #e2e8f0;

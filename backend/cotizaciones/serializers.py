@@ -33,6 +33,9 @@ class CotizacionSerializer(serializers.ModelSerializer):
     cliente_telefono = serializers.CharField(source="id_cliente.telefono", read_only=True)
     cliente_email = serializers.CharField(source="id_cliente.email", read_only=True)
     cliente_representante = serializers.CharField(source="id_cliente.representante", read_only=True)
+    cliente_pais = serializers.CharField(source="id_cliente.pais", read_only=True)
+    cliente_region = serializers.CharField(source="id_cliente.region", read_only=True)
+    cliente_ciudad = serializers.CharField(source="id_cliente.ciudad", read_only=True)
     
     cliente_direcciones = serializers.SerializerMethodField()
 
@@ -46,6 +49,9 @@ class CotizacionSerializer(serializers.ModelSerializer):
             "cliente_telefono",
             "cliente_email",
             "cliente_representante",
+            "cliente_pais",
+            "cliente_region",
+            "cliente_ciudad",
             "cliente_direcciones",
             "numero_cotizacion",
             "fecha_cotizacion",

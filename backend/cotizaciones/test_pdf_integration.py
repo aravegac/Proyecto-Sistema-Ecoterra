@@ -7,7 +7,7 @@ from config.test_support import SalesTablesMixin
 from pypdf import PdfReader
 from rest_framework.test import APIClient
 
-from clientes.models import Cliente
+from clientes.models import Cliente, Direccion
 from inventario.models import Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
@@ -17,6 +17,32 @@ from .models import Cotizacion, DetalleCotizacion
 
 
 class PdfIntegrationTests(SalesTablesMixin, TestCase):
+    def test_pdf_incluye_logo_contactos_direcciones_y_auditoria(self):
+        self.customer.representante = "Representante de prueba"
+        self.customer.pais = "Chile"
+        self.customer.region = "Metropolitana"
+        self.customer.save()
+        Direccion.objects.create(
+            cliente=self.customer, nombre="Bodega principal", calle="Calle Uno 123",
+            ciudad="Santiago", region="Metropolitana", pais="Chile",
+            tipo="Despacho", contacto_recepcion="Recepción", telefono_contacto="456",
+        )
+        base, quote = self.create_quote()
+        response = self.api.post(f"{base}/anular/", {"motivo_anulacion": "Duplicada por error"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        response = self.api.post(f"{base}/generar-pdf/")
+        self.assertEqual(response.status_code, 200)
+        quote.refresh_from_db()
+        pdf = PdfReader(BytesIO(self.files[quote.ruta_pdf_cotizacion]))
+        self.assertGreater(len(pdf.pages[0].images), 0)
+        text = "\n".join(page.extract_text() for page in pdf.pages)
+        for expected in [
+            "Representante de prueba", "test@example.com", "Teléfono: 123",
+            "Bodega principal: Calle Uno 123", "Metropolitana", "PDF-001",
+            "Estado: Anulada", "Duplicada por error", f"Usuario responsable: {self.user.pk}",
+        ]:
+            self.assertIn(expected, text)
+
     def test_tipo_operacion_recalcula_totales_y_se_refleja_en_pdf(self):
         base, record = self.create_quote()
         for operacion, iva, total in (

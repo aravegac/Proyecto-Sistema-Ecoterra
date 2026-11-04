@@ -1,5 +1,6 @@
 // cotizaciones.tsx
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
+import logoEcoterra from "@/imports/logo_ecoterra.png"
 import { getDocumentPdfUrl } from "../documentPdf"
 import { AuthUser, authHeaders, can, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
 
@@ -61,6 +62,8 @@ type QuoteDetailLine = {
   cantidad_dc: number
   precio_unitario_dc: number
   subtotal_dc: number
+  descripcion_dc: string
+  unidad_producto: string
 }
 
 type QuoteDetail = {
@@ -70,6 +73,9 @@ type QuoteDetail = {
   cliente_telefono: string
   cliente_email: string
   cliente_representante: string
+  cliente_pais: string
+  cliente_region: string
+  cliente_ciudad: string
   cliente_direcciones: Array<{
     calle: string
     ciudad: string
@@ -85,6 +91,9 @@ type QuoteDetail = {
   total_cotizacion: number
   observacion_cotizacion: string
   estado_cotizacion: string
+  fecha_anulacion: string | null
+  motivo_anulacion: string | null
+  id_usuario_anulacion: number | null
   tipo_operacion_cotizacion: "Nacional" | "Internacional"
   detalles: QuoteDetailLine[]
 }
@@ -132,6 +141,8 @@ export default function Cotizaciones({
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [preview, setPreview] = useState<Quote | null>(null)
   const [detail, setDetail] = useState<QuoteDetail | null>(null)
+  const [previewError, setPreviewError] = useState("")
+  const previewRequest = useRef(0)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [quoteToLink, setQuoteToLink] = useState<Quote | null>(null)
   const [selectedOrder, setSelectedOrder] = useState("")
@@ -216,26 +227,22 @@ const reloadCotizaciones = async () => {
 }
 
   const openPreview = async (quote: Quote) => {
+    const requestId = ++previewRequest.current
     setPreview(quote)
     setDetail(null)
+    setPreviewError("")
     setIsLoadingDetail(true)
     try {
-      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) })
-      const listData = await listResp.json()
-      const items = listData.value || listData
-      const match = items.find((c: any) => c.numero_cotizacion === quote.id)
-      
-      if (match) {
-        const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) })
-        if (detailResp.ok) {
-          const detailData = await detailResp.json()
-          setDetail(detailData)
-        }
-      }
+      const response = await fetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
+      if (!response.ok) throw new Error("No se pudo cargar el detalle de la cotización.")
+      const data = await response.json()
+      if (requestId === previewRequest.current) setDetail(data)
     } catch (error) {
-      console.error("Error cargando detalle:", error)
+      if (requestId === previewRequest.current) {
+        setPreviewError(error instanceof Error ? error.message : "No se pudo cargar el documento.")
+      }
     } finally {
-      setIsLoadingDetail(false)
+      if (requestId === previewRequest.current) setIsLoadingDetail(false)
     }
   }
 
@@ -972,12 +979,12 @@ const linkOrder = async () => {
         <div className="modal-backdrop" onClick={() => setPreview(null)}>
           <div
             className="modal cotizaciones-modal cotizaciones-preview-modal"
-            style={{ maxWidth: "900px", width: "100%", padding: 0, overflow: "hidden" }}
+            role="dialog" aria-modal="true" aria-labelledby="quote-preview-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="cotizaciones-preview-head" style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="cotizaciones-preview-head">
               <div>
-                <h2 style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0 }}>
+                <h2 id="quote-preview-title" style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0 }}>
                   Cotización {preview.id}
                 </h2>
               </div>
@@ -985,46 +992,48 @@ const linkOrder = async () => {
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadQuotePdf(preview)}>
                   <Ico p={I.download} size={14} /> Imprimir / PDF
                 </button>
-                <button onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
+                <button aria-label="Cerrar vista previa" onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
                   <Ico p={I.x} size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="documento-container" style={{ padding: "2rem", backgroundColor: "#fff", color: "#000" }}>
+            <div className="cotizaciones-preview-body">
               {isLoadingDetail ? (
                 <p style={{ textAlign: "center", padding: "2rem" }}>Cargando documento...</p>
               ) : detail ? (
-                <div style={{ border: "2px solid #000", maxWidth: "800px", margin: "0 auto" }}>
+                <div className="cotizaciones-document">
                   
                   {/* HEADER DEL DOCUMENTO */}
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "1.5rem", borderBottom: "2px solid #000" }}>
                     <div>
-                      <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#0f9d58", letterSpacing: "-1px", marginBottom: "0.5rem" }}>
-                        EcoTerra
+                      <div className="cotizaciones-document-logo">
+                        <img src={logoEcoterra} alt="Ecoterra" />
                       </div>
                       <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>Ecoterra LLC.</div>
                       <div style={{ fontSize: "0.85rem" }}>600 CLEVELAND STREET STE 393 OFC 665</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "1.8rem", fontWeight: "bold", marginBottom: "0.5rem" }}>QUOTE</div>
+                      <div style={{ fontSize: "1.8rem", fontWeight: "bold", marginBottom: "0.5rem" }}>COTIZACIÓN</div>
                       <div style={{ fontSize: "1rem", fontWeight: "bold" }}>{detail.numero_cotizacion}</div>
                       <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-                        <strong>DATE:</strong> {detail.fecha_cotizacion}
+                        <strong>EMISIÓN:</strong> {detail.fecha_cotizacion}
                       </div>
                       <div style={{ fontSize: "0.85rem" }}>
                         <strong>VIGENCIA:</strong> {detail.vigencia_cotizacion}
                       </div>
+                      <div>Estado: {detail.estado_cotizacion}</div>
                     </div>
                   </div>
 
                   {/* BLOQUE CLIENTE */}
                   <div style={{ display: "flex", borderBottom: "2px solid #000" }}>
                     <div style={{ flex: 2, padding: "1.5rem", borderRight: "2px solid #000", fontSize: "0.9rem" }}>
-                      <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Customer:</div>
+                      <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Cliente:</div>
                       <div style={{ fontWeight: "bold", marginBottom: "0.25rem" }}>{detail.cliente_nombre}</div>
                       <div style={{ marginBottom: "0.25rem" }}>RUT: {detail.cliente_rut}</div>
                       <div style={{ marginBottom: "0.25rem" }}>Representante: {detail.cliente_representante || "—"}</div>
+                      <div>{[detail.cliente_pais, detail.cliente_region, detail.cliente_ciudad].filter(Boolean).join(" · ")}</div>
                       
                       {detail.cliente_direcciones && detail.cliente_direcciones.length > 0 && (
                         <div style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
@@ -1052,12 +1061,12 @@ const linkOrder = async () => {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
                     <thead>
                       <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #000" }}>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "40px" }}>ITEM</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "80px" }}>CODE</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", textAlign: "left" }}>DESCRIPTION</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>QUANTITY</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>UNIT PRICE</th>
-                        <th style={{ padding: "0.5rem", width: "120px" }}>AMOUNT</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "52px" }}>ÍTEM</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "80px" }}>CÓDIGO</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", textAlign: "left" }}>DESCRIPCIÓN</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>CANTIDAD</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>PRECIO UNITARIO</th>
+                        <th style={{ padding: "0.5rem", width: "120px" }}>IMPORTE</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1065,8 +1074,8 @@ const linkOrder = async () => {
                         <tr key={idx} style={{ borderBottom: "1px solid #000" }}>
                           <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{idx + 1}</td>
                           <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{line.codigo_producto}</td>
-                          <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.nombre_producto}</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad_dc).toLocaleString('es-CL')}</td>
+                          <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.nombre_producto}{line.descripcion_dc && line.descripcion_dc !== line.nombre_producto && <div>{line.descripcion_dc}</div>}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad_dc).toLocaleString('es-CL')} {line.unidad_producto}</td>
                           <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{fmtCLP(Number(line.precio_unitario_dc))}</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(line.subtotal_dc))}</td>
                         </tr>
@@ -1089,7 +1098,7 @@ const linkOrder = async () => {
                     <table style={{ width: "300px", borderCollapse: "collapse", fontSize: "0.9rem" }}>
                       <tbody>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>NET VALUE</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>SUBTOTAL NETO</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.subtotal_cotizacion))}</td>
                         </tr>
                         <tr style={{ borderBottom: "1px solid #000" }}>
@@ -1106,7 +1115,7 @@ const linkOrder = async () => {
 
                   {/* OBSERVACIONES / NOTAS */}
                   <div style={{ padding: "1.5rem", minHeight: "120px", fontSize: "0.85rem" }}>
-                    <div style={{ fontWeight: "bold", marginBottom: "0.5rem", textTransform: "uppercase" }}>NOTES:</div>
+                    <div style={{ fontWeight: "bold", marginBottom: "0.5rem", textTransform: "uppercase" }}>OBSERVACIONES:</div>
                     <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
                       {detail.observacion_cotizacion || "Sin observaciones adicionales."}
                     </p>
@@ -1114,16 +1123,19 @@ const linkOrder = async () => {
                     <div style={{ fontWeight: "bold" }}>Condición de Pago:</div>
                     <p style={{ margin: 0 }}>{detail.condicion_pago_cotizacion}</p>
                     <p>Tipo de operación: {detail.tipo_operacion_cotizacion || "Nacional"}</p>
-                    {preview.estado === "Anulada" && <div>
-                      <p>Motivo de anulación: {preview.motivoAnulacion || "Sin registrar"}</p>
-                      <p>Fecha de anulación: {preview.fechaAnulacion ? new Date(preview.fechaAnulacion).toLocaleString("es-CL") : "Sin registrar"}</p>
-                      <p>Usuario responsable: {preview.usuarioAnulacion ?? "Sin registrar"}</p>
+                    {detail.estado_cotizacion === "Anulada" && <div>
+                      <p>Motivo de anulación: {detail.motivo_anulacion || "Sin registrar"}</p>
+                      <p>Fecha de anulación: {detail.fecha_anulacion ? new Date(detail.fecha_anulacion).toLocaleString("es-CL") : "Sin registrar"}</p>
+                      <p>Usuario responsable: {detail.id_usuario_anulacion ?? "Sin registrar"}</p>
                     </div>}
                   </div>
 
                 </div>
               ) : (
-                <p style={{ textAlign: "center", padding: "2rem" }}>No se pudo cargar el detalle.</p>
+                <div role="alert">
+                  <p>{previewError || "No se pudo cargar el detalle."}</p>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void openPreview(preview)}>Reintentar</button>
+                </div>
               )}
             </div>
           </div>
