@@ -1,5 +1,7 @@
 # backend/ventas/serializers.py
 from rest_framework import serializers
+from django.db import transaction
+from cotizaciones.models import Cotizacion
 from .models import OrdenCompra, NotaCredito
 from decimal import Decimal
 
@@ -46,7 +48,7 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
             "estado_cotizacion": cotizacion.estado_cotizacion,
         }
 
-    # Exige una cotización vigente del mismo cliente que no esté asociada a otra orden de compra.
+    # Exige una cotización aceptada del mismo cliente que no esté asociada a otra orden de compra.
     def validate_id_cotizacion(self, cotizacion):
         if cotizacion is None:
             return None
@@ -66,9 +68,9 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
                 "La cotización pertenece a un cliente diferente."
             )
 
-        if cotizacion.estado_cotizacion != "Vigente":
+        if cotizacion.estado_actual != "Aceptada":
             raise serializers.ValidationError(
-                "Solo se pueden asociar cotizaciones en estado Vigente."
+                "Solo se pueden asociar cotizaciones aceptadas."
             )
 
         ordenes_existentes = OrdenCompra.objects.filter(
@@ -86,6 +88,25 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
             )
 
         return cotizacion
+
+    def bloquear_y_validar_cotizacion(self, attrs):
+        cotizacion = attrs.get("id_cotizacion", self.instance.id_cotizacion if self.instance else None)
+        if cotizacion:
+            cotizacion = Cotizacion.objects.select_for_update().get(pk=cotizacion.pk)
+            self.validate_id_cotizacion(cotizacion)
+            attrs["id_cotizacion"] = cotizacion
+
+    @transaction.atomic
+    def create(self, validated_data):
+        self.bloquear_y_validar_cotizacion(validated_data)
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        instance = OrdenCompra.objects.select_for_update().get(pk=instance.pk)
+        self.instance = instance
+        self.bloquear_y_validar_cotizacion(validated_data)
+        return super().update(instance, validated_data)
 
 
 class OrdenCompraFacturacionSerializer(OrdenCompraSerializer):

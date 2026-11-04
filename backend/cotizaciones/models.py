@@ -1,8 +1,10 @@
 # cotizaciones/models.py
 from django.db import models
+from django.utils import timezone
 
 
 class Cotizacion(models.Model):
+    ESTADOS = ["Borrador", "Vigente", "Vencida", "Aceptada", "Rechazada", "Anulada"]
     id_cotizacion = models.AutoField(primary_key=True, db_column="id_cotizacion")
     id_cliente = models.ForeignKey(
         "clientes.Cliente",
@@ -25,6 +27,17 @@ class Cotizacion(models.Model):
     observacion_cotizacion = models.TextField(null=True, blank=True, db_column="observacion_cotizacion")
     estado_cotizacion = models.CharField(max_length=50, db_column="estado_cotizacion")
     ruta_pdf_cotizacion = models.CharField(max_length=255, db_column="ruta_pdf_cotizacion")
+    fecha_anulacion = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion = models.TextField(null=True, blank=True)
+    id_usuario_anulacion = models.IntegerField(null=True, blank=True)
+
+    @property
+    def estado_actual(self):
+        if self.estado_cotizacion == "Convertida":
+            return "Aceptada"
+        if self.estado_cotizacion == "Vigente" and self.vigencia_cotizacion < timezone.localdate():
+            return "Vencida"
+        return self.estado_cotizacion
 
     class Meta:
         db_table = "cotizacion"

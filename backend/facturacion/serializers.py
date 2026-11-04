@@ -253,6 +253,10 @@ class FacturaSerializer(serializers.ModelSerializer):
 
     # Rechaza una orden asociada a otra factura excluyendo la factura que se está editando.
     def validar_orden_disponible(self, orden):
+        if orden.id_cotizacion_id and orden.id_cotizacion.estado_actual != "Aceptada":
+            raise serializers.ValidationError({
+                "id_oc": "La cotización de origen debe estar aceptada para generar operaciones comerciales."
+            })
         facturas = Factura.objects.filter(id_orden_compra=orden)
         if self.instance is not None:
             facturas = facturas.exclude(pk=self.instance.pk)

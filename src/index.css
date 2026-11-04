@@ -1017,6 +1017,13 @@ body,
   gap: 8px;
   margin-top: 20px;
 }
+.cotizaciones-cancel-modal {
+  width: min(520px, 100%);
+  padding: 24px;
+}
+.cotizaciones-cancel-modal p {
+  margin: 12px 0;
+}
 .cotizaciones-save-draft {
   background: #0052cc;
   color: white;

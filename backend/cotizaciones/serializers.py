@@ -59,14 +59,32 @@ class CotizacionSerializer(serializers.ModelSerializer):
             "observacion_cotizacion",
             "estado_cotizacion",
             "ruta_pdf_cotizacion",
+            "fecha_anulacion",
+            "motivo_anulacion",
+            "id_usuario_anulacion",
             "detalles",
         ]
         read_only_fields = [
             "id_cotizacion", "numero_cotizacion", "ruta_pdf_cotizacion",
             "subtotal_cotizacion", "iva_cotizacion", "total_cotizacion",
+            "fecha_anulacion", "motivo_anulacion", "id_usuario_anulacion",
         ]
 
     def validate(self, attrs):
+        estado = attrs.get("estado_cotizacion", self.instance.estado_actual if self.instance else "Borrador")
+        if estado not in Cotizacion.ESTADOS:
+            raise serializers.ValidationError({"estado_cotizacion": "Estado de cotización inválido."})
+        if estado == "Anulada":
+            raise serializers.ValidationError({"estado_cotizacion": "Usa la acción Anular cotización para registrar el motivo y responsable."})
+        if self.instance:
+            actual = self.instance.estado_actual
+            transiciones = {
+                "Borrador": {"Borrador", "Vigente"},
+                "Vigente": {"Vigente", "Vencida", "Aceptada", "Rechazada"},
+            }
+            if estado not in transiciones.get(actual, set()):
+                raise serializers.ValidationError({"estado_cotizacion": "El estado actual no permite esta edición o transición."})
+        attrs["estado_cotizacion"] = estado
         detalles = attrs.get("detalles")
         if detalles is None and self.instance:
             detalles = list(self.instance.detallecotizacion_set.values(
@@ -152,6 +170,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
     # Añade los detalles de productos a la representación de salida de la cotización.
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        data["estado_cotizacion"] = instance.estado_actual
         data["detalles"] = DetalleCotizacionSerializer(
             instance.detallecotizacion_set.all(), many=True
         ).data

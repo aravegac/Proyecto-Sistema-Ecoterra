@@ -1,7 +1,7 @@
 // cotizaciones.tsx
 import React, { useState, useEffect } from "react"
 import { getDocumentPdfUrl } from "../documentPdf"
-import { AuthUser, authHeaders, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
+import { AuthUser, authHeaders, can, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
 
 export type Quote = {
   idCotizacion: number
@@ -14,6 +14,9 @@ export type Quote = {
   total: number
   observacion: string
   estado: string
+  fechaAnulacion?: string | null
+  motivoAnulacion?: string | null
+  usuarioAnulacion?: number | null
 }
 
 export type PurchaseOrder = {
@@ -120,7 +123,11 @@ export default function Cotizaciones({
   const [isLoadingQuotes, setIsLoadingQuotes] = useState(true)
   const [quotesError, setQuotesError] = useState("")
   const [clientFilter, setClientFilter] = useState("")
-  const [statusFilter, setStatusFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("sin-anuladas")
+  const [quoteToCancel, setQuoteToCancel] = useState<Quote | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelError, setCancelError] = useState("")
+  const [cancelling, setCancelling] = useState(false)
   const [editingQuote, setEditingQuote] = useState<number | null>(null)
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [preview, setPreview] = useState<Quote | null>(null)
@@ -195,6 +202,9 @@ const reloadCotizaciones = async () => {
       total: Number(item.total_cotizacion),
       observacion: item.observacion_cotizacion || "",
       estado: item.estado_cotizacion === "Convertida" ? "Aceptada" : item.estado_cotizacion,
+      fechaAnulacion: item.fecha_anulacion,
+      motivoAnulacion: item.motivo_anulacion,
+      usuarioAnulacion: item.id_usuario_anulacion,
     }))
 
     setQuotes(mapped)
@@ -268,7 +278,7 @@ const reloadCotizaciones = async () => {
   const expiredQuotes = quotes.filter((quote) => quote.estado === "Vencida")
   const filteredQuotes = quotes.filter((quote) =>
     (!clientFilter || quote.cliente === clientFilter) &&
-    (!statusFilter || quote.estado === statusFilter),
+    (statusFilter === "sin-anuladas" ? quote.estado !== "Anulada" : !statusFilter || quote.estado === statusFilter),
   )
   const clientOptions = [...new Set(quotes.map((quote) => quote.cliente))].sort((a, b) => a.localeCompare(b, "es"))
   const statusOptions = [...new Set(["Borrador", "Vigente", "Vencida", "Aceptada", "Rechazada", "Anulada", ...quotes.map((quote) => quote.estado)])]
@@ -384,6 +394,7 @@ const linkOrder = async () => {
   }
 }
 
+  const originalQuoteStatus = quotes.find((quote) => quote.idCotizacion === editQuoteId)?.estado
   const selectedClient = clientes.find((client) => client.razon === quoteClient)
   const lineSubtotal = quoteLines.reduce(
     (sum, line) => sum + Math.round(Number(line.quantity || 0) * Number(line.unitPrice || 0) * 100) / 100,
@@ -487,6 +498,32 @@ const linkOrder = async () => {
     }
   }
 
+  const cancelQuote = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!quoteToCancel || cancelling || !cancelReason.trim()) return
+    setCancelling(true)
+    setCancelError("")
+    try {
+      const response = await fetch(`/api/cotizaciones/${quoteToCancel.idCotizacion}/anular/`, {
+        method: "POST",
+        headers: authHeaders(authUser),
+        body: JSON.stringify({ motivo_anulacion: cancelReason.trim() }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(Object.values(data).flat().join(" ") || "No se pudo anular la cotización.")
+      setQuotes((current) => current.map((quote) => quote.idCotizacion === quoteToCancel.idCotizacion
+        ? { ...quote, estado: data.estado_cotizacion, fechaAnulacion: data.fecha_anulacion,
+            motivoAnulacion: data.motivo_anulacion, usuarioAnulacion: data.id_usuario_anulacion }
+        : quote))
+      setQuoteToCancel(null)
+      setCancelReason("")
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "No se pudo anular la cotización.")
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   const updateLine = (index: number, changes: Partial<QuoteLine>) => {
     setQuoteLines((current) =>
       current.map((line, lineIndex) =>
@@ -539,6 +576,7 @@ const linkOrder = async () => {
         <div className="field">
           <label className="label" htmlFor="quote-status-filter">Estado</label>
           <select id="quote-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="sin-anuladas">Sin anuladas</option>
             <option value="">Todos los estados</option>
             {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
           </select>
@@ -599,7 +637,7 @@ const linkOrder = async () => {
                             className="btn btn-ghost btn-sm cotizaciones-action-edit"
                             title="Editar productos"
                             aria-label={`Editar ${quote.id}`}
-                            disabled={editingQuote !== null}
+                            disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
                             onClick={() => openEdit(quote)}
                           >
                             <Ico p={I.edit} size={13} />
@@ -625,9 +663,25 @@ const linkOrder = async () => {
                             className="btn btn-ghost btn-sm cotizaciones-action-link"
                             title="Asociar a orden de compra"
                             aria-label={`Asociar ${quote.id} a una orden de compra`}
+                            disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
                             onClick={() => setQuoteToLink(quote)}
                           >
                             <Ico p={I.link} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm productos-delete-btn"
+                            title="Anular cotización"
+                            aria-label={`Anular ${quote.id}`}
+                            disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
+                              !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
+                                (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
+                            onClick={() => {
+                              setQuoteToCancel(quote)
+                              setCancelReason("")
+                              setCancelError("")
+                            }}
+                          >
+                            <Ico p={I.trash} size={13} />
                           </button>
                         </div>
                       </td>
@@ -756,10 +810,12 @@ const linkOrder = async () => {
                   value={quoteStatus}
                   onChange={(event) => setQuoteStatus(event.target.value)}
                 >
-                  <option>Borrador</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus !== "Borrador"}>Borrador</option>
                   <option>Vigente</option>
-                  <option>Vencida</option>
-                  <option>Convertida</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Vencida</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Aceptada</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Rechazada</option>
+                  <option value="Anulada" disabled>Anulada (usar botón Anular)</option>
                 </select>
               </div>
             </div>
@@ -1058,6 +1114,11 @@ const linkOrder = async () => {
                     <div style={{ fontWeight: "bold" }}>Condición de Pago:</div>
                     <p style={{ margin: 0 }}>{detail.condicion_pago_cotizacion}</p>
                     <p>Tipo de operación: {detail.tipo_operacion_cotizacion || "Nacional"}</p>
+                    {preview.estado === "Anulada" && <div>
+                      <p>Motivo de anulación: {preview.motivoAnulacion || "Sin registrar"}</p>
+                      <p>Fecha de anulación: {preview.fechaAnulacion ? new Date(preview.fechaAnulacion).toLocaleString("es-CL") : "Sin registrar"}</p>
+                      <p>Usuario responsable: {preview.usuarioAnulacion ?? "Sin registrar"}</p>
+                    </div>}
                   </div>
 
                 </div>
@@ -1066,6 +1127,30 @@ const linkOrder = async () => {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {quoteToCancel && (
+        <div className="modal-backdrop">
+          <form className="modal cotizaciones-modal cotizaciones-cancel-modal" role="dialog" aria-modal="true"
+            aria-labelledby="cancel-quote-title" onSubmit={cancelQuote}>
+            <h2 id="cancel-quote-title">¿Anular esta cotización?</h2>
+            <p>{quoteToCancel.id} dejará de estar vigente, pero permanecerá registrada en el historial del sistema.</p>
+            <div className="field">
+              <label className="label" htmlFor="cancel-quote-reason">Motivo de anulación *</label>
+              <textarea id="cancel-quote-reason" className="textarea" required autoFocus
+                value={cancelReason} disabled={cancelling}
+                onChange={(event) => setCancelReason(event.target.value)} />
+            </div>
+            {cancelError && <p role="alert">{cancelError}</p>}
+            <div className="cotizaciones-summary-actions">
+              <button type="button" className="btn btn-ghost" disabled={cancelling}
+                onClick={() => setQuoteToCancel(null)}>Cancelar</button>
+              <button type="submit" className="btn btn-danger" disabled={cancelling || !cancelReason.trim()}>
+                {cancelling ? "Anulando…" : "Confirmar anulación"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
