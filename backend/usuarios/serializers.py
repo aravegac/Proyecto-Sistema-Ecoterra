@@ -3,7 +3,7 @@ from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
 from .models import Usuario
-from .permissions import tiene_permiso
+from .permissions import tiene_permiso, permisos_efectivos
 
 ROLE_LABEL_TO_ID = {
     "Superusuario / Admin": 1,
@@ -43,6 +43,12 @@ class EstadoUsuarioField(serializers.Field):
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    id_rol = serializers.IntegerField(read_only=True)
+    permisos_efectivos = serializers.SerializerMethodField()
+
+    def get_permisos_efectivos(self, obj):
+        return permisos_efectivos(obj)
+
     rol = RolUsuarioField(source="id_rol")
     estado = EstadoUsuarioField(source="activo")
     contrasena = serializers.CharField(
@@ -60,7 +66,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
         modifica_rol = "id_rol" in attrs
         modifica_estado = "activo" in attrs
 
-        if modifica_rol or modifica_estado:
+        if modifica_rol or modifica_estado or "permisos" in attrs:
             if not tiene_permiso(
                 usuario_solicitante,
                 "usuarios_roles",
@@ -79,6 +85,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError("Los permisos deben ser un objeto JSON.")
+        if any(not isinstance(k, str) or type(v) is not bool for k, v in value.items()):
+            raise serializers.ValidationError("Cada permiso debe tener un valor booleano.")
         return value
 
     def create(self, validated_data):
@@ -101,6 +109,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "nombre",
             "email",
             "rol",
+            "id_rol",
+            "permisos_efectivos",
             "estado",
             "contrasena",
             "permisos",

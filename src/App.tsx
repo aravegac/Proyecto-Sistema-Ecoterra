@@ -468,7 +468,7 @@ export default function App() {
       email: input.email,
       rol: input.rol,
       estado: input.estado,
-      permisos: input.permisos ?? {},
+      ...(input.permisos !== undefined ? { permisos: input.permisos } : {}),
     }
 
     // 2. Si el usuario escribió una nueva contraseña, la agregamos al body
@@ -980,6 +980,14 @@ export default function App() {
         onCreate={createUser}
         onDelete={deleteUser}
         onUpdate={updateUser}
+        onPermissionsSaved={(updated) => {
+          setUsuarios((current) => current.map((item) => item.id === updated.id ? updated : item))
+          if (authUser?.id === updated.id) {
+            const session = { ...authUser, ...updated, id_rol: updated.id_rol!, permisos: updated.permisos_efectivos ?? {} }
+            saveSession(session, sessionExpiresAt())
+            setAuthUser(session)
+          }
+        }}
         authUser={authUser}
       />
     ),

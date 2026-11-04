@@ -1,5 +1,5 @@
 // usuarios.tsx
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState, useRef } from "react"
 import { Badge, AuthUser, I, Ico, PageTitle, authHeaders } from "../shared"
 
 export type User = {
@@ -10,6 +10,7 @@ export type User = {
   id_rol?: number
   estado: string
   permisos?: Record<string, boolean>
+  permisos_efectivos?: Record<string, boolean>
 }
 
 export type UserInput = {
@@ -55,6 +56,7 @@ export default function Usuarios({
   onCreate,
   onDelete,
   onUpdate,
+  onPermissionsSaved,
   authUser,
 }: {
   usuarios: User[]
@@ -62,6 +64,7 @@ export default function Usuarios({
   onCreate: (input: UserInput) => Promise<User>
   onDelete: (user: User) => Promise<void>
   onUpdate: (user: User, input: UserInput) => Promise<User>
+  onPermissionsSaved: (user: User) => void
   authUser: AuthUser | null
 }) {
   const isAdmin = authUser?.id_rol === 1
@@ -94,79 +97,72 @@ export default function Usuarios({
   const [rolPermisoIds, setRolPermisoIds] = useState<Set<number>>(new Set())
   const [permisoIdsOriginales, setPermisoIdsOriginales] = useState<Set<number>>(new Set())
 
-  // 👇 NUEVOS ESTADOS PARA PERMISOS PERSONALIZADOS
   const [editPermissionsUser, setEditPermissionsUser] = useState<User | null>(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(true)
+  const [permissionsError, setPermissionsError] = useState("")
+  const [reloadPermissions, setReloadPermissions] = useState(0)
+  const [originalRoleId, setOriginalRoleId] = useState(1)
+  const permissionsPanel = useRef<HTMLDivElement>(null)
 
-  // -------------------- CARGA DE DATOS --------------------
   useEffect(() => {
     if (!isAdmin || !authUser) return
-
-    fetch("/api/permisos/", { headers: authHeaders(authUser) })
-      .then((r) => {
-        if (!r.ok) throw new Error("No se pudo cargar el catálogo de permisos")
-        return r.json()
-      })
-      .then((data) => setCatalogo(Array.isArray(data) ? data : []))
-      .catch(() => setCatalogo([]))
-  }, [isAdmin, authUser])
-
-  // Cargar permisos: Globales (si no hay usuario seleccionado) o Personalizados
-  useEffect(() => {
-    if (!isAdmin || !authUser) return
-
-    // Si estamos editando permisos de un usuario específico
-    if (editPermissionsUser) {
-      const permisosUser = editPermissionsUser.permisos || {}
-      const ids = new Set<number>()
-      
-      catalogo.forEach((p) => {
-        if (permisosUser[`${p.modulo}:${p.nombre}`] === true) {
-          ids.add(p.id)
-        }
-      })
-      
+    const controller = new AbortController()
+    setPermissionsLoading(true)
+    setPermissionsError("")
+    setSaveError("")
+    const load = async () => {
+      const read = async (url: string) => {
+        const response = await fetch(url, { headers: authHeaders(authUser), signal: controller.signal })
+        if (!response.ok) throw new Error("No se pudieron cargar los permisos. Intenta nuevamente.")
+        return response.json()
+      }
+      const [items, target] = await Promise.all([
+        read("/api/permisos/"),
+        editPermissionsUser ? read(`/api/usuarios/${editPermissionsUser.id}/permisos/`) : Promise.resolve(null),
+      ])
+      if (!Array.isArray(items)) throw new Error("El catálogo de permisos no es válido.")
+      let ids: Set<number>
+      if (target && selectedRoleId === target.id_rol) {
+        ids = new Set<number>(items.filter((p: PermisoCatalogo) => target.permisos_efectivos?.[`${p.modulo}:${p.nombre}`] === true).map((p: PermisoCatalogo) => p.id))
+      } else {
+        const role = await read(`/api/roles/${selectedRoleId}/permisos/`)
+        ids = new Set<number>((role.permisos ?? []).map((p: PermisoCatalogo) => p.id))
+      }
+      if (controller.signal.aborted) return
+      setCatalogo(items)
       setRolPermisoIds(ids)
       setPermisoIdsOriginales(new Set(ids))
-      setSelectedRoleId(editPermissionsUser.id_rol || 3) // Refleja su rol base
-      return
+      setOriginalRoleId(target?.id_rol ?? selectedRoleId)
+      setPermissionsLoading(false)
     }
-
-    // Si estamos viendo un rol global
-    if (!selectedRoleId) return
-
-    fetch(`/api/roles/${selectedRoleId}/permisos/`, { headers: authHeaders(authUser) })
-      .then((r) => {
-        if (!r.ok) throw new Error("No se pudieron cargar los permisos del rol")
-        return r.json()
-      })
-      .then((data) => {
-        const ids = new Set<number>((data.permisos ?? []).map((p: any) => p.id))
-        setRolPermisoIds(new Set(ids))
-        setPermisoIdsOriginales(new Set(ids))
-      })
-      .catch(() => {
-        setRolPermisoIds(new Set())
-        setPermisoIdsOriginales(new Set())
-      })
-  }, [isAdmin, authUser, selectedRoleId, editPermissionsUser, catalogo])
-
+    load().catch((error) => {
+      if (controller.signal.aborted) return
+      setPermissionsError(error instanceof Error ? error.message : "No se pudieron cargar los permisos")
+      setPermissionsLoading(false)
+    })
+    return () => controller.abort()
+  }, [isAdmin, authUser, selectedRoleId, editPermissionsUser, reloadPermissions])
 
   // -------------------- DETECTAR CAMBIOS --------------------
   const hasChanges = useMemo(() => {
+    if (editPermissionsUser && selectedRoleId !== originalRoleId) return true
     if (rolPermisoIds.size !== permisoIdsOriginales.size) return true
     for (const id of rolPermisoIds) {
       if (!permisoIdsOriginales.has(id)) return true
     }
     return false
-  }, [rolPermisoIds, permisoIdsOriginales])
+  }, [rolPermisoIds, permisoIdsOriginales, selectedRoleId, originalRoleId, editPermissionsUser])
 
   // -------------------- HANDLERS --------------------
   const handleRoleChange = (roleId: number) => {
-    setEditPermissionsUser(null) // Salir del modo usuario si se clickea un rol global
+    if (saving) return
+    setSaveStatus("idle")
+    setPermissionsLoading(true)
     setSelectedRoleId(roleId)
   }
 
   const togglePermission = (idPermiso: number) => {
+    setSaveStatus("idle")
     setRolPermisoIds((current) => {
       const next = new Set(current)
       if (next.has(idPermiso)) next.delete(idPermiso)
@@ -176,7 +172,7 @@ export default function Usuarios({
   }
 
   const guardarPermisos = async () => {
-    if (!authUser || !isAdmin) return
+    if (!authUser || !isAdmin || saving || permissionsLoading || permissionsError || !hasChanges) return
     setSaving(true)
     setSaveError("")
     setSaveStatus("saving")
@@ -184,9 +180,7 @@ export default function Usuarios({
       // Construimos el objeto JSON para permisos personalizados
       const permisosObj: Record<string, boolean> = {}
       catalogo.forEach((p) => {
-        if (rolPermisoIds.has(p.id)) {
-          permisosObj[`${p.modulo}:${p.nombre}`] = true
-        }
+        permisosObj[`${p.modulo}:${p.nombre}`] = rolPermisoIds.has(p.id)
       })
 
       let res
@@ -195,7 +189,7 @@ export default function Usuarios({
         res = await fetch(`/api/usuarios/${editPermissionsUser.id}/permisos/`, {
           method: "PUT",
           headers: authHeaders(authUser),
-          body: JSON.stringify({ permisos: permisosObj }),
+          body: JSON.stringify({ permisos: permisosObj, rol: ROLE_DISPLAY[selectedRoleId] }),
         })
       } else {
         // Guardar permisos globales del rol
@@ -211,13 +205,19 @@ export default function Usuarios({
         throw new Error(data?.detail || "No se pudieron guardar los permisos")
       }
       
+      const saved = await res.json()
+      if (editPermissionsUser) {
+        onPermissionsSaved(saved)
+        setEditPermissionsUser(saved)
+        setOriginalRoleId(saved.id_rol)
+      }
       setPermisoIdsOriginales(new Set(rolPermisoIds))
       setSaveStatus("saved")
-      setTimeout(() => setSaveStatus("idle"), 2000)
+
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Error al guardar")
       setSaveStatus("error")
-      setTimeout(() => setSaveStatus("idle"), 3000)
+
     } finally {
       setSaving(false)
     }
@@ -276,8 +276,13 @@ export default function Usuarios({
   }
 
   const openEditPermissions = (user: User) => {
+    if (saving) return
+    setSaveStatus("idle")
+    setPermissionsLoading(true)
+    setSelectedRoleId(user.id_rol ?? Number(Object.keys(ROLE_DISPLAY).find((id) => ROLE_DISPLAY[Number(id)] === user.rol) ?? 3))
     setEditPermissionsUser(user)
     setSaveError("")
+    permissionsPanel.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
   // -------------------- AGRUPAR CATÁLOGO POR MÓDULO --------------------
@@ -307,7 +312,7 @@ export default function Usuarios({
         </div>
       )}
 
-      <div className="panel">
+      <div className="panel usuarios-table">
         <table className="dt w-full">
           <thead>
             <tr>
@@ -330,12 +335,11 @@ export default function Usuarios({
                 </td>
                 <td><Badge t="ok">{user.estado}</Badge></td>
                 {isAdmin && (
-                  <td style={{ display: "flex", gap: 8 }}>
+                  <td><div className="usuarios-row-actions">
                     <button className="btn btn-ghost btn-sm" onClick={() => openEditUser(user)}>
                       <Ico p={I.edit} size={13} /> Editar
                     </button>
-                    {/* 👇 NUEVO BOTÓN EDITAR PERMISOS */}
-                    <button className="btn btn-ghost btn-sm" onClick={() => openEditPermissions(user)}>
+                    <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => openEditPermissions(user)}>
                       <Ico p={I.lock} size={13} /> Permisos
                     </button>
                     <button className="btn btn-ghost btn-sm" onClick={async () => {
@@ -344,7 +348,7 @@ export default function Usuarios({
                     }}>
                       <Ico p={I.trash} size={13} /> Eliminar
                     </button>
-                  </td>
+                  </div></td>
                 )}
               </tr>
             ))}
@@ -354,7 +358,7 @@ export default function Usuarios({
 
       {isAdmin && (
         <>
-          <div className="panel usuarios-panel" style={{ marginTop: 18 }}>
+          <div className="panel usuarios-panel" ref={permissionsPanel}>
             <div className="panel-header">
               <span className="usuarios-section-title">Roles y permisos</span>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -365,26 +369,38 @@ export default function Usuarios({
               </div>
             </div>
 
-            <div className="usuarios-roles-grid" style={{ marginTop: 12 }}>
+            <div className="usuarios-target" aria-live="polite">
+              <div><strong>{editPermissionsUser ? `Editando a ${editPermissionsUser.nombre}` : "Configuración global de roles"}</strong>
+                <p>{editPermissionsUser ? `${editPermissionsUser.email} · Rol actual: ${editPermissionsUser.rol}` : "Los cambios globales se aplican a quienes heredan permisos del rol."}</p>
+              </div>
+              {editPermissionsUser && <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => {
+                setSaveStatus("idle")
+                setPermissionsLoading(true)
+                setEditPermissionsUser(null)
+              }}>Ver roles globales</button>}
+            </div>
+            <div className="usuarios-roles-grid">
               {[1, 2, 3].map((roleId) => (
                 <button
                   key={roleId}
+                  aria-pressed={selectedRoleId === roleId}
+                  disabled={saving}
                   onClick={() => handleRoleChange(roleId)}
                   className={`usuarios-role-card ${selectedRoleId === roleId ? "active" : "inactive"}`}
                 >
                   <div className="usuarios-role-title">{ROLE_DISPLAY[roleId]}</div>
                   <div className="usuarios-role-desc">
-                    {roleId === 1 ? "Acceso total a todos los módulos." : roleId === 2 ? "Permisos seleccionables por módulo." : "Solo lectura del sistema."}
+                    {roleId === 1 ? "Acceso total a todos los módulos." : roleId === 2 ? "Permisos seleccionables por módulo." : "Permisos de acceso iniciales."}
                   </div>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="panel" style={{ marginTop: 18 }}>
-            <div className="panel-header" style={{ marginBottom: 18 }}>
+          <div className="panel usuarios-permissions-panel" aria-busy={permissionsLoading}>
+            <div className="panel-header">
               <span className="usuarios-section-title">
-                Funcionalidades y permisos del rol seleccionado
+                Funcionalidades y permisos
               </span>
               {/* 👇 BADGE DINÁMICO */}
               <Badge t="info">
@@ -392,24 +408,29 @@ export default function Usuarios({
               </Badge>
             </div>
 
-            <div style={{ display: "grid", gap: 18 }}>
-              {grupos.map(([modulo, permisos]) => (
-                <div key={modulo} style={{ border: "1px solid #E2E8F0", borderRadius: 12, padding: 16, background: "#F8FAFC" }}>
-                  <div style={{ fontWeight: 700, marginBottom: 12, color: "#0F172A" }}>{NOMBRES_MODULO[modulo] ?? modulo}</div>
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {permisos.map((permiso) => (
-                      <label key={permiso.id} style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 14 }}>
-                        <input type="checkbox" checked={rolPermisoIds.has(permiso.id)} onChange={() => togglePermission(permiso.id)} />
-                        <span>{permiso.nombre}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {permissionsLoading ? <p className="usuarios-permissions-message" role="status">Cargando permisos…</p> : permissionsError ? (
+              <div className="usuarios-permissions-message" role="alert">{permissionsError} <button className="btn btn-ghost btn-sm" onClick={() => setReloadPermissions((v) => v + 1)}>Reintentar</button></div>
+            ) : <>
+              {selectedRoleId === 1 && <p className="usuarios-permissions-message">El administrador tiene acceso total. Sus permisos no se pueden restringir.</p>}
+              <div className="usuarios-permissions-grid">
+                {grupos.map(([modulo, permisos]) => (
+                  <fieldset className="usuarios-permission-module" key={modulo} disabled={saving || selectedRoleId === 1}>
+                    <legend>{NOMBRES_MODULO[modulo] ?? modulo}</legend>
+                    <div className="usuarios-permission-options">
+                      {permisos.map((permiso) => (
+                        <label key={permiso.id} title={permiso.descripcion}>
+                          <input type="checkbox" checked={rolPermisoIds.has(permiso.id)} onChange={() => togglePermission(permiso.id)} />
+                          <span>{permiso.nombre}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                ))}
+              </div>
+            </>}
 
-            <div style={{ display: "flex", gap: 12, marginTop: 24, paddingTop: 18, borderTop: "1px solid #E2E8F0", alignItems: "center" }}>
-              <button className="btn btn-primary" onClick={guardarPermisos} disabled={saving || !hasChanges}>
+            <div className="usuarios-permission-actions">
+              <button className="btn btn-primary" onClick={guardarPermisos} disabled={saving || permissionsLoading || !!permissionsError || !hasChanges}>
                 <Ico p={I.check} size={14} /> {saving ? "Guardando…" : "Guardar cambios"}
               </button>
               {saveError && <span style={{ color: "#B91C1C", fontSize: "0.75rem" }}>{saveError}</span>}

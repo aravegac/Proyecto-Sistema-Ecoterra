@@ -229,7 +229,7 @@ export function canAccessModule(
   if (!user) return false
   if (user.id_rol === 1) return true
   const prefix = `${moduleId}:`
-  return Object.keys(user.permisos ?? {}).some(/* Comprueba qué elementos cumplen la condición evaluando key.startsWith(prefix). */ (key) => key.startsWith(prefix))
+  return Object.entries(user.permisos ?? {}).some(([key, enabled]) => enabled === true && key.startsWith(prefix))
 }
 
 // ---------- Mapeo screen → módulo de permisos ----------
