@@ -1,6 +1,7 @@
 // client/src/modules/Proveedores.tsx
 
 import React, { useState } from "react"
+import { countries } from "../countries"
 import { Badge, I, Ico, PageTitle } from "../shared"
 
 // ---------- Tipos exportables ----------
@@ -284,13 +285,21 @@ export default function Proveedores({
               </div>
 
               <div className="field proveedores-field-span-1">
-                <label className="label">País</label>
-                <input
-                  className="input"
-                  placeholder="País"
+                <label className="label" htmlFor="proveedor-pais">País</label>
+                <select
+                  className="select"
+                  id="proveedor-pais"
                   value={form.pais}
-                  onChange={/* Ejecuta updateField("pais", e.target.value) al invocarse este callback. */ (e) => updateField("pais", e.target.value)}
-                />
+                  onChange={(e) => updateField("pais", e.target.value)}
+                >
+                  <option value="">Seleccionar país…</option>
+                  {form.pais && !countries.some(({ name }) => name === form.pais) && (
+                    <option value={form.pais}>{form.pais}</option>
+                  )}
+                  {countries.map(({ code, name, flag }) => (
+                    <option key={code} value={name}>{flag} {name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="field proveedores-field-span-1">
@@ -313,7 +322,7 @@ export default function Proveedores({
                 />
               </div>
 
-              <div className="field proveedores-field-span-2">
+              <div className="field proveedores-field-span-1">
                 <label className="label">Email</label>
                 <input
                   className="input"
@@ -334,7 +343,7 @@ export default function Proveedores({
                 />
               </div>
 
-              <div className="field proveedores-field-span-1">
+              <div className="field proveedores-field-span-2">
                 <label className="label">Estado</label>
                 <select
                   className="input"
