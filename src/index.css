@@ -432,7 +432,7 @@ body,
   padding: 24px;
 }
 .facturacion-modal-wide {
-  width: 720px;
+  width: min(1000px, 100%);
 }
 .facturacion-modal-header {
   display: flex;
@@ -494,6 +494,57 @@ body,
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+.facturacion-header-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.facturacion-line-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+.facturacion-order-document {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.facturacion-order-document iframe {
+  display: block;
+  margin-top: 8px;
+  min-height: 300px;
+  height: 300px;
+  background: white;
+}
+.facturacion-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
+.facturacion-summary .facturacion-preview-totals {
+  width: min(100%, 320px);
+  margin: 0;
+  border: 0;
+  padding: 0;
+  gap: 20px;
+  font-weight: 400;
+}
+@media (max-width: 650px) {
+  .facturacion-header-grid,
+  .facturacion-line-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .facturacion-form-actions {
+    flex-wrap: wrap;
+  }
 }
 .facturacion-form-actions {
   display: flex;

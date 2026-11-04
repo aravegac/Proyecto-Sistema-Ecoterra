@@ -141,6 +141,8 @@ const mapFacturaFromApi = (item: any): Invoice => ({
   iva: Number(item.iva_factura),
   total: Number(item.total_factura),
   estado: item.estado_factura,
+  observacion: item.observacion_factura || "",
+  tipoOperacion: item.tipo_operacion || "Nacional",
 })
 
 // ---------- Datos iniciales (fallback) ----------

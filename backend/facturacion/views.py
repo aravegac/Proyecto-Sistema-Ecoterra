@@ -6,6 +6,7 @@ from uuid import uuid4
 from io import BytesIO
 from decimal import Decimal
 from xml.sax.saxutils import escape
+from PIL import Image as PillowImage
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +103,16 @@ def _num(valor):
 
 
 # Calcula la escala del logo para que quepa en el espacio indicado sin deformarlo.
-def _logo_proporcional(ruta, ancho_max, alto_max):
+def _logo_proporcional(ruta, ancho_max, alto_max, recortar=False):
     """Carga el logo sin deformarlo, ajustado a un recuadro máximo."""
+    if recortar:
+        with PillowImage.open(ruta) as original:
+            imagen = original.convert("RGBA")
+            bounds = imagen.getchannel("A").getbbox()
+            imagen = imagen.crop(bounds) if bounds else imagen
+            ruta = BytesIO()
+            imagen.save(ruta, format="PNG")
+            ruta.seek(0)
     ancho, alto = ImageReader(ruta).getSize()
     escala = min(ancho_max / ancho, alto_max / alto)
     return Image(ruta, width=ancho * escala, height=alto * escala, hAlign="LEFT")
@@ -152,6 +161,8 @@ def generar_pdf_factura(factura):
 
     # ---------------- DATOS ----------------
     cliente = factura.id_cliente
+    operacion = factura.tipo_operacion
+    porcentaje_iva = 0 if operacion == "Internacional" else 19
     razon_social = escape(str(getattr(cliente, "razon_social", "") or "Cliente"))
     partes_dir = [
         getattr(cliente, "direccion", ""),
@@ -167,7 +178,7 @@ def generar_pdf_factura(factura):
 
     # Rejilla de 7 columnas (suman 190 mm).
     # La columna DESCRIPTION de la tabla = columnas 2 y 3 combinadas.
-    col_w = [11 * mm, 17 * mm, 70 * mm, 34 * mm, 20 * mm, 20 * mm, 18 * mm]
+    col_w = [11 * mm, 17 * mm, 60 * mm, 34 * mm, 20 * mm, 20 * mm, 28 * mm]
     ULT = 6
 
     rows, alturas, cmds = [], [], []
@@ -181,7 +192,7 @@ def generar_pdf_factura(factura):
     # ---------------- 0. LOGO ----------------
     logo_path = os.path.join(settings.BASE_DIR, "static", "logo.png")
     if os.path.exists(logo_path):
-        logo = _logo_proporcional(logo_path, 110 * mm, 19 * mm)
+        logo = _logo_proporcional(logo_path, 110 * mm, 19 * mm, recortar=True)
     else:
         logger.warning("No se encontró el logo en %s", logo_path)
         logo = Paragraph(
@@ -200,7 +211,7 @@ def generar_pdf_factura(factura):
     # ---------------- 1-2. EMPRESA / INVOICE / FECHA ----------------
     r = fila(
         [Paragraph("Ecoterra LLC.", s_empresa), "", "", "",
-         Paragraph("Invoice", s_invoice), Paragraph(escape(str(factura.numero_factura)), s_inv_num), ""],
+         Paragraph("Factura", s_invoice), Paragraph(escape(str(factura.numero_factura)), s_inv_num), ""],
         9,
     )
     cmds += [
@@ -245,7 +256,10 @@ def generar_pdf_factura(factura):
 
     # ---------------- 5. TEXTO INTRODUCTORIO ----------------
     r = fila(
-        [Paragraph("De acuerdo a lo solicitado, nos es grato cotizarles lo siguiente :", s_bold)],
+        [Paragraph(
+            f"OC: {escape(str(factura.id_orden_compra.numero_oc))} - Tipo de operación: {operacion}",
+            s_bold,
+        )],
         4.2,
     )
     cmds += [
@@ -290,7 +304,13 @@ def generar_pdf_factura(factura):
             celdas = [Paragraph(str(i), s_center), "", "", "", "", "", ""]
 
         primera = i == 1
-        r = fila(celdas, 4.2 + (3.5 if primera else 0))
+        anchos = [col_w[0], col_w[1], col_w[2] + col_w[3], col_w[3], col_w[4], col_w[5], col_w[6]]
+        alto_texto = max(
+            (celda.wrap(anchos[col] - 8, doc.height)[1] for col, celda in enumerate(celdas) if isinstance(celda, Paragraph)),
+            default=0,
+        )
+        alto_fila = max(4.2 + (3.5 if primera else 0), (alto_texto + (3.5 * mm if primera else 1) + 1) / mm)
+        r = fila(celdas, alto_fila)
         cmds += [
             ("SPAN", (2, r), (3, r)),
             ("VALIGN", (0, r), (ULT, r), "MIDDLE"),
@@ -317,10 +337,14 @@ def generar_pdf_factura(factura):
         7.5,
     )
     r_t2 = fila(
+        ["", "", "", "", Paragraph(f"IVA ({porcentaje_iva}%)", s_center), "", Paragraph(_num(factura.iva), s_right)],
+        7.5,
+    )
+    r_t3 = fila(
         ["", "", "", "", Paragraph("TOTAL", s_center), "", Paragraph(_num(factura.total), s_right)],
         7.5,
     )
-    for rr in (r_t1, r_t2):
+    for rr in (r_t1, r_t2, r_t3):
         cmds += [
             ("SPAN", (0, rr), (3, rr)),
             ("SPAN", (4, rr), (5, rr)),
@@ -328,9 +352,9 @@ def generar_pdf_factura(factura):
             ("RIGHTPADDING", (6, rr), (6, rr), 3 * mm),
         ]
     cmds += [
-        ("LINEBEFORE", (4, r_t1), (4, r_t2), 0.7, colors.black),
-        ("LINEBEFORE", (6, r_t1), (6, r_t2), 0.7, colors.black),
-        ("LINEBELOW", (0, r_t2), (ULT, r_t2), 0.7, colors.black),
+        ("LINEBEFORE", (4, r_t1), (4, r_t3), 0.7, colors.black),
+        ("LINEBEFORE", (6, r_t1), (6, r_t3), 0.7, colors.black),
+        ("LINEBELOW", (0, r_t3), (ULT, r_t3), 0.7, colors.black),
     ]
 
     # Franja vacía entre totales y observaciones
@@ -338,30 +362,10 @@ def generar_pdf_factura(factura):
     cmds.append(("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black))
 
     # ---------------- 9. OBSERVACIONES (ocupa el resto de la hoja) ----------------
-    # obs_text = "Mendoza, Argentina"
     alto_total = 242 * mm
     alto_obs = max(25 * mm, alto_total - sum(alturas))
 
-    rows.append([
-        [
-            Paragraph("Observaciones:", s_bold),
-            Spacer(1, 4 * mm),
-            Paragraph(
-                "",
-            ),
-        ],
-        "", "", "", "", "", "",
-    ])
-    alturas.append(alto_obs)
-    r = len(rows) - 1
-    cmds += [
-        ("SPAN", (0, r), (ULT, r)),
-        ("VALIGN", (0, r), (ULT, r), "TOP"),
-        ("TOPPADDING", (0, r), (ULT, r), 4 * mm),
-    ]
-
-    # ---------------- ESTILO GLOBAL Y CONSTRUCCIÓN ----------------
-    tabla = Table(rows, colWidths=col_w, rowHeights=alturas, hAlign="CENTER")
+    tabla = Table(rows, colWidths=col_w, rowHeights=alturas, hAlign="CENTER", splitInRow=1)
     tabla.setStyle(TableStyle([
         ("TOPPADDING", (0, 0), (-1, -1), 1),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
@@ -370,7 +374,26 @@ def generar_pdf_factura(factura):
         ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
     ] + cmds))
 
-    doc.build([tabla])
+    observaciones = Table([
+        [Paragraph("Observaciones:", s_bold)],
+        [Paragraph(escape(factura.observacion_factura).replace("\n", "<br/>"), s_txt)],
+    ], colWidths=[sum(col_w)], rowHeights=[8*mm, None],
+        minRowHeights=[0, max(0, alto_obs - 8*mm)], repeatRows=1, splitInRow=1)
+    observaciones.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), .8, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    def pie_pagina(canvas, document):
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(10*mm, 5*mm, f"Factura {factura.numero_factura}")
+        canvas.drawRightString(200*mm, 5*mm, f"Página {document.page}")
+
+    doc.build([tabla, observaciones], onFirstPage=pie_pagina, onLaterPages=pie_pagina)
     buffer.seek(0)
     return buffer.getvalue()
 

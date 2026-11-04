@@ -74,6 +74,11 @@ class Factura(models.Model):
         default="PENDIENTE",
         db_column="estado_factura",
     )
+    observacion_factura = models.TextField(blank=True, default="")
+
+    @property
+    def tipo_operacion(self):
+        return self.id_orden_compra.tipo_operacion_oc
 
     
     ruta_pdf_factura = models.CharField(
@@ -97,7 +102,7 @@ class Factura(models.Model):
     def __str__(self):
         return f"Factura {self.numero_factura} - {self.id_cliente}"
 
-    # Suma los detalles, calcula IVA del 19 % y total, y opcionalmente actualiza la factura en la base de datos.
+    # Suma los detalles y calcula el IVA según la operación de la orden de compra.
     def recalcular_totales(self, guardar=True):
         if not self.pk:
             raise ValueError(
@@ -117,7 +122,8 @@ class Factura(models.Model):
 
         subtotal = resultado["subtotal"] or Decimal("0.00")
         subtotal = subtotal.quantize(Decimal("0.01"))
-        iva = (subtotal * Decimal("0.19")).quantize(Decimal("0.01"))
+        tasa = Decimal("0") if self.tipo_operacion == "Internacional" else Decimal("0.19")
+        iva = (subtotal * tasa).quantize(Decimal("0.01"))
 
         self.subtotal = subtotal
         self.iva = iva

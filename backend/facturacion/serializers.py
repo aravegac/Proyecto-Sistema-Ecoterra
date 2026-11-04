@@ -52,6 +52,7 @@ class DetalleFacturaSerializer(serializers.ModelSerializer):
 
 
 class FacturaSerializer(serializers.ModelSerializer):
+    tipo_operacion = serializers.CharField(read_only=True)
     cliente_id = serializers.PrimaryKeyRelatedField(
         queryset=Cliente.objects.all(),
         source="id_cliente",
@@ -155,6 +156,8 @@ class FacturaSerializer(serializers.ModelSerializer):
             "estado",
             "estado_factura",
             "ruta_pdf_factura",
+            "observacion_factura",
+            "tipo_operacion",
             "detalles",
             "detalles_factura",
         ]
@@ -283,6 +286,9 @@ class FacturaSerializer(serializers.ModelSerializer):
         detalles_data = validated_data.pop("detalles", [])
         orden = OrdenCompra.objects.select_for_update().get(pk=validated_data["id_orden_compra"].pk)
         self.validar_orden_disponible(orden)
+        if orden.id_cliente_id != validated_data["id_cliente"].pk:
+            raise serializers.ValidationError({"cliente_id": "La orden de compra cambió de cliente. Vuelve a seleccionarla."})
+        validated_data["id_orden_compra"] = orden
 
         validated_data["ruta_pdf_factura"] = (
             validated_data.get("ruta_pdf_factura") or ""
@@ -316,9 +322,13 @@ class FacturaSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         detalles = validated_data.pop("detalles", None)
         orden = validated_data.get("id_orden_compra", instance.id_orden_compra)
-        OrdenCompra.objects.select_for_update().get(pk=orden.pk)
+        orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
         self.validar_orden_disponible(orden)
         factura = Factura.objects.select_for_update().get(pk=instance.pk)
+        cliente = validated_data.get("id_cliente", factura.id_cliente)
+        if orden.id_cliente_id != cliente.pk:
+            raise serializers.ValidationError({"cliente_id": "La orden de compra cambió de cliente. Vuelve a seleccionarla."})
+        validated_data["id_orden_compra"] = orden
         for field, value in validated_data.items():
             setattr(factura, field, value)
         factura.ruta_pdf_factura = ""

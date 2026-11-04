@@ -1,5 +1,6 @@
 """Pruebas de aceptación S4-T01 sobre una base SQLite aislada."""
 from copy import deepcopy
+from io import BytesIO
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
@@ -14,10 +15,55 @@ from inventario.models import Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
 from .models import Factura, DetalleFactura
+from .views import generar_pdf_factura
+from pypdf import PdfReader
 from ventas.models import OrdenCompra
 
 
 class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
+    def test_operacion_heredada_observacion_e_importes_en_api_y_pdf(self):
+        for operacion, iva, total in [
+            ("Nacional", "855000.00", "5355000.00"),
+            ("Internacional", "0.00", "4500000.00"),
+        ]:
+            with self.subTest(operacion=operacion):
+                orden = OrdenCompra.objects.create(
+                    id_cliente=self.customer, numero_oc=f"OC-{operacion}",
+                    fecha_oc=date(2026, 11, 4), ruta_documento_oc="oc.pdf", tipo_operacion_oc=operacion,
+                )
+                response = self.create({
+                    "cliente_id": self.customer.pk, "id_oc": orden.pk,
+                    "observacion_factura": "Entrega coordinada <cliente> & recepción.\nSegundo párrafo.",
+                    "tipo_operacion": "Internacional" if operacion == "Nacional" else "Nacional",
+                    "iva": 999, "total": 1,
+                    "detalles": [{"id_producto": self.product.pk, "cantidad": 3, "precio_unitario": 1500000}],
+                })
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertEqual(response.data["tipo_operacion"], operacion)
+                self.assertEqual(response.data["subtotal"], "4500000.00")
+                self.assertEqual(response.data["iva"], iva)
+                self.assertEqual(response.data["total"], total)
+                invoice = Factura.objects.get(pk=response.data["id"])
+                self.assertEqual(invoice.observacion_factura, "Entrega coordinada <cliente> & recepción.\nSegundo párrafo.")
+                content = generar_pdf_factura(invoice)
+                pdf = PdfReader(BytesIO(content))
+                text = "\n".join(page.extract_text() for page in pdf.pages)
+                self.assertIn(orden.numero_oc, text)
+                self.assertIn(f"Tipo de operación: {operacion}", text)
+                self.assertIn("IVA (0%)" if operacion == "Internacional" else "IVA (19%)", text)
+                self.assertIn("Entrega coordinada <cliente> & recepción.", text)
+                self.assertIn("Segundo párrafo.", text)
+                self.assertGreater(len(pdf.pages[0].images), 0)
+
+    def test_observacion_larga_en_pdf_conserva_el_final(self):
+        self.payload["observacion_factura"] = ("Observación extendida de entrega y recepción.\n" * 150) + "FIN OBSERVACIÓN"
+        invoice = self.invoice()
+        pdf = PdfReader(BytesIO(generar_pdf_factura(invoice)))
+        self.assertGreater(len(pdf.pages), 1)
+        self.assertLessEqual(len(pdf.pages), 4)
+        text = "\n".join(page.extract_text() for page in pdf.pages)
+        self.assertIn("FIN OBSERVACIÓN", text)
+
     # Prepara el cliente autenticado y los datos necesarios para cada prueba.
     def setUp(self):
         self.api = APIClient()

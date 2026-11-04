@@ -22,6 +22,8 @@ export type Invoice = {
   iva: number
   total: number
   estado: string
+  observacion?: string
+  tipoOperacion?: string
 }
 
 type ProductoAPI = {
@@ -48,6 +50,8 @@ type OrdenAPI = {
   fecha_orden?: string
   fecha_oc?: string
   estado?: string
+  tipo_operacion_oc?: string
+  factura_numero?: string | null
 }
 
 type DetalleForm = {
@@ -79,6 +83,15 @@ const createDetalle = (): DetalleForm => ({
   cantidad: "1",
   precio_unitario: "",
 })
+
+// Usa la misma regla de Decimal del API: redondeo a centavos con mitad al par.
+const redondearImporte = (valor: number): number => {
+  const centavos = Math.abs(valor) * 100
+  const inferior = Math.floor(centavos)
+  const mitad = Math.abs(centavos - inferior - 0.5) <= Number.EPSILON * Math.max(1, centavos) * 2
+  const redondeado = mitad ? inferior + inferior % 2 : Math.round(centavos)
+  return Math.sign(valor) * redondeado / 100
+}
 
 const errorDeRespuesta = (data: any, status: number) => {
   if (!data) return `Error del servidor (HTTP ${status}).`
@@ -156,6 +169,11 @@ export default function Facturacion({
     createDetalle(),
   ])
 
+  const [observacion, setObservacion] = useState("")
+  const [ocDocumentUrl, setOcDocumentUrl] = useState("")
+  const [ocDocumentError, setOcDocumentError] = useState("")
+  const [ocDocumentLoading, setOcDocumentLoading] = useState(false)
+  const [documentRetry, setDocumentRetry] = useState(0)
   const [ordenSeleccionada, setOrdenSeleccionada] = useState("")
   const [guardando, setGuardando] = useState(false)
   const [cargandoDatos, setCargandoDatos] = useState(false)
@@ -248,6 +266,36 @@ export default function Facturacion({
     }
   }, [authUser])
 
+  useEffect(() => {
+    setOcDocumentUrl("")
+    setOcDocumentError("")
+    if (!showNew || !ordenSeleccionada) {
+      setOcDocumentLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    let active = true
+    setOcDocumentLoading(true)
+    const loadDocument = async () => {
+      try {
+        const response = await fetch(`/api/ordenes-compra/${ordenSeleccionada}/documento/`, {
+          headers: authHeaders(authUser), cache: "no-store", signal: controller.signal,
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.detail || "No se pudo abrir el documento de la orden.")
+        const url = new URL(data.url, window.location.origin)
+        if (!["http:", "https:"].includes(url.protocol)) throw new Error("Enlace de documento inválido.")
+        if (active) setOcDocumentUrl(url.href)
+      } catch (error) {
+        if (active) setOcDocumentError(error instanceof Error ? error.message : "No se pudo abrir el documento.")
+      } finally {
+        if (active) setOcDocumentLoading(false)
+      }
+    }
+    void loadDocument()
+    return () => { active = false; controller.abort() }
+  }, [showNew, ordenSeleccionada, authUser, documentRetry])
+
   const ordenActual = ordenesCompra.find(
   (orden) =>
     String(orden.id_oc) === String(ordenSeleccionada),
@@ -260,12 +308,14 @@ export default function Facturacion({
     (total, detalle) => {
       const cantidad = Number(detalle.cantidad) || 0
       const precio = Number(detalle.precio_unitario) || 0
-      return total + cantidad * precio
+      return total + redondearImporte(cantidad * precio)
     },
     0,
   )
 
-  const ivaCalculado = Math.round(subtotalCalculado * 0.19)
+  const tipoOperacion = ordenActual?.tipo_operacion_oc || "Nacional"
+  const ivaRate = tipoOperacion === "Internacional" ? 0 : 19
+  const ivaCalculado = redondearImporte(subtotalCalculado * ivaRate / 100)
   const totalCalculado = subtotalCalculado + ivaCalculado
 
   const totalFacturado = invoices.reduce(
@@ -289,10 +339,10 @@ export default function Facturacion({
       ["Vencida", "VENCIDA"].includes(invoice.estado),
   ).length
 
-  const invoiceCount = invoices.length
 
   const openNewInvoice = () => {
     setOrdenSeleccionada("")
+    setObservacion("")
     setDetalles([createDetalle()])
     setErrorGuardado("")
     setErrorCarga("")
@@ -377,6 +427,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
 }
 
   const guardarFactura = async () => {
+    if (guardando) return
     setErrorGuardado("")
 
     if (!authUser) {
@@ -388,7 +439,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
 
     if (!ordenActual || !clienteId) {
       setErrorGuardado(
-        "La orden seleccionada no tiene un cliente válido. Revisa los datos de /api/ordenes-compra/.",
+        "La orden seleccionada no tiene un cliente válido. Vuelve a seleccionarla.",
       )
       return
     }
@@ -439,7 +490,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
         body: JSON.stringify({
           cliente_id: clienteId,
           id_orden_compra: ordenActual.id_oc,
-          ruta_pdf_factura: "",
+          observacion_factura: observacion,
           detalles: detalles.map((detalle) => ({
             producto_id: Number(detalle.producto_id),
             cantidad: Number(detalle.cantidad),
@@ -457,6 +508,9 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
       }
 
       const facturaCreada: Invoice = {
+        id_interno: Number(data.id_factura ?? data.id),
+        observacion: data.observacion_factura || "",
+        tipoOperacion: data.tipo_operacion || tipoOperacion,
         id: String(data.numero_factura ?? data.id),
         oc: String(
           data.oc_numero ?? ordenActual.numero_oc ?? ordenActual.id_oc,
@@ -507,7 +561,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
     <div>
       <PageTitle
         title="Facturación"
-        sub="Documentos tributarios electrónicos 1:1 con OC"
+        sub="Registro de facturas asociadas a las órdenes de compra de clientes"
       >
         <button
           className="btn btn-primary"
@@ -637,6 +691,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                 </p>
               </div>
               <button
+                aria-label="Cerrar vista previa de factura"
                 onClick={() => setPreview(null)}
                 className="facturacion-icon-button"
               >
@@ -662,7 +717,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                 <span>{fmtCLP(preview.subtotal)}</span>
               </div>
               <div className="facturacion-preview-totals">
-                <span>IVA (19%)</span>
+                <span>IVA ({preview.tipoOperacion === "Internacional" ? 0 : 19}%)</span>
                 <span>{fmtCLP(preview.iva)}</span>
               </div>
               <div className="facturacion-preview-totals">
@@ -674,6 +729,8 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                   )}
                 </span>
               </div>
+              <p>Tipo de operación: {preview.tipoOperacion || "Nacional"}</p>
+              <p style={{ whiteSpace: "pre-wrap" }}>Observación: {preview.observacion || "Sin observaciones"}</p>
               <div className="facturacion-preview-actions">
                 {/* BOTÓN DE CORREO ELIMINADO */}
                 <button
@@ -693,13 +750,15 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
           className="modal-backdrop"
           onClick={closeNewInvoice}
         >
-          <div
+          <form
             className="modal facturacion-modal facturacion-modal-wide"
+            role="dialog" aria-modal="true" aria-labelledby="invoice-form-title"
             onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => { event.preventDefault(); void guardarFactura() }}
           >
             <div className="facturacion-modal-header">
               <div>
-                <h2 className="facturacion-modal-title">
+                <h2 className="facturacion-modal-title" id="invoice-form-title">
                   Nueva factura
                 </h2>
                 <p className="facturacion-modal-subtitle facturacion-modal-subtitle-spaced">
@@ -707,6 +766,8 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                 </p>
               </div>
               <button
+                type="button"
+                aria-label="Cerrar formulario de factura"
                 onClick={closeNewInvoice}
                 className="facturacion-icon-button"
                 disabled={guardando}
@@ -737,13 +798,13 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
               <p>Cargando productos y órdenes de compra...</p>
             ) : (
               <>
-                <div className="facturacion-form-grid">
+                <div className="facturacion-header-grid">
                   <div className="field">
-                    <label className="label">
-                      Orden de compra
-                    </label>
+                    <label className="label" htmlFor="invoice-order">Orden de compra *</label>
                     <select
                       className="select"
+                      required
+                      id="invoice-order"
                       value={ordenSeleccionada}
                       onChange={(event) => {
                         setOrdenSeleccionada(event.target.value)
@@ -757,6 +818,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                         <option
                           key={String(orden.id_oc)}
                           value={String(orden.id_oc)}
+                          disabled={Boolean(orden.factura_numero) || invoices.some((invoice) => invoice.oc === orden.numero_oc)}
                         >
                           {orden.numero_oc ||
                             `OC #${orden.id_oc}`}
@@ -774,8 +836,9 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                   </div>
 
                   <div className="field">
-                    <label className="label">Cliente</label>
+                    <label className="label" htmlFor="invoice-client">Cliente</label>
                     <input
+                      id="invoice-client"
                       className="input"
                       value={
                         nombreCliente ||
@@ -785,26 +848,42 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                       readOnly
                     />
                   </div>
+                  <div className="field">
+                    <label className="label" htmlFor="invoice-operation">Tipo de operación</label>
+                    <input id="invoice-operation" className="input" readOnly value={ordenActual ? tipoOperacion : ""} placeholder="Se obtiene de la orden" />
+                  </div>
                 </div>
+
+                {ordenActual && <section className="facturacion-order-document" aria-label="Documento de la orden seleccionada">
+                  <h3>Documento de la OC {ordenActual.numero_oc}</h3>
+                  {ocDocumentLoading ? <p role="status">Cargando documento…</p>
+                    : ocDocumentUrl ? <>
+                      <iframe title="Documento OC seleccionada" src={ocDocumentUrl} className="oc-preview-frame" />
+                      <a href={ocDocumentUrl} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Abrir documento en otra pestaña</a>
+                    </> : <div role="alert">
+                      <p>{ocDocumentError || "Documento no disponible."}</p>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDocumentRetry((value) => value + 1)}>Reintentar</button>
+                    </div>}
+                </section>}
 
                 <div
                   className="field"
                   style={{ marginTop: 16 }}
                 >
-                  <label className="label">Productos</label>
+                  <label className="label">Productos / Servicios</label>
 
                   {detalles.map((detalle, index) => (
                     <div
                       key={index}
-                      className="facturacion-form-grid"
+                      className="facturacion-line-grid"
                       style={{ marginBottom: 12 }}
                     >
                       <div className="field">
-                        <label className="label">
-                          Producto
-                        </label>
+                        <label className="label" htmlFor={`invoice-product-${index}`}>Producto</label>
                         <select
                           className="select"
+                          required
+                          id={`invoice-product-${index}`}
                           value={detalle.producto_id}
                           onChange={(event) =>
                             setDetalles((actuales) =>
@@ -838,14 +917,14 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                       </div>
 
                       <div className="field">
-                        <label className="label">
-                          Cantidad
-                        </label>
+                        <label className="label" htmlFor={`invoice-quantity-${index}`}>Cantidad</label>
                         <input
                           className="input"
                           type="number"
+                          required
                           min="0.01"
                           step="0.01"
+                          id={`invoice-quantity-${index}`}
                           value={detalle.cantidad}
                           onChange={(event) =>
                             setDetalles((actuales) =>
@@ -864,15 +943,15 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                       </div>
 
                       <div className="field">
-                        <label className="label">
-                          Precio unitario (CLP)
-                        </label>
+                        <label className="label" htmlFor={`invoice-price-${index}`}>Precio unitario (CLP)</label>
                         <input
                           className="input"
                           type="number"
+                          required
                           min="0.01"
                           step="0.01"
                           placeholder="Ej. 15000"
+                          id={`invoice-price-${index}`}
                           value={detalle.precio_unitario}
                           onChange={(event) =>
                             setDetalles((actuales) =>
@@ -922,22 +1001,25 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                   </button>
                 </div>
 
-                <div style={{ marginTop: 20 }}>
+                <div className="field" style={{ marginTop: 16 }}>
+                  <label className="label" htmlFor="invoice-observation">Observación</label>
+                  <textarea id="invoice-observation" className="textarea" rows={3} value={observacion} onChange={(event) => setObservacion(event.target.value)} />
+                </div>
+
+                <div className="facturacion-summary">
                   <div className="facturacion-preview-totals">
                     <span>Subtotal estimado</span>
                     <span>{fmtCLP(subtotalCalculado)}</span>
                   </div>
                   <div className="facturacion-preview-totals">
-                    <span>IVA estimado (19%)</span>
+                    <span>IVA estimado ({ivaRate}%)</span>
                     <span>{fmtCLP(ivaCalculado)}</span>
                   </div>
                   <div className="facturacion-preview-totals">
                     <strong>Total estimado</strong>
                     <strong>{fmtCLP(totalCalculado)}</strong>
                   </div>
-                  <p className="facturacion-modal-subtitle">
-                    El total definitivo lo calcula y guarda el backend.
-                  </p>
+
                 </div>
               </>
             )}
@@ -945,24 +1027,23 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
             <div className="facturacion-form-actions">
               <button
                 className="btn btn-primary"
-                onClick={guardarFactura}
-                disabled={guardando || cargandoDatos}
+                type="submit"
+                disabled={guardando || cargandoDatos || Boolean(errorCarga) || !ordenActual}
               >
                 <Ico p={I.check} size={14} />
                 {guardando ? "Guardando..." : "Guardar factura"}
               </button>
               <button
                 className="btn btn-ghost"
+                type="button"
                 onClick={closeNewInvoice}
                 disabled={guardando}
               >
                 Cancelar
               </button>
-              <div className="facturacion-form-footnote">
-                {invoiceCount} facturas en pantalla
-              </div>
+
             </div>
-          </div>
+          </form>
         </div>
       )}
     </div>
