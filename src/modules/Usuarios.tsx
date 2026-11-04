@@ -1,3 +1,4 @@
+import { apiFetch } from "../api"
 // usuarios.tsx
 import React, { useEffect, useMemo, useState, useRef } from "react"
 import { Badge, AuthUser, I, Ico, PageTitle, authHeaders } from "../shared"
@@ -112,7 +113,7 @@ export default function Usuarios({
     setSaveError("")
     const load = async () => {
       const read = async (url: string) => {
-        const response = await fetch(url, { headers: authHeaders(authUser), signal: controller.signal })
+        const response = await apiFetch(url, { headers: authHeaders(authUser), signal: controller.signal })
         if (!response.ok) throw new Error("No se pudieron cargar los permisos. Intenta nuevamente.")
         return response.json()
       }
@@ -186,14 +187,14 @@ export default function Usuarios({
       let res
       if (editPermissionsUser) {
         // Guardar permisos personalizados
-        res = await fetch(`/api/usuarios/${editPermissionsUser.id}/permisos/`, {
+        res = await apiFetch(`/api/usuarios/${editPermissionsUser.id}/permisos/`, {
           method: "PUT",
           headers: authHeaders(authUser),
           body: JSON.stringify({ permisos: permisosObj, rol: ROLE_DISPLAY[selectedRoleId] }),
         })
       } else {
         // Guardar permisos globales del rol
-        res = await fetch(`/api/roles/${selectedRoleId}/permisos/`, {
+        res = await apiFetch(`/api/roles/${selectedRoleId}/permisos/`, {
           method: "PUT",
           headers: authHeaders(authUser),
           body: JSON.stringify({ permisos: Array.from(rolPermisoIds) }),

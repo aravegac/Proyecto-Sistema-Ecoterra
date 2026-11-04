@@ -1,3 +1,4 @@
+import { apiFetch, SESSION_REJECTED_EVENT } from "./api"
 // App.tsx
 import React, { useEffect, useState } from "react"
 import AppLayout from "./layout/AppLayout"
@@ -22,6 +23,7 @@ import {
   canAccessModule,
   SCREEN_TO_MODULE,
   Screen,
+  Product,
 } from "./shared"
 import Login from "./modules/Login"
 import { clearSession, readSession, saveSession, sessionExpiresAt } from "./session"
@@ -129,70 +131,6 @@ const mapMovimientoFromApi = (
   }
 }
 
-// ---------- Datos iniciales (fallback) ----------
-const initialProductos = [
-  {
-    id: 1,
-    codigo: "POL-001",
-    nombre: "EcoStab Polímero Estabilizador 500L",
-    desc: "Estabilización de suelos y caminos no pavimentados.",
-    tipo: "Estabilización",
-    unidad: "Litros",
-    stockMin: 600,
-    stock: 2960,
-    stockTotal: 2960,
-    estado: "Activo",
-  },
-  {
-    id: 2,
-    codigo: "POL-002",
-    nombre: "EcoDust Control Supresor de Polvo 25L",
-    desc: "Supresión de polvo en caminos mineros y vías de acarreo.",
-    tipo: "Control Polvo",
-    unidad: "Litros",
-    stockMin: 1000,
-    stock: 300,
-    stockTotal: 300,
-    estado: "Activo",
-  },
-  {
-    id: 3,
-    codigo: "POL-003",
-    nombre: "EcoMine Heavy Duty 1000L",
-    desc: "Polímero de alta resistencia para operaciones mineras.",
-    tipo: "Minería",
-    unidad: "Litros",
-    stockMin: 2000,
-    stock: 0,
-    stockTotal: 0,
-    estado: "Inactivo",
-  },
-  {
-    id: 4,
-    codigo: "POL-004",
-    nombre: "EcoRoad Concentrado Plus 200L",
-    desc: "Concentrado 50X para caminos secundarios y accesos viales.",
-    tipo: "Vialidad",
-    unidad: "Litros",
-    stockMin: 400,
-    stock: 1340,
-    stockTotal: 1340,
-    estado: "Activo",
-  },
-  {
-    id: 5,
-    codigo: "POL-005",
-    nombre: "EcoAgroPol Aplicación Agrícola 25L",
-    desc: "Polímero para suelos agrícolas en zonas áridas.",
-    tipo: "Agrícola",
-    unidad: "Litros",
-    stockMin: 800,
-    stock: 200,
-    stockTotal: 200,
-    estado: "Activo",
-  },
-]
-
 // ---------- App ----------
 // Gestiona la sesión, carga los datos de la API y conecta la navegación con las operaciones de cada módulo.
 export default function App() {
@@ -201,9 +139,10 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(() => {
     if (!authUser) return "login"
     const saved = window.location.hash.slice(1)
-    return Object.prototype.hasOwnProperty.call(SCREEN_TO_MODULE, saved) ? saved as Screen : "dashboard"
+    return saved !== "login" && Object.prototype.hasOwnProperty.call(SCREEN_TO_MODULE, saved) ? saved as Screen : "dashboard"
   })
-  const [productos, setProductos] = useState(initialProductos)
+  const [productos, setProductos] = useState<Product[]>([])
+  const [productosError, setProductosError] = useState("")
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
   >([])
@@ -222,7 +161,7 @@ export default function App() {
   const reloadOrdenes = async () => {
     if (!authUser) return
 
-    const response = await fetch("/api/ordenes-compra/", {
+    const response = await apiFetch("/api/ordenes-compra/", {
       headers: authHeaders(authUser),
     })
 
@@ -243,6 +182,7 @@ export default function App() {
     setSessionExpired(false)
     saveSession(user)
     setAuthUser(user)
+    window.history.replaceState(null, "", "#dashboard")
     setScreen("dashboard")
   }
 
@@ -250,20 +190,58 @@ export default function App() {
   const handleLogout = () => {
     clearSession()
     setAuthUser(null)
+    window.history.replaceState(null, "", window.location.pathname + window.location.search)
     setScreen("login")
   }
 
   useEffect(() => {
-    window.history.replaceState(null, "", screen === "login" ? window.location.pathname + window.location.search : "#" + screen)
-  }, [screen])
-
-  useEffect(() => {
     if (!authUser) return
-    const timer = window.setTimeout(() => {
+    const expire = () => {
       setSessionExpired(true)
       handleLogout()
-    }, Math.max(0, sessionExpiresAt() - Date.now()))
-    return () => window.clearTimeout(timer)
+    }
+    const checkExpiry = () => {
+      if (sessionExpiresAt() <= Date.now()) expire()
+    }
+    const rejected = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === authUser.token) expire()
+    }
+    const timer = window.setTimeout(expire, Math.max(0, sessionExpiresAt() - Date.now()))
+    window.addEventListener(SESSION_REJECTED_EVENT, rejected)
+    window.addEventListener("focus", checkExpiry)
+    document.addEventListener("visibilitychange", checkExpiry)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener(SESSION_REJECTED_EVENT, rejected)
+      window.removeEventListener("focus", checkExpiry)
+      document.removeEventListener("visibilitychange", checkExpiry)
+    }
+  }, [authUser])
+
+  const navigate = (next: Screen) => {
+    if (next === screen) return
+    window.history.pushState(null, "", "#" + next)
+    setScreen(next)
+  }
+
+  useEffect(() => {
+    if (!authUser) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search)
+      return
+    }
+    const syncLocation = () => {
+      const next = window.location.hash.slice(1)
+      const valid = next !== "login" && Object.prototype.hasOwnProperty.call(SCREEN_TO_MODULE, next)
+      if (!valid) window.history.replaceState(null, "", "#dashboard")
+      setScreen(valid ? next as Screen : "dashboard")
+    }
+    syncLocation()
+    window.addEventListener("hashchange", syncLocation)
+    window.addEventListener("popstate", syncLocation)
+    return () => {
+      window.removeEventListener("hashchange", syncLocation)
+      window.removeEventListener("popstate", syncLocation)
+    }
   }, [authUser])
 
   // Bloquear navegación a módulos sin permiso (redirige al dashboard)
@@ -271,6 +249,7 @@ export default function App() {
     if (!authUser) return
     const currentModule = SCREEN_TO_MODULE[screen]
     if (currentModule && !canAccessModule(authUser, currentModule)) {
+      window.history.replaceState(null, "", "#dashboard")
       setScreen("dashboard")
     }
   }, [screen, authUser])
@@ -278,7 +257,7 @@ export default function App() {
   // ---------- Cargas iniciales (solo si hay sesión) ----------
   useEffect(/* Carga los clientes cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
-    fetch("/api/clientes/", { headers: authHeaders(authUser) })
+    apiFetch("/api/clientes/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar clientes")
         return r.json()
@@ -289,7 +268,6 @@ export default function App() {
         setClientesError("")
       })
       .catch(/* Gestiona el error actualizando setProductos, setClientes, setClientesError. */ (error) => {
-        setProductos(initialProductos)
         setClientes([])
         setClientesError(
           error instanceof Error
@@ -301,7 +279,7 @@ export default function App() {
 
   useEffect(/* Carga los usuarios cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
-    fetch("/api/usuarios/", { headers: authHeaders(authUser) })
+    apiFetch("/api/usuarios/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar usuarios")
         return r.json()
@@ -323,7 +301,7 @@ export default function App() {
 
   useEffect(/* Carga los proveedores cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
-    fetch("/api/proveedores/", { headers: authHeaders(authUser) })
+    apiFetch("/api/proveedores/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar proveedores")
         return r.json()
@@ -346,18 +324,18 @@ export default function App() {
   // Cargar productos + lotes (en cadena porque lotes dependen de productos)
   useEffect(/* Carga productos y después sus lotes de inventario para la sesión actual. */ () => {
     if (!authUser) return
-    fetch("/api/productos/", { headers: authHeaders(authUser) })
+    apiFetch("/api/productos/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar productos")
         return r.json()
       })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (productosData) => {
-        const mappedProductos = Array.isArray(productosData)
-          ? productosData.map(mapProductFromApi)
-          : initialProductos
+        if (!Array.isArray(productosData)) throw new Error("Formato de productos inválido")
+        const mappedProductos = productosData.map(mapProductFromApi)
+        setProductosError("")
         setProductos(mappedProductos)
 
-        return fetch("/api/inventario/", { headers: authHeaders(authUser) })
+        return apiFetch("/api/inventario/", { headers: authHeaders(authUser) })
           .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
             if (!r.ok) throw new Error("No se pudo cargar inventario")
             return r.json()
@@ -369,7 +347,7 @@ export default function App() {
           })
       })
       .catch(/* Gestiona el error actualizando setProductos, setLotes, setLotesError. */ (error) => {
-        setProductos(initialProductos)
+        setProductosError("No se pudieron actualizar los datos de stock. Vuelve a cargar la página.")
         setLotes([])
         setLotesError(
           error instanceof Error
@@ -383,7 +361,7 @@ export default function App() {
   useEffect(/* Carga los movimientos y resuelve sus lotes y usuarios cuando cambian las dependencias del efecto. */ () => {
     if (!authUser) return
 
-    fetch("/api/movimientos/", { headers: authHeaders(authUser) })
+    apiFetch("/api/movimientos/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar movimientos")
         return r.json()
@@ -406,7 +384,7 @@ export default function App() {
   // Cargar facturas desde el backend
   useEffect(/* Carga las facturas de la sesión actual y vacía el listado si falla la consulta. */ () => {
     if (!authUser) return
-    fetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
+    apiFetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar facturas")
         return r.json()
@@ -436,7 +414,7 @@ export default function App() {
   // ---------- Handlers Usuarios ----------
   // Crea un usuario mediante la API y lo añade a la lista local.
   const createUser = async (input: UserInput) => {
-    const response = await fetch("/api/usuarios/", {
+    const response = await apiFetch("/api/usuarios/", {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify({
@@ -476,7 +454,7 @@ export default function App() {
       bodyData.contrasena = input.contrasena
     }
 
-    const response = await fetch(`/api/usuarios/${user.id}/`, {
+    const response = await apiFetch(`/api/usuarios/${user.id}/`, {
       method: "PATCH",
       headers: authHeaders(authUser),
       body: JSON.stringify(bodyData), //  Enviamos el body modificado
@@ -499,7 +477,7 @@ export default function App() {
 
   // Elimina el usuario mediante la API y lo retira de la lista local.
   const deleteUser = async (user: User) => {
-    const response = await fetch(`/api/usuarios/${user.id}/`, {
+    const response = await apiFetch(`/api/usuarios/${user.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
@@ -521,7 +499,7 @@ export default function App() {
 
   // Crea un proveedor mediante la API y lo añade a la lista local.
   const createProveedor = async (input: ProveedorInput) => {
-    const response = await fetch("/api/proveedores/", {
+    const response = await apiFetch("/api/proveedores/", {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify(proveedorPayload(input)),
@@ -541,7 +519,7 @@ export default function App() {
 
   // Actualiza el proveedor mediante la API y reemplaza sus datos en la lista local.
   const updateProveedor = async (proveedor: Proveedor, input: ProveedorInput) => {
-    const response = await fetch(`/api/proveedores/${proveedor.id}/`, {
+    const response = await apiFetch(`/api/proveedores/${proveedor.id}/`, {
       method: "PATCH",
       headers: authHeaders(authUser),
       body: JSON.stringify(proveedorPayload(input)),
@@ -563,7 +541,7 @@ export default function App() {
 
   // Elimina el proveedor mediante la API y lo retira de la lista local.
   const deleteProveedor = async (proveedor: Proveedor) => {
-    const response = await fetch(`/api/proveedores/${proveedor.id}/`, {
+    const response = await apiFetch(`/api/proveedores/${proveedor.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
@@ -574,7 +552,7 @@ export default function App() {
   // ---------- Handlers Clientes ----------
   // Crea un cliente mediante la API y lo añade a la lista local.
   const createClient = async (input: NewClientInput) => {
-    const response = await fetch("/api/clientes/", {
+    const response = await apiFetch("/api/clientes/", {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify({
@@ -605,7 +583,7 @@ export default function App() {
 
   // Actualiza el cliente mediante la API y reemplaza sus datos en la lista local.
   const updateClient = async (client: Client, input: NewClientInput) => {
-    const response = await fetch(`/api/clientes/${client.id}/`, {
+    const response = await apiFetch(`/api/clientes/${client.id}/`, {
       method: "PATCH",
       headers: authHeaders(authUser),
       body: JSON.stringify({
@@ -640,7 +618,7 @@ export default function App() {
   const deleteClient = async (
     client: React.ComponentProps<typeof Clientes>["clientes"][number],
   ) => {
-    const response = await fetch(`/api/clientes/${client.id}/`, {
+    const response = await apiFetch(`/api/clientes/${client.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
@@ -650,7 +628,7 @@ export default function App() {
 
   // Crea una dirección del cliente mediante la API y actualiza sus direcciones locales.
   const createAddress = async (client: Client, input: AddressInput) => {
-    const response = await fetch(`/api/clientes/${client.id}/direcciones/`, {
+    const response = await apiFetch(`/api/clientes/${client.id}/direcciones/`, {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify(input),
@@ -674,7 +652,7 @@ export default function App() {
 
   // Actualiza una dirección mediante la API y reemplaza sus datos en el cliente local.
   const updateAddress = async (client: Client, address: Address, input: AddressInput) => {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/clientes/${client.id}/direcciones/${address.id}/`,
       {
         method: "PATCH",
@@ -706,7 +684,7 @@ export default function App() {
 
   // Elimina una dirección mediante la API y la retira de las direcciones del cliente local.
   const deleteAddress = async (client: Client, address: Address) => {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/clientes/${client.id}/direcciones/${address.id}/`,
       { method: "DELETE", headers: authHeaders(authUser) },
     )
@@ -734,7 +712,7 @@ export default function App() {
 
   // Crea un producto mediante la API y lo añade a la lista local.
   const createProduct = async (input: ProductInput) => {
-    const response = await fetch("/api/productos/", {
+    const response = await apiFetch("/api/productos/", {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify(productPayload(input)),
@@ -757,7 +735,7 @@ export default function App() {
     product: React.ComponentProps<typeof Productos>["productos"][number],
     input: ProductInput,
   ) => {
-    const response = await fetch(`/api/productos/${product.id}/`, {
+    const response = await apiFetch(`/api/productos/${product.id}/`, {
       method: "PATCH",
       headers: authHeaders(authUser),
       body: JSON.stringify(productPayload(input)),
@@ -774,6 +752,9 @@ export default function App() {
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
       current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
+    if (product.codigo !== updated.codigo) {
+      setLotes((current) => current.map((lote) => lote.prod === product.codigo ? { ...lote, prod: updated.codigo } : lote))
+    }
     return updated
   }
 
@@ -781,7 +762,7 @@ export default function App() {
   const deleteProduct = async (
     product: React.ComponentProps<typeof Productos>["productos"][number],
   ) => {
-    const response = await fetch(`/api/productos/${product.id}/`, {
+    const response = await apiFetch(`/api/productos/${product.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
@@ -796,14 +777,26 @@ export default function App() {
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.filter((item) => item.id !== product.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== product.id. */ (item) => item.id !== product.id))
   }
 
+  // Los saldos de los lotes confirmados por la API alimentan también Productos y Dashboard.
+  const syncInventory = (next: Lote[]) => {
+    setLotes(next)
+    setProductos((current) => current.map((product) => {
+      const batches = next.filter((lote) => lote.prod === product.codigo)
+      return { ...product,
+        stock: batches.filter((lote) => lote.estado === "Disponible").reduce((sum, lote) => sum + lote.qty, 0),
+        stockTotal: batches.reduce((sum, lote) => sum + lote.qty, 0),
+      }
+    }))
+  }
+
   // ---------- Handlers Lotes ----------
   // Resuelve el producto, crea el lote mediante la API y lo añade al inventario local.
   const createLote = async (input: LoteInput, id?: number) => {
     const producto = productos.find(/* Identifica el elemento buscado evaluando p.codigo === input.prod. */ (p: any) => p.codigo === input.prod)
     if (!producto) throw new Error("Producto no encontrado")
 
-    const response = await fetch("/api/inventario/", {
-      method: "POST",
+    const response = await apiFetch(id === undefined ? "/api/inventario/" : `/api/inventario/${id}/`, {
+      method: id === undefined ? "POST" : "PATCH",
       headers: authHeaders(authUser),
       body: JSON.stringify({
         id_producto: producto.id,
@@ -824,24 +817,24 @@ export default function App() {
       )
     }
     const created = mapLoteFromApi(await response.json(), productos)
-    setLotes(/* Calcula el nuevo valor de Lotes devolviendo [...current, created]. */ (current) => [...current, created])
+    syncInventory(id === undefined ? [...lotes, created] : lotes.map((lote) => lote.id === created.id ? created : lote))
     return created
   }
 
   // Elimina el lote mediante la API y lo retira del inventario local.
   const deleteLote = async (lote: Lote) => {
-    const response = await fetch(`/api/inventario/${lote.id}/`, {
+    const response = await apiFetch(`/api/inventario/${lote.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
     if (!response.ok) throw new Error("No se pudo eliminar el lote")
-    setLotes(/* Calcula el nuevo valor de Lotes devolviendo current.filter((item) => item.id !== lote.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== lote.id. */ (item) => item.id !== lote.id))
+    syncInventory(lotes.filter((item) => item.id !== lote.id))
   }
 
   // ---------- Handlers Movimientos ----------
   // Registra el movimiento mediante la API, lo añade a la lista local y recarga el inventario.
   const createMovimiento = async (input: MovimientoInput) => {
-    const response = await fetch("/api/movimientos/", {
+    const response = await apiFetch("/api/movimientos/", {
       method: "POST",
       headers: authHeaders(authUser),
       body: JSON.stringify({
@@ -869,23 +862,11 @@ export default function App() {
 
     setMovimientos(/* Calcula el nuevo valor de Movimientos devolviendo [created, ...current]. */ (current) => [created, ...current])
 
-    fetch("/api/inventario/", {
-      headers: authHeaders(authUser),
-    })
-      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
-        if (!r.ok) {
-          throw new Error("No se pudo actualizar el inventario")
-        }
-        return r.json()
-      })
-      .then(/* Procesa la respuesta actualizando setLotes. */ (lotesData) => {
-        if (Array.isArray(lotesData)) {
-          setLotes(
-            lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, productos). */ (l: any) => mapLoteFromApi(l, productos))
-          )
-        }
-      })
-      .catch(/* Finaliza el callback sin realizar operaciones adicionales. */ () => {})
+    // El backend devuelve el saldo resultante del movimiento; se refleja sin otra recarga.
+    if (raw.stock_posterior != null) {
+      syncInventory(lotes.map((lote) => lote.id === Number(raw.id_inventario)
+        ? { ...lote, qty: Number(raw.stock_posterior) } : lote))
+    }
 
     return created
   }
@@ -893,7 +874,7 @@ export default function App() {
 
   // ---------- Vistas ----------
   const views: Record<Screen, React.ReactNode> = {
-    dashboard: <Dashboard productos={productos} onNav={setScreen} />,
+    dashboard: <Dashboard productos={productos} onNav={navigate} />,
     clientes: (
       <Clientes
         clientes={clientes}
@@ -918,6 +899,7 @@ export default function App() {
     productos: (
       <Productos
         productos={productos}
+        loadError={productosError}
         onCreate={createProduct}
         onUpdate={updateProduct}
         onDelete={deleteProduct}
@@ -960,7 +942,7 @@ export default function App() {
         ordenes={ordenes}
         facturas={facturas}
         clientes={clientes}
-        onFacturar={() => setScreen("facturacion")}
+        onFacturar={() => navigate("facturacion")}
         authUser={authUser}
         onOrdenesChange={reloadOrdenes}
       />
@@ -1012,7 +994,7 @@ export default function App() {
   return (
     <AppLayout
       screen={screen}
-      onNav={setScreen}
+      onNav={navigate}
       user={authUser}
       onLogout={handleLogout}
     >

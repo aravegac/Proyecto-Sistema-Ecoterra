@@ -1,3 +1,4 @@
+import { apiFetch } from "../api"
 import React, { useEffect, useState } from "react"
 import { getDocumentPdfUrl } from "../documentPdf"
 import {
@@ -139,7 +140,7 @@ export default function NotasCredito({
     method = "GET",
     body?: object,
   ): Promise<T> {
-    const response = await fetch(`/api/notas-credito/${path}`, {
+    const response = await apiFetch(`/api/notas-credito/${path}`, {
       method,
       headers: authHeaders(authUser),
       body: body ? JSON.stringify(body) : undefined,
@@ -208,7 +209,7 @@ export default function NotasCredito({
 
     const load = async () => {
       try {
-        const response = await fetch("/api/notas-credito/", {
+        const response = await apiFetch("/api/notas-credito/", {
           headers: authHeaders(authUser),
           signal: controller.signal,
         })
@@ -262,7 +263,7 @@ export default function NotasCredito({
         if (!facturaSeleccionada.id_interno)
           throw new Error("No se pudo identificar la factura de origen.")
 
-        const response = await fetch(
+        const response = await apiFetch(
           `/api/facturas/${facturaSeleccionada.id_interno}/`,
           {
             headers: authHeaders(authUser),

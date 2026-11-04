@@ -81,6 +81,7 @@ export default function Lotes({
 
   // Exige producto, cantidad y fechas, solicita la creación del lote y muestra los errores.
   const handleSave = async () => {
+    if (saving) return
     if (!form.prod || (editId === undefined && form.qty <= 0) || !form.fabr || !form.venc) {
       setFormError("Producto, cantidad, fabricación y vencimiento son obligatorios.")
       return
@@ -233,7 +234,14 @@ export default function Lotes({
                   </Badge>
                 </td>
                 <td>
+                  <button className="btn btn-ghost btn-sm" aria-label={`Editar lote ${lot.id}`} onClick={() => {
+                    setEditId(lot.id)
+                    setForm({ prod: lot.prod, qty: lot.qty, envase: lot.envase, fabr: lot.fabr, venc: lot.venc, ubic: lot.ubic, estado: lot.estado })
+                    setFormError("")
+                    setShowModal(true)
+                  }}><Ico p={I.edit} size={13} /></button>
                   <button
+                    aria-label={`Eliminar lote ${lot.id}`}
                     className="btn btn-ghost btn-sm"
                     onClick={/* Confirma la eliminación del lote, la solicita y muestra el error si falla. */ async () => {
                       if (!confirm(`¿Eliminar lote ${lot.id}?`)) return

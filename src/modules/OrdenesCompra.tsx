@@ -1,3 +1,4 @@
+import { apiFetch } from "../api"
 import React, { useEffect, useRef, useState } from "react"
 import { AuthUser, authHeaders, Badge, can, fmtCLP, I, Ico, PageTitle } from "../shared"
 
@@ -88,7 +89,7 @@ export default function OrdenesCompra({
     setDocumentError("")
     setDocumentLoading(true)
     try {
-      const response = await fetch(`/api/ordenes-compra/${order.idOc}/documento/`, {
+      const response = await apiFetch(`/api/ordenes-compra/${order.idOc}/documento/`, {
         headers: authHeaders(authUser), cache: "no-store",
       })
       const data = await response.json()
@@ -159,7 +160,7 @@ export default function OrdenesCompra({
     const headers = new Headers(authHeaders(authUser))
     headers.delete("Content-Type")
     try {
-      const response = await fetch(editingOrder ? `/api/ordenes-compra/${editingOrder.idOc}/` : "/api/ordenes-compra/", {
+      const response = await apiFetch(editingOrder ? `/api/ordenes-compra/${editingOrder.idOc}/` : "/api/ordenes-compra/", {
         method: editingOrder ? "PATCH" : "POST", headers, body,
       })
       const data = await response.json()
@@ -185,7 +186,7 @@ export default function OrdenesCompra({
     if (!window.confirm(`¿Desasociar la cotización ${order.cot} de ${order.id}?`)) return
     setPageError("")
     try {
-      const response = await fetch(`/api/ordenes-compra/${order.idOc}/desasociar-cotizacion/`, {
+      const response = await apiFetch(`/api/ordenes-compra/${order.idOc}/desasociar-cotizacion/`, {
         method: "DELETE", headers: authHeaders(authUser),
       })
       const data = await response.json()

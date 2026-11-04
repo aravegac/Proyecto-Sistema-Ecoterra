@@ -1,3 +1,4 @@
+import { apiFetch } from "../api"
 // src/modules/Facturacion.tsx
 import React, { useEffect, useState } from "react"
 import { getDocumentPdfUrl } from "../documentPdf"
@@ -270,8 +271,8 @@ export default function Facturacion({
 
         const [respuestaProductos, respuestaOrdenes] =
           await Promise.all([
-            fetch("/api/productos/", { headers }),
-            fetch("/api/ordenes-compra/", { headers }),
+            apiFetch("/api/productos/", { headers }),
+            apiFetch("/api/ordenes-compra/", { headers }),
           ])
 
         const datosProductos = await respuestaProductos
@@ -345,7 +346,7 @@ export default function Facturacion({
     setOcDocumentLoading(true)
     const loadDocument = async () => {
       try {
-        const response = await fetch(`/api/ordenes-compra/${ordenSeleccionada}/documento/`, {
+        const response = await apiFetch(`/api/ordenes-compra/${ordenSeleccionada}/documento/`, {
           headers: authHeaders(authUser), cache: "no-store", signal: controller.signal,
         })
         const data = await response.json()
@@ -394,7 +395,7 @@ export default function Facturacion({
 
   const invoiceId = async (invoice: Invoice): Promise<number> => {
     if (invoice.id_interno && Number.isInteger(invoice.id_interno)) return invoice.id_interno
-    const response = await fetch("/api/facturas/", { headers: authHeaders(authUser) })
+    const response = await apiFetch("/api/facturas/", { headers: authHeaders(authUser) })
     const data = await response.json()
     if (!response.ok) throw new Error(errorDeRespuesta(data, response.status))
     const found = extraerLista(data)?.find((item) => item.numero_factura === invoice.id)
@@ -405,7 +406,7 @@ export default function Facturacion({
 
   const fetchInvoiceDetail = async (invoice: Invoice): Promise<InvoiceDetail> => {
     const id = await invoiceId(invoice)
-    const response = await fetch(`/api/facturas/${id}/`, { headers: authHeaders(authUser) })
+    const response = await apiFetch(`/api/facturas/${id}/`, { headers: authHeaders(authUser) })
     const data = await response.json()
     if (!response.ok) throw new Error(errorDeRespuesta(data, response.status))
     return data
@@ -447,7 +448,7 @@ export default function Facturacion({
     setActionError("")
     try {
       const id = await invoiceId(invoiceAction.invoice)
-      const response = await fetch(`/api/facturas/${id}/${invoiceAction.action}/`, {
+      const response = await apiFetch(`/api/facturas/${id}/${invoiceAction.action}/`, {
         method: "POST", headers: authHeaders(authUser),
         body: JSON.stringify(invoiceAction.action === "anular" ? { motivo_anulacion_factura: actionReason.trim() } : {}),
       })
@@ -592,7 +593,7 @@ export default function Facturacion({
     setGuardando(true)
 
     try {
-      const respuesta = await fetch(editingInvoiceId ? `/api/facturas/${editingInvoiceId}/` : "/api/facturas/", {
+      const respuesta = await apiFetch(editingInvoiceId ? `/api/facturas/${editingInvoiceId}/` : "/api/facturas/", {
         method: editingInvoiceId ? "PUT" : "POST",
         headers: {
           ...authHeaders(authUser),

@@ -1,7 +1,7 @@
 // AppLayout.tsx
 import React, { ReactNode, useState } from "react"
 
-import logoEcoterra from "@/imports/logo_ecoterra.png"
+import BrandLogo from "../BrandLogo"
 
 import { AuthUser, canAccessModule, I, Ico, Screen } from "../shared"
 
@@ -102,7 +102,7 @@ function Sidebar({
           borderBottom: "1px solid #1E293B",
           display: "flex",
           alignItems: "center",
-          padding: "0 12px",
+          padding: collapsed ? "0 4px" : "0 12px",
           gap: 8,
           flexShrink: 0,
         }}
@@ -125,24 +125,21 @@ function Sidebar({
                 alignItems: "center",
               }}
             >
-              <img
-                src={logoEcoterra}
-                alt="Ecoterra"
-                style={{
-                  height: 36,
-                  width: "auto",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
+              <BrandLogo className="sidebar-logo" />
             </div>
           </div>
         )}
         <button
           onClick={toggle}
+          className="sidebar-toggle"
+          aria-expanded={!collapsed}
           aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
           style={{
-            marginLeft: collapsed ? "auto" : 0,
+            marginLeft: 0,
+            width: 44,
+            height: 44,
+            display: "grid",
+            placeItems: "center",
             color: "#CBD5E1",
             background: "none",
             border: "none",
@@ -151,7 +148,7 @@ function Sidebar({
             flexShrink: 0,
           }}
         >
-          <Ico p={I.menu} size={15} />
+          <Ico p={I.menu} size={20} />
         </button>
       </div>
 
@@ -292,7 +289,7 @@ function Topbar({
     <div className="topbar">
       <div className="topbar-brand">
         <div className="topbar-logo">
-          <img src={logoEcoterra} alt="Ecoterra" />
+          <BrandLogo />
         </div>
         <div className="topbar-context">
           <span className="topbar-company">Ecoterra</span>
@@ -422,7 +419,7 @@ export default function AppLayout({
         cur={screen}
         onNav={onNav}
         collapsed={collapsed}
-        toggle={/* Ejecuta setCollapsed(!collapsed) al invocarse este callback. */ () => setCollapsed(!collapsed)}
+        toggle={/* Ejecuta setCollapsed((current) => !current) al invocarse este callback. */ () => setCollapsed((current) => !current)}
         user={user}
         onLogout={onLogout}
       />

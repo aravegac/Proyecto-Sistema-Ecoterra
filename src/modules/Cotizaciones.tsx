@@ -1,6 +1,7 @@
+import { apiFetch } from "../api"
 // cotizaciones.tsx
 import React, { useState, useEffect, useRef } from "react"
-import logoEcoterra from "@/imports/logo_ecoterra.png"
+import BrandLogo from "../BrandLogo"
 import { getDocumentPdfUrl } from "../documentPdf"
 import { AuthUser, authHeaders, can, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
 
@@ -174,7 +175,7 @@ export default function Cotizaciones({
 
   const loadClientes = async () => {
     try {
-      const response = await fetch("/api/clientes/", { headers: authHeaders(authUser) })
+      const response = await apiFetch("/api/clientes/", { headers: authHeaders(authUser) })
       if (!response.ok) return
       const data = await response.json()
       const items = data.value || data
@@ -193,7 +194,7 @@ const reloadCotizaciones = async () => {
   setIsLoadingQuotes(true)
   setQuotesError("")
   try {
-    const response = await fetch("/api/cotizaciones/", {
+    const response = await apiFetch("/api/cotizaciones/", {
       headers: authHeaders(authUser),
     })
 
@@ -233,7 +234,7 @@ const reloadCotizaciones = async () => {
     setPreviewError("")
     setIsLoadingDetail(true)
     try {
-      const response = await fetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
+      const response = await apiFetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
       if (!response.ok) throw new Error("No se pudo cargar el detalle de la cotización.")
       const data = await response.json()
       if (requestId === previewRequest.current) setDetail(data)
@@ -249,7 +250,7 @@ const reloadCotizaciones = async () => {
   const openEdit = async (quote: Quote) => {
     setEditingQuote(quote.idCotizacion)
     try {
-      const detailResp = await fetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
+      const detailResp = await apiFetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
       if (!detailResp.ok) throw new Error("No se pudo cargar la cotización.")
       
       const data = await detailResp.json()
@@ -345,7 +346,7 @@ const linkOrder = async () => {
   }
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/ordenes-compra/${order.idOc}/asociar-cotizacion/`,
       {
         method: "POST",
@@ -477,7 +478,7 @@ const linkOrder = async () => {
       const url = editQuoteId ? `/api/cotizaciones/${editQuoteId}/` : "/api/cotizaciones/"
       const method = editQuoteId ? "PUT" : "POST"
 
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method,
         headers: authHeaders(authUser),
         body: JSON.stringify(payload),
@@ -511,7 +512,7 @@ const linkOrder = async () => {
     setCancelling(true)
     setCancelError("")
     try {
-      const response = await fetch(`/api/cotizaciones/${quoteToCancel.idCotizacion}/anular/`, {
+      const response = await apiFetch(`/api/cotizaciones/${quoteToCancel.idCotizacion}/anular/`, {
         method: "POST",
         headers: authHeaders(authUser),
         body: JSON.stringify({ motivo_anulacion: cancelReason.trim() }),
@@ -1008,7 +1009,7 @@ const linkOrder = async () => {
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "1.5rem", borderBottom: "2px solid #000" }}>
                     <div>
                       <div className="cotizaciones-document-logo">
-                        <img src={logoEcoterra} alt="Ecoterra" />
+                        <BrandLogo />
                       </div>
                       <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>Ecoterra LLC.</div>
                       <div style={{ fontSize: "0.85rem" }}>600 CLEVELAND STREET STE 393 OFC 665</div>
