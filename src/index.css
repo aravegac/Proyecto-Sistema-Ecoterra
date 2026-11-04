@@ -1424,8 +1424,31 @@ body,
 }
 .oc-upload-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
+}
+.oc-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.oc-filters .field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.oc-table-panel {
+  overflow-x: auto;
+}
+.oc-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 720px) {
+  .oc-upload-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .oc-preview-box {
   min-height: 500px;

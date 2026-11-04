@@ -22,6 +22,10 @@ class OrdenCompra(models.Model):
     )
     numero_oc = models.CharField(max_length=50, unique=True, db_column="numero_oc")
     fecha_oc = models.DateField(db_column="fecha_oc")
+    tipo_operacion_oc = models.CharField(
+        max_length=20, default="Nacional",
+        choices=[("Nacional", "Nacional"), ("Internacional", "Internacional")],
+    )
     ruta_documento_oc = models.CharField(max_length=255, db_column="ruta_documento_oc")
 
     class Meta:

@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
 from reportlab.lib.utils import ImageReader
@@ -171,7 +171,7 @@ def generar_pdf_nota_credito(nota):
 # ============================================================
 
 class OrdenCompraViewSet(viewsets.ModelViewSet):
-    queryset = OrdenCompra.objects.all().order_by("-id_oc")
+    queryset = OrdenCompra.objects.select_related("id_cliente", "id_cotizacion", "factura").order_by("-id_oc")
     serializer_class = OrdenCompraSerializer
     permission_classes = [PermisoModulo]
 
@@ -183,6 +183,56 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
         "DELETE": ("ordenes_compra", "Eliminar"),
     }
 
+    def guardar_documento(self, serializer):
+        archivo = serializer.validated_data.pop("archivo", None)
+        if archivo is None:
+            serializer.save()
+            return
+        ruta = f"ordenes-compra/{uuid4().hex}.pdf"
+        try:
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, archivo.read(), {"content-type": "application/pdf", "upsert": "false"})
+        except Exception:
+            logger.exception("Error al guardar el documento de la orden de compra")
+            error = APIException("No se pudo guardar el PDF. Intenta nuevamente.")
+            error.status_code = 502
+            raise error
+        try:
+            serializer.save(ruta_documento_oc=ruta)
+        except Exception:
+            try:
+                bucket.remove([ruta])
+            except Exception:
+                logger.exception("No se pudo retirar un PDF de una orden que no se guardó")
+            raise
+
+    def perform_create(self, serializer):
+        self.guardar_documento(serializer)
+
+    def perform_update(self, serializer):
+        self.guardar_documento(serializer)
+
+    @action(detail=True, methods=["get"], url_path="documento")
+    def documento(self, request, pk=None):
+        orden = self.get_object()
+        ruta = orden.ruta_documento_oc
+        if not ruta:
+            return Response({"detail": "Esta orden no tiene un documento guardado."}, status=404)
+        if ruta.startswith(("https://", "http://")):
+            response = Response({"url": ruta})
+        else:
+            try:
+                result = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket()).create_signed_url(ruta, 300)
+                url = result.get("signedURL") or result.get("signedUrl")
+                if not url:
+                    raise ValueError("Storage no devolvió un enlace")
+                response = Response({"url": url, "expira_en_segundos": 300})
+            except Exception:
+                logger.exception("Error al consultar documento de orden de compra")
+                return Response({"detail": "No se pudo abrir el documento. Intenta nuevamente."}, status=502)
+        response["Cache-Control"] = "no-store"
+        return response
+
     def get_queryset(self):
         queryset = super().get_queryset()
         cliente_id = self.request.query_params.get("cliente_id")
@@ -190,8 +240,11 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
         con_cotizacion = self.request.query_params.get("con_cotizacion")
         fecha_desde = self.request.query_params.get("fecha_desde")
         fecha_hasta = self.request.query_params.get("fecha_hasta")
+        con_factura = self.request.query_params.get("con_factura")
 
         if cliente_id: queryset = queryset.filter(id_cliente_id=cliente_id)
+        if con_factura == "true": queryset = queryset.filter(factura__isnull=False)
+        elif con_factura == "false": queryset = queryset.filter(factura__isnull=True)
         if cotizacion_id: queryset = queryset.filter(id_cotizacion_id=cotizacion_id)
         if con_cotizacion == "true": queryset = queryset.filter(id_cotizacion__isnull=False)
         elif con_cotizacion == "false": queryset = queryset.filter(id_cotizacion__isnull=True)

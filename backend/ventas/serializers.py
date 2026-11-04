@@ -7,6 +7,8 @@ from decimal import Decimal
 
 
 class OrdenCompraSerializer(serializers.ModelSerializer):
+    archivo = serializers.FileField(write_only=True, required=False)
+    factura_numero = serializers.CharField(source="factura.numero_factura", read_only=True, allow_null=True)
     cliente_nombre = serializers.CharField(
         source="id_cliente.razon_social",
         read_only=True,
@@ -30,7 +32,26 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
             "numero_oc",
             "fecha_oc",
             "ruta_documento_oc",
+            "tipo_operacion_oc",
+            "archivo",
+            "factura_numero",
         ]
+        extra_kwargs = {"ruta_documento_oc": {"required": False, "allow_blank": True}}
+
+    def validate_archivo(self, archivo):
+        if archivo.size > 25 * 1024 * 1024:
+            raise serializers.ValidationError("El PDF no puede superar 25 MB.")
+        firma = archivo.read(5)
+        archivo.seek(0)
+        if firma != b"%PDF-":
+            raise serializers.ValidationError("Selecciona un archivo PDF válido.")
+        return archivo
+
+    def validate(self, attrs):
+        ruta = attrs.get("ruta_documento_oc", self.instance.ruta_documento_oc if self.instance else "")
+        if not attrs.get("archivo") and not ruta:
+            raise serializers.ValidationError({"archivo": "Adjunta el documento de la orden de compra."})
+        return attrs
 
     # Devuelve un resumen de la cotización asociada a la orden o nulo cuando no existe.
     def get_cotizacion_detalle(self, obj):
@@ -90,6 +111,13 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
         return cotizacion
 
     def bloquear_y_validar_cotizacion(self, attrs):
+        from facturacion.models import Factura
+
+        if self.instance and Factura.objects.filter(id_orden_compra=self.instance).exists():
+            cliente = attrs.get("id_cliente", self.instance.id_cliente)
+            operacion = attrs.get("tipo_operacion_oc", self.instance.tipo_operacion_oc)
+            if cliente.pk != self.instance.id_cliente_id or operacion != self.instance.tipo_operacion_oc:
+                raise serializers.ValidationError("No se puede cambiar el cliente o tipo de operación de una orden facturada.")
         cotizacion = attrs.get("id_cotizacion", self.instance.id_cotizacion if self.instance else None)
         if cotizacion:
             cotizacion = Cotizacion.objects.select_for_update().get(pk=cotizacion.pk)
@@ -120,6 +148,7 @@ class OrdenCompraFacturacionSerializer(OrdenCompraSerializer):
             "id", "id_cliente", "cliente_nombre", "id_cotizacion",
             "cotizacion_numero", "cotizacion_detalle", "numero_oc",
             "fecha_orden", "ruta_documento_oc",
+            "tipo_operacion_oc", "archivo", "factura_numero",
         ]
 
 

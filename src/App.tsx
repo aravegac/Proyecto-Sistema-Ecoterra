@@ -10,6 +10,7 @@ import Movimientos, { Movimiento, MovimientoInput } from "./modules/Movimientos"
 import Cotizaciones from "./modules/Cotizaciones" // 👈 Quitamos { Invoice } de aquí
 import OrdenesCompra, {
   type PurchaseOrder,
+  mapOrdenFromApi,
 } from "./modules/OrdenesCompra"
 import Facturacion, { Invoice } from "./modules/Facturacion" // 👈 Solo una vez, y trae el Invoice correcto
 import NotasCredito from "./modules/NotasCredito"
@@ -140,23 +141,6 @@ const mapFacturaFromApi = (item: any): Invoice => ({
   iva: Number(item.iva_factura),
   total: Number(item.total_factura),
   estado: item.estado_factura,
-})
-
-// Adapta la orden y su cotización asociada al formato utilizado por la interfaz.
-const mapOrdenFromApi = (item: any): PurchaseOrder => ({
-  idOc: Number(item.id_oc),
-  id: item.numero_oc,
-  clienteId: Number(item.id_cliente),
-  cotizacionId:
-    item.id_cotizacion == null
-      ? null
-      : Number(item.id_cotizacion),
-  cot: item.cotizacion_numero || "",
-  cliente: item.cliente_nombre || "",
-  fecha: item.fecha_oc,
-  total: Number(item.cotizacion_detalle?.total_cotizacion ?? 0),
-  estado: "Pendiente",
-  factura: null,
 })
 
 // ---------- Datos iniciales (fallback) ----------
@@ -989,6 +973,8 @@ export default function App() {
       <OrdenesCompra
         ordenes={ordenes}
         facturas={facturas}
+        clientes={clientes}
+        onFacturar={() => setScreen("facturacion")}
         authUser={authUser}
         onOrdenesChange={reloadOrdenes}
       />
