@@ -1,4 +1,16 @@
+from datetime import timezone as datetime_timezone
+
 from django.db import models
+from django.utils import timezone
+
+
+class FechaRegistroUTC(models.DateTimeField):
+    """La columna histórica creado_en_nc almacena UTC sin zona horaria."""
+
+    def from_db_value(self, value, expression, connection):
+        if value is not None and timezone.is_naive(value):
+            return timezone.make_aware(value, datetime_timezone.utc)
+        return value
 from decimal import Decimal
 
 
@@ -105,7 +117,7 @@ class NotaCredito(models.Model):
         db_column="ruta_pdf_nc",
     )
 
-    creado_en = models.DateTimeField(
+    creado_en = FechaRegistroUTC(
         auto_now_add=True,
         db_column="creado_en_nc",
     )

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone as datetime_timezone
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
@@ -18,6 +18,17 @@ from pypdf import PdfReader
 
 
 class NotaCreditoEstadosTests(SalesTablesMixin, TestCase):
+    def test_fecha_registro_legacy_sin_zona_se_interpreta_como_utc(self):
+        campo = NotaCredito._meta.get_field("creado_en")
+        fecha = datetime(2026, 11, 4, 7, 18)
+        self.assertEqual(
+            campo.from_db_value(fecha, None, None),
+            datetime(2026, 11, 4, 7, 18, tzinfo=datetime_timezone.utc),
+        )
+        aware = fecha.replace(tzinfo=datetime_timezone.utc)
+        self.assertEqual(campo.from_db_value(aware, None, None), aware)
+        self.assertIsNone(campo.from_db_value(None, None, None))
+
     def setUp(self):
         self.api = APIClient()
         self.user = Usuario.objects.create(nombre="Admin NC", email="nc-estados@example.com", id_rol=1)
@@ -61,6 +72,7 @@ class NotaCreditoEstadosTests(SalesTablesMixin, TestCase):
 
     def test_edicion_pendiente_recalcula_y_conserva_numero_y_factura(self):
         nota = self.create_note()
+        fecha_registro = nota.creado_en
         response = self.api.put(f"/api/notas-credito/{nota.pk}/", {
             "id_factura": self.factura.pk, "numero_nc": nota.numero_nc,
             "fecha_emision": "2026-11-01", "motivo": "Ajuste revisado", "subtotal_bruto": "25000",
@@ -72,6 +84,7 @@ class NotaCreditoEstadosTests(SalesTablesMixin, TestCase):
         self.assertEqual(nota.motivo, "Ajuste revisado")
         self.assertEqual(nota.estado, "PENDIENTE")
         self.assertEqual(nota.id_factura_id, self.factura.pk)
+        self.assertEqual(nota.creado_en, fecha_registro)
 
     def test_emitir_genera_pdf_y_no_modifica_factura_pagada(self):
         nota = self.create_note()
