@@ -124,6 +124,11 @@ class InventarioDetailView(RetrieveUpdateDestroyAPIView):
     "DELETE": ("lotes", "Eliminar"),
     }
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update()
+        return super().update(request, *args, **kwargs)
+
 
 # ---------- Movimientos ----------
 class MovimientoListView(ListCreateAPIView):
