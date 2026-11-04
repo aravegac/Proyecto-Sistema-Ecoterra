@@ -28,6 +28,8 @@ def generar_pdf_cotizacion(cotizacion):
                             title=f"Cotización {cotizacion.numero_cotizacion}",
                             author="Sistema Ecoterra")
     cliente = cotizacion.id_cliente
+    operacion = getattr(cotizacion, "tipo_operacion_cotizacion", "Nacional")
+    porcentaje_iva = 0 if operacion == "Internacional" else 19
     elements = [Paragraph("ECOTERRA · COTIZACIÓN", styles["Title"])]
     for value in (
         f"Número: {cotizacion.numero_cotizacion}",
@@ -36,6 +38,7 @@ def generar_pdf_cotizacion(cotizacion):
         f"Cliente: {cliente.razon_social}",
         f"RUT: {cliente.rut}",
         f"Condición de pago: {cotizacion.condicion_pago_cotizacion}",
+        f"Tipo de operación: {operacion}",
         f"Estado: {cotizacion.estado_cotizacion}",
     ):
         elements.append(paragraph(value))
@@ -55,7 +58,7 @@ def generar_pdf_cotizacion(cotizacion):
     ]))
     elements.extend([table, Spacer(1, 6*mm)])
     for label, value in (("Subtotal", cotizacion.subtotal_cotizacion),
-                         ("IVA", cotizacion.iva_cotizacion),
+                         (f"IVA ({porcentaje_iva}%)", cotizacion.iva_cotizacion),
                          ("Total CLP", cotizacion.total_cotizacion)):
         elements.append(paragraph(f"{label}: {formato_moneda(value)}"))
     if cotizacion.observacion_cotizacion:

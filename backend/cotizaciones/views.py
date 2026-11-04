@@ -1,4 +1,5 @@
 from rest_framework import viewsets
+from django.db import transaction
 import logging
 from uuid import uuid4
 from rest_framework.decorators import action
@@ -32,6 +33,11 @@ class CotizacionViewSet(viewsets.ModelViewSet):
         "PATCH": ("cotizaciones", "Editar"),
         "DELETE": ("cotizaciones", "Eliminar"),
     }
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update()
+        return super().update(request, *args, **kwargs)
 
     # Guarda los cambios de la cotización y vacía la ruta de su PDF anterior.
     def perform_update(self, serializer):

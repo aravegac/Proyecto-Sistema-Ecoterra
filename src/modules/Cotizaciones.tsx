@@ -82,6 +82,7 @@ type QuoteDetail = {
   total_cotizacion: number
   observacion_cotizacion: string
   estado_cotizacion: string
+  tipo_operacion_cotizacion: "Nacional" | "Internacional"
   detalles: QuoteDetailLine[]
 }
 
@@ -133,6 +134,8 @@ export default function Cotizaciones({
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10))
   const [quoteValidity, setQuoteValidity] = useState("30")
   const [paymentTerm, setPaymentTerm] = useState("30 días")
+  const [operationType, setOperationType] = useState<"Nacional" | "Internacional">("Nacional")
+  const [savingQuote, setSavingQuote] = useState(false)
   const [currency, setCurrency] = useState("CLP")
   const [quoteStatus, setQuoteStatus] = useState("Borrador")
   const [quoteObservation, setQuoteObservation] = useState("")
@@ -241,6 +244,7 @@ const reloadCotizaciones = async () => {
       setQuoteValidity(String(data.dias_vigencia_cotizacion || 30))
       setPaymentTerm(data.condicion_pago_cotizacion)
       setQuoteStatus(data.estado_cotizacion)
+      setOperationType(data.tipo_operacion_cotizacion || "Nacional")
       setQuoteObservation(data.observacion_cotizacion || "")
       
       setQuoteLines(
@@ -382,10 +386,11 @@ const linkOrder = async () => {
 
   const selectedClient = clientes.find((client) => client.razon === quoteClient)
   const lineSubtotal = quoteLines.reduce(
-    (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
+    (sum, line) => sum + Math.round(Number(line.quantity || 0) * Number(line.unitPrice || 0) * 100) / 100,
     0,
   )
-  const lineIva = Math.round(lineSubtotal * 0.19)
+  const ivaRate = operationType === "Internacional" ? 0 : 19
+  const lineIva = Math.round(lineSubtotal * ivaRate) / 100
   const lineTotal = lineSubtotal + lineIva
 
   const resetQuoteForm = () => {
@@ -396,18 +401,20 @@ const linkOrder = async () => {
     setQuoteValidity("30")
     setPaymentTerm("30 días")
     setCurrency("CLP")
+    setOperationType("Nacional")
     setQuoteStatus("Borrador")
     setQuoteObservation("")
     setQuoteLines([{ productId: "", quantity: "", unitPrice: "" }])
   }
 
   const closeQuoteForm = () => {
+    if (savingQuote) return
     setShow(false)
     resetQuoteForm()
   }
 
   const saveQuote = async (status = quoteStatus) => {
-    if (!quoteClient || !quoteLines.some((line) => line.productId && line.quantity)) return
+    if (savingQuote || !quoteClient || !quoteLines.some((line) => line.productId && line.quantity)) return
 
     const selectedClientObj = clientes.find((c) => c.razon === quoteClient)
     if (!selectedClientObj) {
@@ -425,6 +432,7 @@ const linkOrder = async () => {
       dias_vigencia_cotizacion: Number(quoteValidity),
       vigencia_cotizacion: expirationDate,
       condicion_pago_cotizacion: paymentTerm,
+      tipo_operacion_cotizacion: operationType,
       subtotal_cotizacion: lineSubtotal,
       iva_cotizacion: lineIva,
       total_cotizacion: lineTotal,
@@ -446,6 +454,7 @@ const linkOrder = async () => {
         }),
     }
 
+    setSavingQuote(true)
     try {
       const url = editQuoteId ? `/api/cotizaciones/${editQuoteId}/` : "/api/cotizaciones/"
       const method = editQuoteId ? "PUT" : "POST"
@@ -459,7 +468,7 @@ const linkOrder = async () => {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error("Error del backend:", errorData)
-        alert(`Error al ${editQuoteId ? "actualizar" : "guardar"} la cotización. Revisa la consola.`)
+        alert(Object.values(errorData).flat().join(" ") || "No se pudo guardar la cotización.")
         return
       }
 
@@ -467,11 +476,14 @@ const linkOrder = async () => {
       console.log(editQuoteId ? "Cotización actualizada:" : "Cotización creada:", result)
 
       await reloadCotizaciones()
-      closeQuoteForm()
+      setShow(false)
+      resetQuoteForm()
       return result
     } catch (error) {
       console.error("Error de red:", error)
       alert("No se pudo conectar con el backend.")
+    } finally {
+      setSavingQuote(false)
     }
   }
 
@@ -730,6 +742,14 @@ const linkOrder = async () => {
                 </select>
               </div>
               <div className="field">
+                <label className="label" htmlFor="quote-operation">Tipo de operación *</label>
+                <select id="quote-operation" className="select" value={operationType}
+                  onChange={(event) => setOperationType(event.target.value as "Nacional" | "Internacional")}>
+                  <option>Nacional</option>
+                  <option>Internacional</option>
+                </select>
+              </div>
+              <div className="field">
                 <label className="label">Estado *</label>
                 <select
                   className="select"
@@ -839,7 +859,7 @@ const linkOrder = async () => {
                 Subtotal neto <strong>{fmtCLP(lineSubtotal)}</strong>
               </span>
               <span>
-                IVA (19%) <strong>{fmtCLP(lineIva)}</strong>
+                IVA ({ivaRate}%) <strong>{fmtCLP(lineIva)}</strong>
               </span>
               <strong className="cotizaciones-summary-total">
                 Total{" "}
@@ -852,7 +872,18 @@ const linkOrder = async () => {
               <button
                 className="btn btn-primary"
                 disabled={
-                  !quoteClient ||
+                  savingQuote || !quoteClient ||
+                  !quoteAddress ||
+                  !quoteLines.some((line) => line.productId && line.quantity)
+                }
+                onClick={() => saveQuote(quoteStatus === "Borrador" ? "Vigente" : quoteStatus)}
+              >
+                <Ico p={I.check} size={14} /> {editQuoteId ? "Actualizar cotización" : "Emitir cotización"}
+              </button>
+              <button
+                className="btn cotizaciones-save-draft"
+                disabled={
+                  savingQuote || !quoteClient ||
                   !quoteAddress ||
                   !quoteLines.some((line) => line.productId && line.quantity)
                 }
@@ -860,7 +891,7 @@ const linkOrder = async () => {
               >
                 <Ico p={I.check} size={14} /> {editQuoteId ? "Guardar cambios" : "Guardar borrador"}
               </button>
-              <button className="btn btn-ghost" onClick={async () => {
+              <button className="btn btn-ghost" disabled={savingQuote} onClick={async () => {
                 const tab = window.open("about:blank", "_blank")
                 if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
                 tab.opener = null
@@ -875,18 +906,6 @@ const linkOrder = async () => {
                 }
               }}>
                 <Ico p={I.download} size={14} /> Exportar PDF
-              </button>
-              {/* BOTÓN DE CORREO ELIMINADO */}
-              <button
-                className="btn btn-navy"
-                disabled={
-                  !quoteClient ||
-                  !quoteAddress ||
-                  !quoteLines.some((line) => line.productId && line.quantity)
-                }
-                onClick={() => saveQuote(quoteStatus === "Borrador" ? "Vigente" : quoteStatus)}
-              >
-                <Ico p={I.check} size={14} /> {editQuoteId ? "Actualizar cotización" : "Emitir cotización"}
               </button>
             </div>
           </div>
@@ -1018,7 +1037,7 @@ const linkOrder = async () => {
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.subtotal_cotizacion))}</td>
                         </tr>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>IVA (19%)</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>IVA ({detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.iva_cotizacion))}</td>
                         </tr>
                         <tr>
@@ -1038,6 +1057,7 @@ const linkOrder = async () => {
                     <br />
                     <div style={{ fontWeight: "bold" }}>Condición de Pago:</div>
                     <p style={{ margin: 0 }}>{detail.condicion_pago_cotizacion}</p>
+                    <p>Tipo de operación: {detail.tipo_operacion_cotizacion || "Nacional"}</p>
                   </div>
 
                 </div>

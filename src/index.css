@@ -1017,6 +1017,13 @@ body,
   gap: 8px;
   margin-top: 20px;
 }
+.cotizaciones-save-draft {
+  background: #0052cc;
+  color: white;
+}
+.cotizaciones-save-draft:hover {
+  background: #0041a3;
+}
 .cotizaciones-preview-modal {
   width: 680px;
   padding: 24px;

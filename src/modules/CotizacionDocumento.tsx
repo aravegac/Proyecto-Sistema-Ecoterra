@@ -26,6 +26,7 @@ type QuoteDetail = {
   fecha_cotizacion: string
   vigencia_cotizacion: string
   condicion_pago_cotizacion: string
+  tipo_operacion_cotizacion?: "Nacional" | "Internacional"
   subtotal_cotizacion: number
   iva_cotizacion: number
   total_cotizacion: number
@@ -241,7 +242,7 @@ export const printCotizacion = (detail: QuoteDetail) => {
               <td class="value">${fmtCLP(Number(detail.subtotal_cotizacion))}</td>
             </tr>
             <tr>
-              <td class="label">IVA (19%)</td>
+              <td class="label">IVA (${detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)</td>
               <td class="value">${fmtCLP(Number(detail.iva_cotizacion))}</td>
             </tr>
             <tr>

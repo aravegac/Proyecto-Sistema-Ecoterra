@@ -15,6 +15,10 @@ class Cotizacion(models.Model):
     dias_vigencia_cotizacion = models.IntegerField(db_column="dias_vigencia_cotizacion")
     vigencia_cotizacion = models.DateField(db_column="vigencia_cotizacion")
     condicion_pago_cotizacion = models.CharField(max_length=100, db_column="condicion_pago_cotizacion")
+    tipo_operacion_cotizacion = models.CharField(
+        max_length=20, choices=[("Nacional", "Nacional"), ("Internacional", "Internacional")],
+        default="Nacional", db_column="tipo_operacion_cotizacion",
+    )
     subtotal_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="subtotal_cotizacion")
     iva_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="iva_cotizacion")
     total_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="total_cotizacion")

@@ -17,6 +17,59 @@ from .models import Cotizacion, DetalleCotizacion
 
 
 class PdfIntegrationTests(SalesTablesMixin, TestCase):
+    def test_tipo_operacion_recalcula_totales_y_se_refleja_en_pdf(self):
+        base, record = self.create_quote()
+        for operacion, iva, total in (
+            ("Internacional", "0.00", "4500000.00"),
+            ("Nacional", "855000.00", "5355000.00"),
+        ):
+            with self.subTest(operacion=operacion):
+                response = self.api.patch(f"{base}/", {
+                    "tipo_operacion_cotizacion": operacion,
+                    "subtotal_cotizacion": 1,
+                    "iva_cotizacion": 999,
+                    "total_cotizacion": 1,
+                    "detalles": [{
+                        "id_producto": self.product.pk,
+                        "descripcion_dc": "Producto prueba",
+                        "cantidad_dc": 3,
+                        "precio_unitario_dc": 1500000,
+                        "subtotal_dc": 1,
+                    }],
+                }, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data["subtotal_cotizacion"], "4500000.00")
+                self.assertEqual(response.data["iva_cotizacion"], iva)
+                self.assertEqual(response.data["total_cotizacion"], total)
+                self.assertEqual(response.data["detalles"][0]["subtotal_dc"], "4500000.00")
+                record.refresh_from_db()
+                self.assertEqual(record.tipo_operacion_cotizacion, operacion)
+                response = self.api.post(f"{base}/generar-pdf/")
+                self.assertEqual(response.status_code, 200)
+                record.refresh_from_db()
+                text = "\n".join(
+                    page.extract_text()
+                    for page in PdfReader(BytesIO(self.files[record.ruta_pdf_cotizacion])).pages
+                )
+                self.assertIn(f"Tipo de operación: {operacion}", text)
+                self.assertIn("IVA (0%)" if operacion == "Internacional" else "IVA (19%)", text)
+
+        response = self.api.patch(
+            f"{base}/", {"tipo_operacion_cotizacion": "Internacional"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_cotizacion"], "4500000.00")
+
+    def test_rechaza_tipo_operacion_invalido_sin_modificar_cotizacion(self):
+        base, record = self.create_quote()
+        self.assertEqual(record.tipo_operacion_cotizacion, "Nacional")
+        response = self.api.patch(
+            f"{base}/", {"tipo_operacion_cotizacion": "Exterior"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        record.refresh_from_db()
+        self.assertEqual(record.tipo_operacion_cotizacion, "Nacional")
+
     # Prepara los usuarios, datos y servicios simulados necesarios para cada prueba.
     def setUp(self):
         self.api = APIClient()
