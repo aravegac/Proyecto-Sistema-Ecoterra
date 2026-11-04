@@ -278,6 +278,7 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
 # ============================================================
 
 class NotaCreditoViewSet(viewsets.ModelViewSet):
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
     queryset = NotaCredito.objects.select_related("id_factura", "id_factura__id_cliente", "id_factura__id_orden_compra").all().order_by("-fecha_emision", "-id")
     serializer_class = NotaCreditoSerializer
     permission_classes = [PermisoModulo]
@@ -303,44 +304,105 @@ class NotaCreditoViewSet(viewsets.ModelViewSet):
         if cliente_id: queryset = queryset.filter(id_factura__id_cliente_id=cliente_id)
         return queryset
     
+    def get_permissions(self):
+        anular = self.action == "anular" or (
+            self.action == "actualizar_estado" and isinstance(self.request.data, dict) and self.request.data.get("estado") == "ANULADA"
+        )
+        if anular:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("notas_credito", "Eliminar")}
+        elif self.action in {"generar_pdf", "actualizar_estado"}:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("notas_credito", "Editar")}
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            return Response({"detail": "No se pudo guardar la nota por un conflicto de datos. Revisa su número y factura de origen."}, status=409)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
+        try:
+            return super().update(request, *args, **kwargs)
+        except IntegrityError:
+            return Response({"detail": "No se pudo actualizar la nota por un conflicto de datos."}, status=409)
+
     @action(detail=True, methods=["patch"], url_path="estado")
     def actualizar_estado(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationError("Envía los datos de la acción como un objeto.")
+        estado = request.data.get("estado")
+        if estado == "EMITIDA":
+            return self.generar_pdf(request, pk)
+        if estado == "ANULADA":
+            return self.anular(request, pk)
+        raise ValidationError({"estado": "Usa la generación del PDF para emitir o la acción Anular."})
+
+    @action(detail=True, methods=["post"], url_path="anular")
+    @transaction.atomic
+    def anular(self, request, pk=None):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         nota = self.get_object()
-        nuevo_estado = request.data.get("estado")
-        estados_validos = ["PENDIENTE", "EMITIDA", "ANULADA"]
-        if nuevo_estado not in estados_validos:
-            return Response({"error": "Estado no válido.", "permitidos": estados_validos}, status=status.HTTP_400_BAD_REQUEST)
-        nota.estado = nuevo_estado
-        nota.save(update_fields=["estado"])
-        return Response({"mensaje": "Estado actualizado.", "estado": nota.estado}, status=status.HTTP_200_OK)
-        
+        if nota.estado not in {"PENDIENTE", "EMITIDA"}:
+            raise ValidationError("El estado actual no permite anular esta nota de crédito.")
+        motivo = request.data.get("motivo_anulacion_nc") if isinstance(request.data, dict) else None
+        if not isinstance(motivo, str) or not motivo.strip():
+            raise ValidationError({"motivo_anulacion_nc": "Ingresa el motivo de anulación."})
+        nota.estado = "ANULADA"
+        nota.id_usuario_anulacion_nc = request.user.pk
+        nota.fecha_anulacion_nc = timezone.now()
+        nota.motivo_anulacion_nc = motivo.strip()
+        nota.save(update_fields=["estado", "id_usuario_anulacion_nc", "fecha_anulacion_nc", "motivo_anulacion_nc"])
+        return Response(self.get_serializer(nota).data)
+
     @action(detail=True, methods=["post"], url_path="generar-pdf")
+    @transaction.atomic
     def generar_pdf(self, request, pk=None):
+        from facturacion.models import Factura
+
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         nota = self.get_object()
+        if nota.estado == "ANULADA":
+            raise ValidationError("Una nota anulada solo permite consultar su PDF histórico.")
+        if nota.estado == "EMITIDA" and nota.ruta_pdf_nc:
+            return Response(self.get_serializer(nota).data)
+        if nota.estado == "PENDIENTE":
+            factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(pk=nota.id_factura_id)
+            if factura.estado not in {"EMITIDA", "PAGADA"}:
+                raise ValidationError("La factura de origen debe estar emitida o pagada para emitir esta nota.")
+            nota.id_factura = factura
+            nota.calcular_totales(nota.subtotal)
+            if nota.total > Decimal("9999999999.99"):
+                raise ValidationError("El total supera el importe máximo permitido.")
+            nota.estado = "EMITIDA"
+
+        bucket = None
+        ruta = f"notas-credito/{nota.pk}/{uuid4().hex}.pdf"
+        uploaded = False
         try:
-            contenido_pdf = generar_pdf_nota_credito(nota)
-            cliente_supabase = obtener_cliente_supabase()
-            bucket = obtener_nombre_bucket()
-            ruta_storage = f"notas-credito/{nota.pk}/{uuid4().hex}.pdf"
-            
-            cliente_supabase.storage.from_(bucket).upload(
-                ruta_storage, contenido_pdf,
-                file_options={"content-type": "application/pdf", "upsert": "false"}
-            )
-            
-            nota.ruta_pdf_nc = ruta_storage
-            nota.save(update_fields=["ruta_pdf_nc"])
-            
-            return Response({"mensaje": "PDF generado.", "ruta_pdf_nc": nota.ruta_pdf_nc}, status=status.HTTP_200_OK)
+            contenido = generar_pdf_nota_credito(nota)
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, contenido, file_options={"content-type": "application/pdf", "upsert": "false"})
+            uploaded = True
+            nota.ruta_pdf_nc = ruta
+            nota.save(update_fields=["estado", "subtotal", "iva", "total", "ruta_pdf_nc"])
+            return Response(self.get_serializer(nota).data)
         except Exception:
-            logger.exception("Error al generar PDF de NC")
-            return Response({"error": "No se pudo generar el PDF."}, status=500)
+            transaction.set_rollback(True)
+            if uploaded:
+                try:
+                    bucket.remove([ruta])
+                except Exception:
+                    logger.exception("No se pudo retirar el PDF de una emisión fallida de NC")
+            logger.exception("Error al emitir o generar PDF de NC")
+            return Response({"error": "No se pudo emitir la nota y guardar su PDF. Intenta nuevamente."}, status=502)
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def obtener_pdf(self, request, pk=None):
         nota = self.get_object()
-        if not nota.ruta_pdf_nc:
-            return Response({"error": "PDF no generado."}, status=status.HTTP_404_NOT_FOUND)
+        if nota.estado == "PENDIENTE" or not nota.ruta_pdf_nc:
+            return Response({"error": "La nota debe estar emitida y tener un PDF guardado."}, status=status.HTTP_404_NOT_FOUND)
         try:
             cliente_supabase = obtener_cliente_supabase()
             bucket = obtener_nombre_bucket()
@@ -350,6 +412,8 @@ class NotaCreditoViewSet(viewsets.ModelViewSet):
             if url.startswith("/"):
                 base_url = os.getenv("SUPABASE_URL") or getattr(settings, "SUPABASE_URL", "")
                 url = base_url.rstrip("/") + url
-            return Response({"url": url})
+            response = Response({"url": url, "expira_en_segundos": 300})
+            response["Cache-Control"] = "no-store"
+            return response
         except Exception:
             return Response({"error": "No se pudo generar el enlace."}, status=502)

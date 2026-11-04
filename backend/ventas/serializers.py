@@ -205,6 +205,9 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
             "estado",
             "ruta_pdf_nc",
             "creado_en",
+            "id_usuario_anulacion_nc",
+            "fecha_anulacion_nc",
+            "motivo_anulacion_nc",
         ]
         read_only_fields = [
             "id",
@@ -213,10 +216,18 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
             "total",
             "ruta_pdf_nc",
             "creado_en",
+            "estado",
+            "id_usuario_anulacion_nc",
+            "fecha_anulacion_nc",
+            "motivo_anulacion_nc",
         ]
 
     # Exige una factura emitida o pagada para conservar los datos comerciales de origen.
     def validate(self, attrs):
+        if self.instance and self.instance.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar notas de crédito pendientes.")
+        if self.instance and "estado" in self.initial_data:
+            raise serializers.ValidationError({"estado": "Usa las acciones Emitir o Anular."})
         factura = attrs.get("id_factura", self.instance.id_factura if self.instance else None)
 
         if factura:
@@ -254,6 +265,8 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
         from facturacion.models import Factura
 
         nota = NotaCredito.objects.select_for_update().get(pk=instance.pk)
+        if nota.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar notas de crédito pendientes.")
         factura = validated_data.get("id_factura", nota.id_factura)
         factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(pk=factura.pk)
         validated_data["id_factura"] = factura

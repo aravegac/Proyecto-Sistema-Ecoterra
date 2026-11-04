@@ -1935,6 +1935,40 @@ body,
 .nc-table-panel {
   overflow-x: auto;
 }
+.nc-row-actions,
+.nc-actions {
+  flex-wrap: wrap;
+}
+.nc-row-actions {
+  display: flex;
+  gap: 8px;
+}
+.nc-reason-cell {
+  max-width: 280px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nc-action-text {
+  margin: 12px 0;
+}
+.nc-detail-modal {
+  width: min(720px, 100%);
+}
+.nc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.nc-detail-section {
+  margin-top: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nc-detail-section h3 {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
 .nc-actions {
   display: flex;
   gap: 8px;

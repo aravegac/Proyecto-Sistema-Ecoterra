@@ -17,6 +17,219 @@ from .models import OrdenCompra, NotaCredito
 from pypdf import PdfReader
 
 
+class NotaCreditoEstadosTests(SalesTablesMixin, TestCase):
+    def setUp(self):
+        self.api = APIClient()
+        self.user = Usuario.objects.create(nombre="Admin NC", email="nc-estados@example.com", id_rol=1)
+        self.api.force_authenticate(user=self.user)
+        cliente = Cliente.objects.create(
+            rut="11111111-1", razon_social="Cliente estados NC", ciudad="Santiago",
+            telefono="123", email="cliente@example.com",
+        )
+        orden = OrdenCompra.objects.create(
+            id_cliente=cliente, numero_oc="OC-EST-NC", fecha_oc=date(2026, 11, 4),
+            tipo_operacion_oc="Internacional", ruta_documento_oc="oc.pdf",
+        )
+        self.factura = Factura.objects.create(
+            id_cliente=cliente, id_orden_compra=orden, numero_factura="F-EST-NC", estado="PAGADA",
+            moneda_factura="USD", subtotal=100000, iva=0, total=100000,
+        )
+        self.storage_patch = patch("ventas.views.obtener_cliente_supabase")
+        self.bucket = self.storage_patch.start().return_value.storage.from_.return_value
+        self.addCleanup(self.storage_patch.stop)
+        self.bucket.create_signed_url.return_value = {"signedURL": "https://storage.example/nc.pdf"}
+
+    def create_note(self, **attrs):
+        response = self.api.post("/api/notas-credito/", {
+            "id_factura": self.factura.pk, "numero_nc": f"NC-EST-{NotaCredito.objects.count() + 1}",
+            "fecha_emision": "2026-10-31", "subtotal_bruto": "50000", "motivo": "Ajuste parcial",
+            **attrs,
+        }, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        return NotaCredito.objects.get(pk=response.data["id"])
+
+    def test_nuevas_notas_son_pendientes_y_auditoria_no_es_editable(self):
+        nota = self.create_note(
+            estado="EMITIDA", id_usuario_anulacion_nc=999, motivo_anulacion_nc="Falso",
+            fecha_anulacion_nc="2026-11-04T12:00:00Z",
+        )
+        self.assertEqual(nota.estado, "PENDIENTE")
+        self.assertIsNone(nota.id_usuario_anulacion_nc)
+        self.assertIsNone(nota.fecha_anulacion_nc)
+        self.assertIsNone(nota.motivo_anulacion_nc)
+        self.assertEqual(self.api.get(f"/api/notas-credito/{nota.pk}/pdf/").status_code, 404)
+
+    def test_edicion_pendiente_recalcula_y_conserva_numero_y_factura(self):
+        nota = self.create_note()
+        response = self.api.put(f"/api/notas-credito/{nota.pk}/", {
+            "id_factura": self.factura.pk, "numero_nc": nota.numero_nc,
+            "fecha_emision": "2026-11-01", "motivo": "Ajuste revisado", "subtotal_bruto": "25000",
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        nota.refresh_from_db()
+        self.assertEqual(nota.subtotal, Decimal("25000"))
+        self.assertEqual(nota.total, Decimal("25000"))
+        self.assertEqual(nota.motivo, "Ajuste revisado")
+        self.assertEqual(nota.estado, "PENDIENTE")
+        self.assertEqual(nota.id_factura_id, self.factura.pk)
+
+    def test_emitir_genera_pdf_y_no_modifica_factura_pagada(self):
+        nota = self.create_note()
+        response = self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/")
+        self.assertEqual(response.status_code, 200, response.data)
+        nota.refresh_from_db()
+        self.assertEqual(nota.estado, "EMITIDA")
+        self.assertTrue(nota.ruta_pdf_nc.startswith(f"notas-credito/{nota.pk}/"))
+        self.assertEqual(nota.fecha_emision, date(2026, 10, 31))
+        content = self.bucket.upload.call_args.args[1]
+        text = "\n".join(page.extract_text() for page in PdfReader(BytesIO(content)).pages)
+        self.assertIn("Estado: EMITIDA", text)
+        original = nota.ruta_pdf_nc
+        self.assertEqual(self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/").status_code, 200)
+        self.bucket.upload.assert_called_once()
+        nota.refresh_from_db()
+        self.assertEqual(nota.ruta_pdf_nc, original)
+        self.factura.refresh_from_db()
+        self.assertEqual(self.factura.estado, "PAGADA")
+        self.assertEqual(self.factura.total, Decimal("100000"))
+
+    def test_anulacion_registra_responsable_y_conserva_documento(self):
+        for emitida in [False, True]:
+            with self.subTest(emitida=emitida):
+                nota = self.create_note()
+                url = f"/api/notas-credito/{nota.pk}"
+                if emitida:
+                    self.assertEqual(self.api.post(f"{url}/generar-pdf/").status_code, 200)
+                    nota.refresh_from_db()
+                original = nota.ruta_pdf_nc
+                self.assertEqual(self.api.post(f"{url}/anular/", {}, format="json").status_code, 400)
+                response = self.api.post(f"{url}/anular/", {
+                    "motivo_anulacion_nc": "  Documento duplicado  ", "id_usuario_anulacion_nc": 999,
+                }, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                nota.refresh_from_db()
+                self.assertEqual(nota.estado, "ANULADA")
+                self.assertEqual(nota.id_usuario_anulacion_nc, self.user.pk)
+                self.assertEqual(nota.motivo_anulacion_nc, "Documento duplicado")
+                self.assertIsNotNone(nota.fecha_anulacion_nc)
+                fecha = nota.fecha_anulacion_nc
+                self.assertEqual(nota.ruta_pdf_nc, original)
+                self.assertEqual(self.api.get(f"{url}/pdf/").status_code, 200 if original else 404)
+                self.assertEqual(self.api.post(f"{url}/anular/", {"motivo_anulacion_nc": "Otro"}, format="json").status_code, 400)
+                self.assertEqual(self.api.post(f"{url}/generar-pdf/").status_code, 400)
+                nota.refresh_from_db()
+                self.assertEqual(nota.fecha_anulacion_nc, fecha)
+                self.assertEqual(nota.motivo_anulacion_nc, "Documento duplicado")
+
+    def test_estados_finales_no_permiten_edicion_reactivacion_o_borrado(self):
+        nota = self.create_note()
+        for state in ["EMITIDA", "ANULADA"]:
+            with self.subTest(state=state):
+                NotaCredito.objects.filter(pk=nota.pk).update(estado=state)
+                response = self.api.patch(f"/api/notas-credito/{nota.pk}/", {
+                    "motivo": "Cambio", "subtotal_bruto": "1",
+                }, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.api.patch(f"/api/notas-credito/{nota.pk}/estado/", {"estado": "PENDIENTE"}, format="json").status_code, 400)
+                self.assertEqual(self.api.delete(f"/api/notas-credito/{nota.pk}/").status_code, 405)
+                nota.refresh_from_db()
+                self.assertEqual(nota.total, Decimal("50000"))
+                self.assertEqual(nota.motivo, "Ajuste parcial")
+
+    def test_fallos_en_emision_conservan_pendiente_y_permiten_reintento(self):
+        nota = self.create_note()
+        self.bucket.upload.side_effect = RuntimeError("Storage no disponible")
+        with self.assertLogs("ventas.views", level="ERROR"):
+            response = self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/")
+        self.assertEqual(response.status_code, 502)
+        nota.refresh_from_db()
+        self.assertEqual(nota.estado, "PENDIENTE")
+        self.assertEqual(nota.ruta_pdf_nc, "")
+        self.bucket.upload.side_effect = None
+        self.assertEqual(self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/").status_code, 200)
+        nota.refresh_from_db()
+        self.assertEqual(nota.estado, "EMITIDA")
+
+    def test_fallo_de_base_retira_pdf_y_revierte_estado(self):
+        from django.db import IntegrityError
+
+        nota = self.create_note()
+        with patch("ventas.models.NotaCredito.save", side_effect=IntegrityError("Conflicto")):
+            with self.assertLogs("ventas.views", level="ERROR"):
+                response = self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/")
+        self.assertEqual(response.status_code, 502)
+        self.bucket.remove.assert_called_once_with([self.bucket.upload.call_args.args[0]])
+        nota.refresh_from_db()
+        self.assertEqual(nota.estado, "PENDIENTE")
+        self.assertEqual(nota.ruta_pdf_nc, "")
+
+    def test_conflictos_de_guardado_devuelven_409_sin_cambios_parciales(self):
+        from django.db import IntegrityError
+
+        with patch("ventas.models.NotaCredito.save", side_effect=IntegrityError("Conflicto")):
+            response = self.api.post("/api/notas-credito/", {
+                "id_factura": self.factura.pk, "numero_nc": "NC-CONFLICTO",
+                "fecha_emision": "2026-11-04", "subtotal_bruto": "100", "motivo": "Ajuste",
+            }, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(NotaCredito.objects.exists())
+        nota = self.create_note()
+        with patch("ventas.models.NotaCredito.save", side_effect=IntegrityError("Conflicto")):
+            response = self.api.patch(f"/api/notas-credito/{nota.pk}/", {
+                "subtotal_bruto": "1", "motivo": "Cambio",
+            }, format="json")
+        self.assertEqual(response.status_code, 409)
+        nota.refresh_from_db()
+        self.assertEqual(nota.total, Decimal("50000"))
+        self.assertEqual(nota.motivo, "Ajuste parcial")
+
+    def test_permisos_editar_y_eliminar_rigen_acciones(self):
+        nota = self.create_note()
+        user = Usuario.objects.create(
+            nombre="Operador NC", email="nc-operador@example.com", id_rol=2,
+            permisos={"notas_credito:Crear": True, "notas_credito:Consultar": True,
+                      "notas_credito:Editar": False, "notas_credito:Eliminar": False},
+        )
+        self.api.force_authenticate(user=user)
+        url = f"/api/notas-credito/{nota.pk}"
+        self.assertEqual(self.api.post(f"{url}/generar-pdf/").status_code, 403)
+        self.assertEqual(self.api.post(f"{url}/anular/").status_code, 403)
+        self.assertEqual(self.api.patch(f"{url}/estado/", {"estado": "ANULADA"}, format="json").status_code, 403)
+        self.bucket.upload.assert_not_called()
+        user.permisos["notas_credito:Eliminar"] = True
+        response = self.api.post(f"{url}/anular/", {"motivo_anulacion_nc": "Corrección"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        nota.refresh_from_db()
+        self.assertEqual(nota.id_usuario_anulacion_nc, user.pk)
+
+    def test_factura_anulada_despues_del_borrador_impide_emision(self):
+        Factura.objects.filter(pk=self.factura.pk).update(estado="EMITIDA")
+        nota = self.create_note()
+        response = self.api.post(f"/api/facturas/{self.factura.pk}/anular/", {
+            "motivo_anulacion_factura": "Corrección del documento",
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/").status_code, 400)
+        self.bucket.upload.assert_not_called()
+        nota.refresh_from_db()
+        self.assertEqual(nota.estado, "PENDIENTE")
+
+    def test_ruta_historica_y_edicion_directa_respetan_las_reglas(self):
+        nota = self.create_note()
+        url = f"/api/notas-credito/{nota.pk}"
+        self.assertEqual(self.api.patch(f"{url}/", {"estado": "EMITIDA"}, format="json").status_code, 400)
+        self.assertEqual(self.api.patch(f"{url}/estado/", [], format="json").status_code, 400)
+        self.assertEqual(self.api.post(f"{url}/anular/", [], format="json").status_code, 400)
+        response = self.api.patch(f"{url}/estado/", {"estado": "EMITIDA"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "EMITIDA")
+        response = self.api.patch(f"{url}/estado/", {
+            "estado": "ANULADA", "motivo_anulacion_nc": "Anulación administrativa",
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["estado"], "ANULADA")
+
+
 class NotaCreditoMonedaTests(SalesTablesMixin, TestCase):
     @patch("ventas.views.obtener_cliente_supabase")
     def test_pdf_con_motivo_largo_conserva_el_final(self, storage):

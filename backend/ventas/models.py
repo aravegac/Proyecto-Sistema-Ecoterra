@@ -94,7 +94,7 @@ class NotaCredito(models.Model):
     estado = models.CharField(
         max_length=20,
         choices=ESTADO_CHOICES,
-        default="EMITIDA",
+        default="PENDIENTE",
         db_column="estado_nc",
     )
 
@@ -109,6 +109,9 @@ class NotaCredito(models.Model):
         auto_now_add=True,
         db_column="creado_en_nc",
     )
+    id_usuario_anulacion_nc = models.IntegerField(null=True, blank=True)
+    fecha_anulacion_nc = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion_nc = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = "nota_credito"
