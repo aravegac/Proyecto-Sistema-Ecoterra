@@ -381,7 +381,7 @@ export default function Clientes({
                     {selected.fantasia} · {selected.ciudad}
                   </p>
                 </div>
-                <button onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)} className="clientes-detail-close">
+                <button aria-label="Cerrar detalles del cliente" onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)} className="clientes-detail-close">
                   <Ico p={I.x} size={18} />
                 </button>
               </div>
@@ -436,7 +436,7 @@ export default function Clientes({
                   </select>
                 </div>
                 {editError && <p style={{ color: "#B91C1C" }}>{editError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="submit" disabled={saving}>
                     <Ico p={I.check} size={14} /> Guardar cambios
                   </button>
@@ -537,7 +537,7 @@ export default function Clientes({
                         <input type="checkbox" checked={addressForm.principal} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, principal: event.target.checked })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, principal: event.target.checked }). */ (current) => ({ ...current, principal: event.target.checked }))} />
                         Dirección principal
                       </label>
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <div className="clientes-detail-actions">
                         <button className="btn btn-primary btn-sm" type="submit" disabled={saving}><Ico p={I.check} size={12} /> Guardar dirección</button>
                         <button className="btn btn-ghost btn-sm" type="button" onClick={/* Cancela la edición de dirección, restablece sus campos y cierra el formulario. */ () => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>Cancelar</button>
                       </div>
@@ -545,7 +545,7 @@ export default function Clientes({
                   )}
                 </div>
                 {deleteError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{deleteError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="button" onClick={startEditing}>
                     <Ico p={I.edit} size={14} /> Editar cliente
                   </button>
