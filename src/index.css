@@ -1108,6 +1108,59 @@ body,
   border: 1px solid #dc2626;
   color: #dc2626;
 }
+.cotizaciones-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.cotizaciones-filters .field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.cotizaciones-table-panel {
+  overflow-x: auto;
+}
+.cotizaciones-status {
+  background: #f1f5f9;
+  color: #475569;
+}
+.cotizaciones-status-vigente {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.cotizaciones-status-vencida {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.cotizaciones-status-aceptada {
+  background: #dcfce7;
+  color: #15803d;
+}
+.cotizaciones-status-rechazada {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+.cotizaciones-status-anulada {
+  background: #ffedd5;
+  color: #c2410c;
+}
+.cotizaciones-action-edit {
+  border-color: #0052cc;
+  color: #0052cc;
+}
+.cotizaciones-action-preview {
+  border-color: #a16207;
+  color: #a16207;
+}
+.cotizaciones-action-download {
+  border-color: #15803d;
+  color: #15803d;
+}
+.cotizaciones-action-link {
+  border-color: #c2410c;
+  color: #c2410c;
+}
 .productos-modal {
   width: 540px;
   padding: 24px;

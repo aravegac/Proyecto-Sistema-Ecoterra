@@ -2,10 +2,42 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from django.test import SimpleTestCase
-from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.test import APITestCase, APIRequestFactory, force_authenticate
+from clientes.models import Cliente
+from config.test_support import SalesTablesMixin
+from .models import Cotizacion
 from usuarios.models import Usuario
 from .pdf import generar_pdf_cotizacion
 from .views import CotizacionViewSet
+
+
+class CotizacionListadoTests(SalesTablesMixin, APITestCase):
+    def test_listado_devuelve_el_estado_real_de_cada_cotizacion(self):
+        cliente = Cliente.objects.create(
+            rut="11111111-1", razon_social="Cliente listado",
+            ciudad="Santiago", telefono="123456", email="listado@example.com",
+        )
+        estados = ["Borrador", "Vigente", "Vencida", "Aceptada", "Rechazada", "Anulada", "Convertida"]
+        for index, estado in enumerate(estados):
+            Cotizacion.objects.create(
+                id_cliente=cliente,
+                numero_cotizacion=f"COT-TEST-{index}",
+                fecha_cotizacion=date(2026, 11, 4),
+                dias_vigencia_cotizacion=30,
+                vigencia_cotizacion=date(2026, 12, 4),
+                condicion_pago_cotizacion="Contado",
+                subtotal_cotizacion=1000,
+                iva_cotizacion=190,
+                total_cotizacion=1190,
+                estado_cotizacion=estado,
+                ruta_pdf_cotizacion="",
+            )
+        self.client.force_authenticate(user=Usuario(id=1, id_rol=1, activo=True))
+        response = self.client.get("/api/cotizaciones/")
+        self.assertEqual(response.status_code, 200)
+        self.assertCountEqual(
+            [item["estado_cotizacion"] for item in response.data], estados
+        )
 
 
 class DocumentPdfTests(SimpleTestCase):
