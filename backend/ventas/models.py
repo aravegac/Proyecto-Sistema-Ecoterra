@@ -123,16 +123,25 @@ class NotaCredito(models.Model):
     def __str__(self):
         return f"NC {self.numero_nc} - Factura {self.id_factura.numero_factura}"
 
-    # Calcula y asigna subtotal, IVA del 19 % y total de la nota de crédito sin guardarla.
+    @property
+    def moneda(self):
+        return self.id_factura.moneda_factura
+
+    @property
+    def tipo_operacion(self):
+        return self.id_factura.tipo_operacion
+
+    # Calcula los importes con la tasa de la factura de origen.
     def calcular_totales(self, subtotal_bruto):
         """
         Recibe el subtotal ingresado por el usuario (positivo),
-        calcula IVA (19%) y total, y los asigna al modelo.
+        calcula IVA y total según el tipo de operación de la factura.
         Los montos se guardan en positivo; el front los muestra
         con signo negativo si lo desea.
         """
         subtotal = Decimal(str(subtotal_bruto)).quantize(Decimal("0.01"))
-        iva = (subtotal * Decimal("0.19")).quantize(Decimal("0.01"))
+        tasa = Decimal("0") if self.tipo_operacion == "Internacional" else Decimal("0.19")
+        iva = (subtotal * tasa).quantize(Decimal("0.01"))
         self.subtotal = subtotal
         self.iva = iva
         self.total = subtotal + iva

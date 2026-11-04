@@ -3,7 +3,9 @@ import React, { useEffect, useState } from "react"
 import { getDocumentPdfUrl } from "../documentPdf"
 import {
   Badge,
-  fmtCLP,
+  formatMoney,
+  Currency,
+  redondearImporte,
   I,
   Ico,
   PageTitle,
@@ -24,6 +26,7 @@ export type Invoice = {
   total: number
   estado: string
   observacion?: string
+  moneda?: Currency
   tipoOperacion?: string
   clienteId?: number
   ocId?: number
@@ -46,6 +49,7 @@ export const mapFacturaFromApi = (data: any): Invoice => ({
   observacion: data.observacion_factura || "",
   tipoOperacion: data.tipo_operacion || "Nacional",
   rutaPDF: data.ruta_pdf_factura || "",
+  moneda: data.moneda_factura || "CLP",
 })
 
 type InvoiceDetail = {
@@ -69,6 +73,7 @@ type InvoiceDetail = {
   total: string
   oc_numero: string
   tipo_operacion: string
+  moneda_factura: Currency
   observacion_factura: string
   ruta_pdf_factura: string
   fecha_anulacion_factura: string | null
@@ -140,15 +145,6 @@ const createDetalle = (): DetalleForm => ({
   cantidad: "1",
   precio_unitario: "",
 })
-
-// Usa la misma regla de Decimal del API: redondeo a centavos con mitad al par.
-const redondearImporte = (valor: number): number => {
-  const centavos = Math.abs(valor) * 100
-  const inferior = Math.floor(centavos)
-  const mitad = Math.abs(centavos - inferior - 0.5) <= Number.EPSILON * Math.max(1, centavos) * 2
-  const redondeado = mitad ? inferior + inferior % 2 : Math.round(centavos)
-  return Math.sign(valor) * redondeado / 100
-}
 
 const errorDeRespuesta = (data: any, status: number) => {
   if (!data) return `Error del servidor (HTTP ${status}).`
@@ -239,6 +235,7 @@ export default function Facturacion({
     createDetalle(),
   ])
 
+  const [monedaFactura, setMonedaFactura] = useState<Currency>("CLP")
   const [observacion, setObservacion] = useState("")
   const [ocDocumentUrl, setOcDocumentUrl] = useState("")
   const [ocDocumentError, setOcDocumentError] = useState("")
@@ -430,6 +427,7 @@ export default function Facturacion({
       setEditingInvoiceId(data.id)
       setOrdenSeleccionada(String(data.id_oc))
       setObservacion(data.observacion_factura || "")
+      setMonedaFactura(data.moneda_factura || "CLP")
       setDetalles(data.detalles_factura.map((line) => ({
         producto_id: String(line.id_producto), cantidad: String(line.cantidad), precio_unitario: String(line.precio_unitario),
       })))
@@ -487,11 +485,12 @@ export default function Facturacion({
   const ivaCalculado = redondearImporte(subtotalCalculado * ivaRate / 100)
   const totalCalculado = subtotalCalculado + ivaCalculado
 
-  const totalFacturado = invoices.filter((invoice) => ["EMITIDA", "PAGADA"].includes(invoice.estado.toUpperCase())).reduce(
-    (sum, invoice) =>
-      sum + Number(invoice.total ?? invoice.subtotal + invoice.iva),
-    0,
-  )
+  const facturadoPorMoneda = new Map<Currency, number>()
+  invoices.filter((invoice) => ["EMITIDA", "PAGADA"].includes(invoice.estado.toUpperCase())).forEach((invoice) => {
+    const currency = invoice.moneda || "CLP"
+    facturadoPorMoneda.set(currency, (facturadoPorMoneda.get(currency) || 0) + invoice.total)
+  })
+  if (facturadoPorMoneda.size === 0) facturadoPorMoneda.set("CLP", 0)
 
   const pagadas = invoices.filter(
     (invoice) =>
@@ -510,6 +509,7 @@ export default function Facturacion({
     setEditingInvoiceId(null)
     setOrdenSeleccionada("")
     setObservacion("")
+    setMonedaFactura("CLP")
     setDetalles([createDetalle()])
     setErrorGuardado("")
     setErrorCarga("")
@@ -602,6 +602,7 @@ export default function Facturacion({
           cliente_id: clienteId,
           id_orden_compra: ordenActual.id_oc,
           observacion_factura: observacion,
+          moneda_factura: monedaFactura,
           detalles: detalles.map((detalle) => ({
             producto_id: Number(detalle.producto_id),
             cantidad: Number(detalle.cantidad),
@@ -656,7 +657,7 @@ export default function Facturacion({
         <div className="kpi">
           <div className="kpi-label">Total facturado</div>
           <div className="kpi-value tabular">
-            {fmtCLP(totalFacturado)}
+            {[...facturadoPorMoneda].map(([currency, total]) => <div key={currency}>{formatMoney(total, currency)}</div>)}
           </div>
         </div>
         <div className="kpi">
@@ -725,8 +726,8 @@ export default function Facturacion({
                     {invoice.cliente}
                   </td>
                   <td>{invoice.fecha}</td>
-                  <td>{fmtCLP(invoice.subtotal)}</td>
-                  <td>{fmtCLP(invoice.iva)}</td>
+                  <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
+                  <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
                   <td>
                     <Badge
                       t={
@@ -801,6 +802,7 @@ export default function Facturacion({
                   ["Cliente", previewDetail.cliente_nombre], ["RUT", previewDetail.cliente_rut],
                   ["Orden de compra", previewDetail.oc_numero], ["Fecha de emisión", previewDetail.fecha_emision],
                   ["Estado", estadoLegible(previewDetail.estado)], ["Tipo de operación", previewDetail.tipo_operacion],
+                  ["Moneda", previewDetail.moneda_factura || "CLP"],
                   ["Teléfono", previewDetail.cliente_telefono], ["Email", previewDetail.cliente_email],
                   ["Representante", previewDetail.cliente_representante],
                   ["Ubicación", [previewDetail.cliente_pais, previewDetail.cliente_region, previewDetail.cliente_ciudad].filter(Boolean).join(" · ")],
@@ -817,14 +819,14 @@ export default function Facturacion({
                   <tbody>{previewDetail.detalles_factura.map((line) => <tr key={line.id}>
                     <td>{line.producto_codigo}</td><td>{line.descripcion_df || line.producto_nombre}</td>
                     <td>{Number(line.cantidad).toLocaleString("es-CL")} {line.producto_unidad}</td>
-                    <td>{fmtCLP(Number(line.precio_unitario))}</td><td>{fmtCLP(Number(line.subtotal_df))}</td>
+                    <td>{formatMoney(Number(line.precio_unitario), previewDetail.moneda_factura)}</td><td>{formatMoney(Number(line.subtotal_df), previewDetail.moneda_factura)}</td>
                   </tr>)}</tbody>
                 </table></div>
               </section>
               <div className="facturacion-summary">
-                <div className="facturacion-preview-totals"><span>Subtotal neto</span><span>{fmtCLP(Number(previewDetail.subtotal))}</span></div>
-                <div className="facturacion-preview-totals"><span>IVA ({previewDetail.tipo_operacion === "Internacional" ? 0 : 19}%)</span><span>{fmtCLP(Number(previewDetail.iva))}</span></div>
-                <div className="facturacion-preview-totals"><strong>Total CLP</strong><strong>{fmtCLP(Number(previewDetail.total))}</strong></div>
+                <div className="facturacion-preview-totals"><span>Subtotal neto</span><span>{formatMoney(Number(previewDetail.subtotal), previewDetail.moneda_factura)}</span></div>
+                <div className="facturacion-preview-totals"><span>IVA ({previewDetail.tipo_operacion === "Internacional" ? 0 : 19}%)</span><span>{formatMoney(Number(previewDetail.iva), previewDetail.moneda_factura)}</span></div>
+                <div className="facturacion-preview-totals"><strong>Total {previewDetail.moneda_factura || "CLP"}</strong><strong>{formatMoney(Number(previewDetail.total), previewDetail.moneda_factura)}</strong></div>
               </div>
               <section className="facturacion-detail-section">
                 <h3>Observación</h3><p style={{ whiteSpace: "pre-wrap" }}>{previewDetail.observacion_factura || "Sin observaciones"}</p>
@@ -982,6 +984,13 @@ export default function Facturacion({
                     <label className="label" htmlFor="invoice-operation">Tipo de operación</label>
                     <input id="invoice-operation" className="input" readOnly value={ordenActual ? tipoOperacion : ""} placeholder="Se obtiene de la orden" />
                   </div>
+                  <div className="field">
+                    <label className="label" htmlFor="invoice-currency">Moneda *</label>
+                    <select id="invoice-currency" className="select" value={monedaFactura}
+                      onChange={(event) => setMonedaFactura(event.target.value as Currency)}>
+                      <option>CLP</option><option>USD</option>
+                    </select>
+                  </div>
                 </div>
 
                 {ordenActual && <section className="facturacion-order-document" aria-label="Documento de la orden seleccionada">
@@ -1073,7 +1082,7 @@ export default function Facturacion({
                       </div>
 
                       <div className="field">
-                        <label className="label" htmlFor={`invoice-price-${index}`}>Precio unitario (CLP)</label>
+                        <label className="label" htmlFor={`invoice-price-${index}`}>Precio unitario ({monedaFactura})</label>
                         <input
                           className="input"
                           type="number"
@@ -1139,15 +1148,15 @@ export default function Facturacion({
                 <div className="facturacion-summary">
                   <div className="facturacion-preview-totals">
                     <span>Subtotal estimado</span>
-                    <span>{fmtCLP(subtotalCalculado)}</span>
+                    <span>{formatMoney(subtotalCalculado, monedaFactura)}</span>
                   </div>
                   <div className="facturacion-preview-totals">
                     <span>IVA estimado ({ivaRate}%)</span>
-                    <span>{fmtCLP(ivaCalculado)}</span>
+                    <span>{formatMoney(ivaCalculado, monedaFactura)}</span>
                   </div>
                   <div className="facturacion-preview-totals">
                     <strong>Total estimado</strong>
-                    <strong>{fmtCLP(totalCalculado)}</strong>
+                    <strong>{formatMoney(totalCalculado, monedaFactura)}</strong>
                   </div>
 
                 </div>

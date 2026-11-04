@@ -170,6 +170,7 @@ class FacturaSerializer(serializers.ModelSerializer):
             "estado_factura",
             "ruta_pdf_factura",
             "observacion_factura",
+            "moneda_factura",
             "tipo_operacion",
             "fecha_anulacion_factura", "motivo_anulacion_factura", "id_usuario_anulacion_factura",
             "fecha_pago_factura", "id_usuario_pago_factura",
@@ -230,6 +231,11 @@ class FacturaSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Solo se pueden editar facturas pendientes.")
         if self.instance and ("estado" in self.initial_data or "estado_factura" in self.initial_data):
             raise serializers.ValidationError({"estado": "Usa las acciones Emitir, Marcar pagada o Anular."})
+        if self.instance and self.instance.notas_credito.exists():
+            orden = attrs.get("id_orden_compra", self.instance.id_orden_compra)
+            moneda = attrs.get("moneda_factura", self.instance.moneda_factura)
+            if orden.pk != self.instance.id_orden_compra_id or moneda != self.instance.moneda_factura:
+                raise serializers.ValidationError("Una factura con notas de crédito conserva su moneda y orden de origen.")
         cliente = attrs.get("id_cliente", getattr(self.instance, "id_cliente", None))
         orden = attrs.get("id_orden_compra", getattr(self.instance, "id_orden_compra", None))
         detalles = attrs.get("detalles")

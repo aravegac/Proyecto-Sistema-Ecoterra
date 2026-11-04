@@ -1,6 +1,6 @@
 // src/modules/NotasCredito.tsx
 import React, { useEffect, useState } from "react"
-import { Badge, fmtCLP, I, Ico, PageTitle, authHeaders, AuthUser } from "../shared"
+import { Badge, formatMoney, redondearImporte, Currency, I, Ico, PageTitle, authHeaders, AuthUser } from "../shared"
 
 // Tipo ajustado a lo que devuelve el backend
 type CreditNote = {
@@ -15,6 +15,16 @@ type CreditNote = {
   motivo: string
   estado: string
   ruta_pdf_nc: string
+  moneda: Currency
+  tipo_operacion: string
+}
+
+type SourceInvoice = {
+  id: number
+  estado: string
+  subtotal: string
+  moneda_factura: Currency
+  tipo_operacion: string
 }
 
 // Carga las notas de crédito y permite emitirlas sobre una factura y abrir su vista de impresión.
@@ -22,7 +32,7 @@ export default function NotasCredito({
   facturas,
   authUser,
 }: {
-  facturas: { id: string; cliente: string; total: number; id_interno?: number }[]
+  facturas: { id: string; cliente: string; total: number; id_interno?: number; moneda?: Currency; estado?: string }[]
   authUser: AuthUser | null
 }) {
   const [showNew, setShowNew] = useState(false)
@@ -34,12 +44,51 @@ export default function NotasCredito({
 
   // Estados para el formulario de nueva NC
   const [selectedFacturaId, setSelectedFacturaId] = useState("")
+  const [sourceInvoice, setSourceInvoice] = useState<SourceInvoice | null>(null)
+  const [sourceLoading, setSourceLoading] = useState(false)
+  const [sourceError, setSourceError] = useState("")
+  const [sourceRetry, setSourceRetry] = useState(0)
+  const [fechaEmision, setFechaEmision] = useState(() => new Date().toLocaleDateString("en-CA"))
+  const [numeroNC, setNumeroNC] = useState("")
   const [motivo, setMotivo] = useState("")
   const [estado, setEstado] = useState("EMITIDA")
   const [subtotalInput, setSubtotalInput] = useState<number | "">("")
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState("")
-  const facturaSeleccionada = facturas.find(/* Identifica el elemento buscado evaluando f.id === selectedFacturaId. */ f => f.id === selectedFacturaId)
+  const facturaSeleccionada = facturas.find((invoice) => invoice.id === selectedFacturaId)
+  const facturasDisponibles = facturas.filter((invoice) => !invoice.estado || ["EMITIDA", "PAGADA"].includes(invoice.estado.toUpperCase()))
+
+  useEffect(() => {
+    setSourceInvoice(null)
+    setSourceError("")
+    setSubtotalInput("")
+    if (!showNew || !facturaSeleccionada) { setSourceLoading(false); return }
+    const controller = new AbortController()
+    let active = true
+    setSourceLoading(true)
+    const load = async () => {
+      try {
+        if (!facturaSeleccionada.id_interno) throw new Error("No se pudo identificar la factura de origen.")
+        const response = await fetch(`/api/facturas/${facturaSeleccionada.id_interno}/`, {
+          headers: authHeaders(authUser), signal: controller.signal,
+        })
+        const data = await response.json()
+        if (!response.ok) throw new Error("No se pudo cargar la factura de origen.")
+        if (!["EMITIDA", "PAGADA"].includes(data.estado)) throw new Error("Selecciona una factura emitida o pagada.")
+        if (active) {
+          setSourceInvoice(data)
+          setSubtotalInput(Number(data.subtotal))
+        }
+      } catch (error) {
+        if (active) setSourceError(error instanceof Error ? error.message : "No se pudo cargar la factura.")
+      } finally {
+        if (active) setSourceLoading(false)
+      }
+    }
+    void load()
+    return () => { active = false; controller.abort() }
+  }, [showNew, facturaSeleccionada?.id_interno, selectedFacturaId, authUser, sourceRetry])
+
     
 
   // Cargar notas desde la API al montar el componente o si cambia el usuario
@@ -71,17 +120,20 @@ export default function NotasCredito({
 
   // Cálculos automáticos para el formulario
   const subtotalNum = Number(subtotalInput) || 0
-  const ivaCalculado = Math.round(subtotalNum * 0.19)
+  const moneda = sourceInvoice?.moneda_factura || "CLP"
+  const ivaRate = sourceInvoice?.tipo_operacion === "Internacional" ? 0 : 19
+  const ivaCalculado = redondearImporte(subtotalNum * ivaRate / 100)
   const totalCalculado = subtotalNum + ivaCalculado
 
   // Función para guardar la nueva NC
   // Valida sesión y formulario, emite la nota de crédito en la API y actualiza la lista local.
   const handleEmitirNC = async () => {
+    if (guardando) return
     if (!authUser) {
       setErrorGuardado("No hay sesión activa.")
       return
     }
-    if (!selectedFacturaId || !motivo || subtotalInput === "" || subtotalNum <= 0) {
+    if (!sourceInvoice || !motivo || !fechaEmision || subtotalInput === "" || !Number.isFinite(subtotalNum) || subtotalNum <= 0) {
       setErrorGuardado("Completa todos los campos obligatorios con valores válidos.")
       return
     }
@@ -95,9 +147,9 @@ export default function NotasCredito({
         headers: authHeaders(authUser),
         body: JSON.stringify({
           // Buscamos la factura seleccionada y usamos su id_interno
-          id_factura: facturas.find(/* Identifica el elemento buscado evaluando f.id === selectedFacturaId. */ f => f.id === selectedFacturaId)?.id_interno,
-          numero_nc: `NC-${Date.now()}`, // Generación temporal
-          fecha_emision: new Date().toISOString().split("T")[0],
+          id_factura: sourceInvoice.id,
+          numero_nc: numeroNC,
+          fecha_emision: fechaEmision,
           motivo: motivo,
           estado: estado,
           subtotal_bruto: subtotalNum,
@@ -107,7 +159,7 @@ export default function NotasCredito({
       if (!res.ok) {
         const errData = await res.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
         throw new Error(
-          errData ? JSON.stringify(errData) : "Error al crear la nota de crédito."
+          errData ? Object.values(errData).flat().join(" ") : "Error al crear la nota de crédito."
         )
       }
 
@@ -184,11 +236,20 @@ export default function NotasCredito({
         title="Notas de Crédito"
         sub="Documentos asociados a facturas emitidas"
       >
-        <button className="btn btn-primary" onClick={/* Ejecuta setShowNew(true) al invocarse este callback. */ () => setShowNew(true)}>
+        <button className="btn btn-primary" onClick={() => {
+          setNumeroNC(`NC-${Date.now()}`)
+          setFechaEmision(new Date().toLocaleDateString("en-CA"))
+          setSelectedFacturaId("")
+          setMotivo("")
+          setSubtotalInput("")
+          setEstado("EMITIDA")
+          setErrorGuardado("")
+          setShowNew(true)
+        }}>
           <Ico p={I.plus} size={14} /> Nueva NC
         </button>
       </PageTitle>
-      <div className="panel">
+      <div className="panel nc-table-panel">
         <table className="dt w-full">
           <thead>
             <tr>
@@ -230,10 +291,9 @@ export default function NotasCredito({
                   <td className="nc-factura">{note.factura_numero}</td>
                   <td className="nc-cliente">{note.cliente_nombre}</td>
                   <td>{note.fecha_emision}</td>
-                  {/* Mostramos en negativo para mantener el diseño original */}
-                  <td>{fmtCLP(note.subtotal)}</td> 
-                  <td>{fmtCLP(note.iva)}</td> 
-                  <td className="nc-monto">{fmtCLP(note.total)}</td> 
+                  <td>{formatMoney(Number(note.subtotal), note.moneda)}</td>
+                  <td>{formatMoney(Number(note.iva), note.moneda)}</td>
+                  <td className="nc-monto">{formatMoney(Number(note.total), note.moneda)}</td>
                   <td>{note.motivo}</td>
                   <td>
                     <select
@@ -285,70 +345,87 @@ export default function NotasCredito({
         </table>
       </div>
       {showNew && (
-        <div className="modal-backdrop" onClick={/* Ejecuta setShowNew(false) al invocarse este callback. */ () => setShowNew(false)}>
+        <div className="modal-backdrop" onClick={() => { if (!guardando) setShowNew(false) }}>
           <div
-            className="modal nc-modal"
+            className="modal nc-modal" role="dialog" aria-modal="true" aria-labelledby="nc-form-title"
             onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >
             <div className="nc-modal-header">
-              <h2 className="nc-modal-title">
+              <h2 className="nc-modal-title" id="nc-form-title">
                 Nueva Nota de Crédito
               </h2>
-              <button onClick={/* Ejecuta setShowNew(false) al invocarse este callback. */ () => setShowNew(false)} className="nc-modal-close">
+              <button aria-label="Cerrar formulario de nota de crédito" disabled={guardando} onClick={() => { if (!guardando) setShowNew(false) }} className="nc-modal-close">
                 <Ico p={I.x} size={18} />
               </button>
             </div>
             <div className="nc-form-stack">
               <div className="field">
-                <label className="label">Factura de Origen *</label>
+                <label className="label" htmlFor="nc-source-invoice">Factura de Origen *</label>
                 <select 
                   className="select"
+                  id="nc-source-invoice"
                   value={selectedFacturaId}
-                  onChange={/* Selecciona la factura y completa el subtotal inicial de la nota de crédito. */ (e) => {
-                    setSelectedFacturaId(e.target.value)
-                    // Autocompletar el subtotal con el total de la factura
-                    const fac = facturas.find(/* Identifica el elemento buscado evaluando f.id === e.target.value. */ f => f.id === e.target.value)
-                    if (fac) setSubtotalInput(fac.total)
-                  }}
+                  onChange={(event) => { setSelectedFacturaId(event.target.value); setErrorGuardado("") }}
                 >
                   <option value="">Seleccionar factura…</option>
-                  {facturas.map(/* Renderiza el contenido de cada elemento de facturas. */ (invoice) => (
+                  {facturasDisponibles.map((invoice) => (
                     <option key={invoice.id} value={invoice.id}>
-                      {invoice.id} · {invoice.cliente} · {fmtCLP(invoice.total)}
+                      {invoice.id} · {invoice.cliente} · {formatMoney(invoice.total, invoice.moneda)}
                     </option>
                   ))}
                 </select>
+                {facturasDisponibles.length === 0 && <p>No hay facturas emitidas o pagadas disponibles.</p>}
+              </div>
+              {sourceLoading && <p role="status">Cargando datos de la factura…</p>}
+              {sourceError && <div role="alert">
+                <p>{sourceError}</p>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSourceRetry((value) => value + 1)}>Reintentar</button>
+              </div>}
+              <div className="nc-inherited-grid">
+                <div className="field">
+                  <label className="label" htmlFor="nc-currency">Moneda</label>
+                  <input id="nc-currency" className="input" readOnly value={sourceInvoice?.moneda_factura || ""} />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="nc-operation">Tipo de operación</label>
+                  <input id="nc-operation" className="input" readOnly value={sourceInvoice?.tipo_operacion || ""} />
+                </div>
               </div>
               <div className="field">
-                <label className="label">Fecha</label>
+                <label className="label" htmlFor="nc-date">Fecha</label>
                 <input
                   className="input"
                   type="date"
-                  defaultValue={new Date().toISOString().slice(0, 10)}
+                  id="nc-date"
+                  value={fechaEmision}
+                  onChange={(event) => setFechaEmision(event.target.value)}
                 />
               </div>
               <div className="field">
-                <label className="label">Subtotal NC (CLP)</label>
+                <label className="label" htmlFor="nc-subtotal">Subtotal NC ({moneda})</label>
                 <input 
                   className="input" 
                   type="number" 
                   placeholder="0"
+                  id="nc-subtotal"
+                  min="0.01" step="0.01" disabled={!sourceInvoice || sourceLoading}
                   value={subtotalInput}
                   onChange={/* Ejecuta setSubtotalInput(e.target.value === "" ? "" : Number(e.target.value)) al invocarse este callback. */ (e) => setSubtotalInput(e.target.value === "" ? "" : Number(e.target.value))}
                 />
               </div>
               <div className="field">
-                <label className="label">IVA NC (19%)</label>
-                <input className="input" readOnly value={fmtCLP(ivaCalculado)} />
+                <label className="label" htmlFor="nc-tax">IVA NC ({ivaRate}%)</label>
+                <input className="input" id="nc-tax" readOnly value={formatMoney(ivaCalculado, moneda)} />
               </div>
               <div className="field">
-                <label className="label">Total NC (CLP)</label>
-                <input className="input" readOnly value={fmtCLP(totalCalculado)} />
+                <label className="label" htmlFor="nc-total">Total NC ({moneda})</label>
+                <input className="input" id="nc-total" readOnly value={formatMoney(totalCalculado, moneda)} />
               </div>
               <div className="field">
-                <label className="label">Motivo *</label>
+                <label className="label" htmlFor="nc-reason">Motivo *</label>
                 <select 
                   className="select"
+                  id="nc-reason"
                   value={motivo}
                   onChange={/* Ejecuta setMotivo(e.target.value) al invocarse este callback. */ (e) => setMotivo(e.target.value)}
                 >
@@ -380,13 +457,13 @@ export default function NotasCredito({
               <button
                 className="btn btn-primary"
                 onClick={handleEmitirNC}
-                disabled={guardando}
+                disabled={guardando || sourceLoading || !sourceInvoice}
               >
                 <Ico p={I.check} size={14} /> {guardando ? "Guardando..." : "Emitir NC"}
               </button>
               <button
                 className="btn btn-ghost"
-                onClick={/* Ejecuta setShowNew(false) al invocarse este callback. */ () => setShowNew(false)}
+                onClick={() => { if (!guardando) setShowNew(false) }}
                 disabled={guardando}
               >
                 Cancelar

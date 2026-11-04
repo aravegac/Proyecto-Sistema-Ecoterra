@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from io import BytesIO
 from unittest.mock import patch
 from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -12,7 +13,126 @@ from config.test_support import SalesTablesMixin
 from facturacion.models import Factura
 from usuarios.authentication import crear_token
 from usuarios.models import Usuario
-from .models import OrdenCompra
+from .models import OrdenCompra, NotaCredito
+from pypdf import PdfReader
+
+
+class NotaCreditoMonedaTests(SalesTablesMixin, TestCase):
+    @patch("ventas.views.obtener_cliente_supabase")
+    def test_pdf_con_motivo_largo_conserva_el_final(self, storage):
+        response = self.crear_nota(
+            self.factura("USD", "Internacional"),
+            motivo=("Detalle del ajuste de la nota de crédito.\n" * 150) + "FIN DEL MOTIVO",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        response = self.api.post(f"/api/notas-credito/{response.data['id']}/generar-pdf/")
+        self.assertEqual(response.status_code, 200)
+        content = storage.return_value.storage.from_.return_value.upload.call_args.args[1]
+        pdf = PdfReader(BytesIO(content))
+        self.assertGreater(len(pdf.pages), 1)
+        self.assertLessEqual(len(pdf.pages), 5)
+        self.assertIn("FIN DEL MOTIVO", "\n".join(page.extract_text() for page in pdf.pages))
+
+    def setUp(self):
+        self.api = APIClient()
+        self.user = Usuario.objects.create(nombre="Admin NC", email="nc-moneda@example.com", id_rol=1)
+        self.api.force_authenticate(user=self.user)
+        self.cliente = Cliente.objects.create(
+            rut="11111111-1", razon_social="Cliente NC", ciudad="Santiago",
+            telefono="123", email="nc@example.com",
+        )
+
+    def factura(self, moneda="CLP", operacion="Nacional", estado="EMITIDA"):
+        index = Factura.objects.count() + 1
+        orden = OrdenCompra.objects.create(
+            id_cliente=self.cliente, numero_oc=f"OC-NC-{index}", fecha_oc=date(2026, 11, 4),
+            ruta_documento_oc="oc.pdf", tipo_operacion_oc=operacion,
+        )
+        iva = 19000 if operacion == "Nacional" else 0
+        return Factura.objects.create(
+            id_cliente=self.cliente, id_orden_compra=orden, numero_factura=f"F-NC-{index}",
+            estado=estado, subtotal=100000, iva=iva, total=100000 + iva, moneda_factura=moneda,
+        )
+
+    def crear_nota(self, factura, **attrs):
+        return self.api.post("/api/notas-credito/", {
+            "id_factura": factura.pk, "numero_nc": f"NC-{NotaCredito.objects.count() + 1}",
+            "fecha_emision": "2026-11-04", "motivo": "Ajuste <cliente> & recepción",
+            "subtotal_bruto": "100000.00", "estado": "PENDIENTE", **attrs,
+        }, format="json")
+
+    @patch("ventas.views.obtener_cliente_supabase")
+    def test_moneda_y_operacion_heredadas_en_los_cuatro_casos_y_pdf(self, storage):
+        bucket = storage.return_value.storage.from_.return_value
+        for moneda in ["CLP", "USD"]:
+            for operacion in ["Nacional", "Internacional"]:
+                with self.subTest(moneda=moneda, operacion=operacion):
+                    factura = self.factura(moneda, operacion)
+                    response = self.crear_nota(
+                        factura, moneda="EUR", tipo_operacion="Otro", iva=1, total=1,
+                    )
+                    self.assertEqual(response.status_code, 201, response.data)
+                    self.assertEqual(response.data["moneda"], moneda)
+                    self.assertEqual(response.data["tipo_operacion"], operacion)
+                    self.assertEqual(response.data["iva"], "19000.00" if operacion == "Nacional" else "0.00")
+                    self.assertEqual(response.data["total"], "119000.00" if operacion == "Nacional" else "100000.00")
+                    nota = NotaCredito.objects.get(pk=response.data["id"])
+                    self.assertEqual(nota.moneda, moneda)
+                    self.assertEqual(nota.tipo_operacion, operacion)
+                    response = self.api.post(f"/api/notas-credito/{nota.pk}/generar-pdf/")
+                    self.assertEqual(response.status_code, 200, response.data)
+                    content = bucket.upload.call_args.args[1]
+                    pdf = PdfReader(BytesIO(content))
+                    self.assertGreater(len(pdf.pages[0].images), 0)
+                    text = "\n".join(page.extract_text() for page in pdf.pages)
+                    for expected in [
+                        nota.numero_nc, factura.numero_factura, f"Moneda: {moneda}",
+                        f"Tipo de operación: {operacion}", "Ajuste <cliente> & recepción",
+                        "IVA (19%)" if operacion == "Nacional" else "IVA (0%)",
+                    ]:
+                        self.assertIn(expected, text)
+
+    def test_facturas_pendientes_y_anuladas_no_admiten_notas(self):
+        for state in ["PENDIENTE", "ANULADA"]:
+            response = self.crear_nota(self.factura(estado=state))
+            self.assertEqual(response.status_code, 400)
+        self.assertFalse(NotaCredito.objects.exists())
+        self.assertEqual(self.crear_nota(self.factura(estado="PAGADA")).status_code, 201)
+
+    def test_actualizacion_recalcula_con_la_factura_de_origen(self):
+        response = self.crear_nota(self.factura("USD", "Nacional"))
+        self.assertEqual(response.status_code, 201)
+        nota = NotaCredito.objects.get(pk=response.data["id"])
+        otra = self.factura("CLP", "Internacional")
+        response = self.api.patch(f"/api/notas-credito/{nota.pk}/", {
+            "id_factura": otra.pk, "subtotal_bruto": "50000",
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        nota.refresh_from_db()
+        self.assertEqual(nota.moneda, "CLP")
+        self.assertEqual(nota.tipo_operacion, "Internacional")
+        self.assertEqual(nota.total, Decimal("50000"))
+        self.assertEqual(nota.iva, Decimal("0"))
+
+    def test_iva_redondeado_y_total_fuera_de_limite(self):
+        factura = self.factura()
+        response = self.crear_nota(factura, subtotal_bruto="0.50")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["iva"], "0.10")
+        response = self.crear_nota(factura, subtotal_bruto="9999999999.99")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(NotaCredito.objects.count(), 1)
+
+    def test_nota_antigua_impide_cambiar_moneda_de_factura_pendiente(self):
+        factura = self.factura(estado="PENDIENTE")
+        NotaCredito.objects.create(
+            id_factura=factura, numero_nc="NC-ANTIGUA", fecha_emision=date(2026, 11, 4),
+            subtotal=100, iva=19, total=119, motivo="Registro antiguo",
+        )
+        response = self.api.patch(f"/api/facturas/{factura.pk}/", {"moneda_factura": "USD"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        factura.refresh_from_db()
+        self.assertEqual(factura.moneda_factura, "CLP")
 
 
 class OrdenCompraDocumentoTests(SalesTablesMixin, TestCase):
@@ -213,7 +333,7 @@ class DistribucionVentasTests(SalesTablesMixin, TestCase):
         )
         factura = Factura.objects.create(
             id_orden_compra=orden, id_cliente=self.cliente, numero_factura="F-NC",
-            subtotal=Decimal("100"), iva=Decimal("19"), total=Decimal("119"),
+            subtotal=Decimal("100"), iva=Decimal("19"), total=Decimal("119"), estado="EMITIDA",
         )
         respuesta = self.api.post("/api/notas-credito/", {
             "id_factura": factura.pk, "numero_nc": "NC-TEST",

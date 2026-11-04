@@ -153,6 +153,8 @@ class OrdenCompraFacturacionSerializer(OrdenCompraSerializer):
 
 
 class NotaCreditoSerializer(serializers.ModelSerializer):
+    moneda = serializers.CharField(read_only=True)
+    tipo_operacion = serializers.CharField(read_only=True)
     # Campos de solo lectura extraídos de la factura relacionada
     factura_numero = serializers.CharField(
         source="id_factura.numero_factura",
@@ -191,6 +193,8 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
             "cliente_id",
             "cliente_nombre",
             "factura_total",
+            "moneda",
+            "tipo_operacion",
             "numero_nc",
             "fecha_emision",
             "subtotal",
@@ -211,19 +215,16 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
             "creado_en",
         ]
 
-    # Rechaza la creación de una nota de crédito cuando la factura asociada está anulada.
+    # Exige una factura emitida o pagada para conservar los datos comerciales de origen.
     def validate(self, attrs):
-        factura = attrs.get("id_factura")
-        subtotal_bruto = attrs.get("subtotal_bruto")
+        factura = attrs.get("id_factura", self.instance.id_factura if self.instance else None)
 
         if factura:
-            # Validación de seguridad: no permitir NC sobre facturas anuladas
-            if getattr(factura, "estado", "") == "ANULADA":
+            if factura.estado not in {"EMITIDA", "PAGADA"}:
                 raise serializers.ValidationError(
                     {
                         "id_factura": (
-                            "No se puede crear una nota de crédito "
-                            "sobre una factura anulada."
+                            "Selecciona una factura emitida o pagada para registrar una nota de crédito."
                         )
                     }
                 )
@@ -231,9 +232,39 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
         return attrs
 
     # Calcula los importes desde el subtotal bruto y guarda la nota de crédito.
+    @transaction.atomic
     def create(self, validated_data):
+        from facturacion.models import Factura
+
+        factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(
+            pk=validated_data["id_factura"].pk
+        )
+        validated_data["id_factura"] = factura
+        self.validate(validated_data)
         subtotal_bruto = validated_data.pop("subtotal_bruto")
         nota = NotaCredito(**validated_data)
         nota.calcular_totales(subtotal_bruto)
+        if nota.total > Decimal("9999999999.99"):
+            raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.save()
+        return nota
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        from facturacion.models import Factura
+
+        nota = NotaCredito.objects.select_for_update().get(pk=instance.pk)
+        factura = validated_data.get("id_factura", nota.id_factura)
+        factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(pk=factura.pk)
+        validated_data["id_factura"] = factura
+        self.instance = nota
+        self.validate(validated_data)
+        subtotal_bruto = validated_data.pop("subtotal_bruto", nota.subtotal)
+        for field, value in validated_data.items():
+            setattr(nota, field, value)
+        nota.calcular_totales(subtotal_bruto)
+        if nota.total > Decimal("9999999999.99"):
+            raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.ruta_pdf_nc = ""
         nota.save()
         return nota

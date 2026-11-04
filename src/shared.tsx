@@ -125,6 +125,26 @@ export function fmtCLP(n: number) {
   return `$${n.toLocaleString("es-CL")}`
 }
 
+export type Currency = "CLP" | "USD"
+
+export function formatMoney(value: number, currency: Currency = "CLP") {
+  return new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+// Usa la regla de Decimal del API: redondeo a centavos con mitad al par.
+export function redondearImporte(valor: number): number {
+  const centavos = Math.abs(valor) * 100
+  const inferior = Math.floor(centavos)
+  const mitad = Math.abs(centavos - inferior - 0.5) <= Number.EPSILON * Math.max(1, centavos) * 2
+  const redondeado = mitad ? inferior + inferior % 2 : Math.round(centavos)
+  return Math.sign(valor) * redondeado / 100
+}
+
 // Renderiza el título de página, el subtítulo y las acciones recibidas.
 export function PageTitle({
   title,

@@ -164,6 +164,7 @@ def generar_pdf_factura(factura):
     cliente = factura.id_cliente
     operacion = factura.tipo_operacion
     porcentaje_iva = 0 if operacion == "Internacional" else 19
+    moneda = getattr(factura, "moneda_factura", "CLP")
     razon_social = escape(str(getattr(cliente, "razon_social", "") or "Cliente"))
     partes_dir = [
         getattr(cliente, "direccion", ""),
@@ -258,7 +259,7 @@ def generar_pdf_factura(factura):
     # ---------------- 5. TEXTO INTRODUCTORIO ----------------
     r = fila(
         [Paragraph(
-            f"OC: {escape(str(factura.id_orden_compra.numero_oc))} - Tipo de operación: {operacion}",
+            f"OC: {escape(str(factura.id_orden_compra.numero_oc))} - Tipo de operación: {operacion} - Moneda: {moneda}",
             s_bold,
         )],
         4.2,
@@ -342,7 +343,7 @@ def generar_pdf_factura(factura):
         7.5,
     )
     r_t3 = fila(
-        ["", "", "", "", Paragraph("TOTAL", s_center), "", Paragraph(_num(factura.total), s_right)],
+        ["", "", "", "", Paragraph(f"TOTAL {moneda}", s_center), "", Paragraph(_num(factura.total), s_right)],
         7.5,
     )
     for rr in (r_t1, r_t2, r_t3):

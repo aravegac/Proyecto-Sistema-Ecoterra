@@ -75,6 +75,9 @@ class Factura(models.Model):
         db_column="estado_factura",
     )
     observacion_factura = models.TextField(blank=True, default="")
+    moneda_factura = models.CharField(
+        max_length=3, choices=[("CLP", "CLP"), ("USD", "USD")], default="CLP",
+    )
     fecha_anulacion_factura = models.DateTimeField(null=True, blank=True)
     motivo_anulacion_factura = models.TextField(null=True, blank=True)
     id_usuario_anulacion_factura = models.IntegerField(null=True, blank=True)

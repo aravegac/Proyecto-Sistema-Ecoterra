@@ -497,8 +497,13 @@ body,
 }
 .facturacion-header-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+@media (min-width: 651px) and (max-width: 850px) {
+  .facturacion-header-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .facturacion-filters {
   display: flex;
@@ -1897,7 +1902,7 @@ body,
 
 /* ── Notas de crédito ───────────────────── */
 .nc-modal {
-  width: 520px;
+  width: min(560px, 100%);
   padding: 24px;
 }
 .nc-modal-header {
@@ -1918,6 +1923,17 @@ body,
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.nc-inherited-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.nc-inherited-grid .field {
+  min-width: 0;
+}
+.nc-table-panel {
+  overflow-x: auto;
 }
 .nc-actions {
   display: flex;

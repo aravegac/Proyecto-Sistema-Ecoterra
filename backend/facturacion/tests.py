@@ -22,6 +22,25 @@ from ventas.models import OrdenCompra
 
 class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
     @patch("facturacion.views.obtener_cliente_supabase")
+    def test_moneda_se_guarda_y_queda_bloqueada_al_emitir(self, storage):
+        self.payload["moneda_factura"] = "USD"
+        invoice = self.invoice()
+        self.assertEqual(invoice.moneda_factura, "USD")
+        self.assertEqual(self.api.get(f"/api/facturas/{invoice.pk}/").data["moneda_factura"], "USD")
+        self.assertEqual(self.api.post(f"/api/facturas/{invoice.pk}/emitir/").status_code, 200)
+        response = self.api.patch(f"/api/facturas/{invoice.pk}/", {"moneda_factura": "CLP"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.moneda_factura, "USD")
+        content = storage.return_value.storage.from_.return_value.upload.call_args.args[1]
+        self.assertIn("Moneda: USD", "\n".join(page.extract_text() for page in PdfReader(BytesIO(content)).pages))
+
+    def test_moneda_no_admitida_se_rechaza(self):
+        self.payload["moneda_factura"] = "EUR"
+        self.assertEqual(self.create().status_code, 400)
+        self.assertFalse(Factura.objects.exists())
+
+    @patch("facturacion.views.obtener_cliente_supabase")
     def test_emision_pago_y_anulacion_tienen_reglas_y_trazabilidad(self, storage):
         bucket = storage.return_value.storage.from_.return_value
         invoice = self.invoice()
