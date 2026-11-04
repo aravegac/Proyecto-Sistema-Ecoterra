@@ -1,1 +1,0 @@
-﻿ERROR=Error en el servidor remoto: (500) Error interno del servidor.

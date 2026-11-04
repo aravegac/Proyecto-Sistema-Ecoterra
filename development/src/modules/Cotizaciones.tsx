@@ -1,8 +1,9 @@
+import { apiFetch } from "../api"
 // cotizaciones.tsx
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
+import BrandLogo from "../BrandLogo"
 import { getDocumentPdfUrl } from "../documentPdf"
-import { AuthUser, authHeaders, Badge, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
-
+import { AuthUser, authHeaders, can, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
 
 export type Quote = {
   idCotizacion: number
@@ -15,6 +16,9 @@ export type Quote = {
   total: number
   observacion: string
   estado: string
+  fechaAnulacion?: string | null
+  motivoAnulacion?: string | null
+  usuarioAnulacion?: number | null
 }
 
 export type PurchaseOrder = {
@@ -28,7 +32,6 @@ export type PurchaseOrder = {
   estado: string
   factura: string | null
 }
-
 
 export type Invoice = {
   id: string
@@ -60,6 +63,8 @@ type QuoteDetailLine = {
   cantidad_dc: number
   precio_unitario_dc: number
   subtotal_dc: number
+  descripcion_dc: string
+  unidad_producto: string
 }
 
 type QuoteDetail = {
@@ -69,6 +74,9 @@ type QuoteDetail = {
   cliente_telefono: string
   cliente_email: string
   cliente_representante: string
+  cliente_pais: string
+  cliente_region: string
+  cliente_ciudad: string
   cliente_direcciones: Array<{
     calle: string
     ciudad: string
@@ -84,6 +92,10 @@ type QuoteDetail = {
   total_cotizacion: number
   observacion_cotizacion: string
   estado_cotizacion: string
+  fecha_anulacion: string | null
+  motivo_anulacion: string | null
+  id_usuario_anulacion: number | null
+  tipo_operacion_cotizacion: "Nacional" | "Internacional"
   detalles: QuoteDetailLine[]
 }
 
@@ -105,6 +117,7 @@ export default function Cotizaciones({
 }) {
 
   const [show, setShow] = useState(false)
+  
   const downloadQuotePdf = async (quote: Quote) => {
     const tab = window.open("about:blank", "_blank")
     if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
@@ -117,9 +130,20 @@ export default function Cotizaciones({
       alert(error instanceof Error ? error.message : "No se pudo abrir el PDF.")
     }
   }
+  const [isLoadingQuotes, setIsLoadingQuotes] = useState(true)
+  const [quotesError, setQuotesError] = useState("")
+  const [clientFilter, setClientFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("sin-anuladas")
+  const [quoteToCancel, setQuoteToCancel] = useState<Quote | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelError, setCancelError] = useState("")
+  const [cancelling, setCancelling] = useState(false)
+  const [editingQuote, setEditingQuote] = useState<number | null>(null)
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [preview, setPreview] = useState<Quote | null>(null)
   const [detail, setDetail] = useState<QuoteDetail | null>(null)
+  const [previewError, setPreviewError] = useState("")
+  const previewRequest = useRef(0)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [quoteToLink, setQuoteToLink] = useState<Quote | null>(null)
   const [selectedOrder, setSelectedOrder] = useState("")
@@ -129,6 +153,8 @@ export default function Cotizaciones({
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().slice(0, 10))
   const [quoteValidity, setQuoteValidity] = useState("30")
   const [paymentTerm, setPaymentTerm] = useState("30 días")
+  const [operationType, setOperationType] = useState<"Nacional" | "Internacional">("Nacional")
+  const [savingQuote, setSavingQuote] = useState(false)
   const [currency, setCurrency] = useState("CLP")
   const [quoteStatus, setQuoteStatus] = useState("Borrador")
   const [quoteObservation, setQuoteObservation] = useState("")
@@ -136,9 +162,7 @@ export default function Cotizaciones({
     { productId: "", quantity: "", unitPrice: "" },
   ])
 
-  // Estado para saber si estamos editando (guarda el ID interno)
   const [editQuoteId, setEditQuoteId] = useState<number | null>(null)
-
   const [clientes, setClientes] = useState<Client[]>(clientesProp || [])
 
   useEffect(() => {
@@ -151,7 +175,7 @@ export default function Cotizaciones({
 
   const loadClientes = async () => {
     try {
-      const response = await fetch("/api/clientes/", { headers: authHeaders(authUser) }) // 👈 TOKEN
+      const response = await apiFetch("/api/clientes/", { headers: authHeaders(authUser) })
       if (!response.ok) return
       const data = await response.json()
       const items = data.value || data
@@ -166,21 +190,15 @@ export default function Cotizaciones({
     }
   }
 
-  
 const reloadCotizaciones = async () => {
+  setIsLoadingQuotes(true)
+  setQuotesError("")
   try {
-    const response = await fetch("/api/cotizaciones/", {
+    const response = await apiFetch("/api/cotizaciones/", {
       headers: authHeaders(authUser),
     })
 
-    if (!response.ok) {
-      console.error(
-        "Error al cargar cotizaciones:",
-        response.status,
-        await response.text(),
-      )
-      return
-    }
+    if (!response.ok) throw new Error("No se pudieron cargar las cotizaciones.")
 
     const data = await response.json()
     const items = data.value || data
@@ -195,56 +213,48 @@ const reloadCotizaciones = async () => {
       iva: Number(item.iva_cotizacion),
       total: Number(item.total_cotizacion),
       observacion: item.observacion_cotizacion || "",
-      estado: item.estado_cotizacion,
+      estado: item.estado_cotizacion === "Convertida" ? "Aceptada" : item.estado_cotizacion,
+      fechaAnulacion: item.fecha_anulacion,
+      motivoAnulacion: item.motivo_anulacion,
+      usuarioAnulacion: item.id_usuario_anulacion,
     }))
 
     setQuotes(mapped)
   } catch (error) {
-    console.error("Error recargando cotizaciones:", error)
+    setQuotesError("No se pudieron cargar las cotizaciones. Intenta nuevamente.")
+  } finally {
+    setIsLoadingQuotes(false)
   }
 }
 
-
   const openPreview = async (quote: Quote) => {
+    const requestId = ++previewRequest.current
     setPreview(quote)
     setDetail(null)
+    setPreviewError("")
     setIsLoadingDetail(true)
     try {
-      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) }) // 👈 TOKEN
-      const listData = await listResp.json()
-      const items = listData.value || listData
-      const match = items.find((c: any) => c.numero_cotizacion === quote.id)
-      
-      if (match) {
-        const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) }) // 👈 TOKEN
-        if (detailResp.ok) {
-          const detailData = await detailResp.json()
-          setDetail(detailData)
-        }
-      }
+      const response = await apiFetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
+      if (!response.ok) throw new Error("No se pudo cargar el detalle de la cotización.")
+      const data = await response.json()
+      if (requestId === previewRequest.current) setDetail(data)
     } catch (error) {
-      console.error("Error cargando detalle:", error)
+      if (requestId === previewRequest.current) {
+        setPreviewError(error instanceof Error ? error.message : "No se pudo cargar el documento.")
+      }
     } finally {
-      setIsLoadingDetail(false)
+      if (requestId === previewRequest.current) setIsLoadingDetail(false)
     }
   }
 
-  // Función para abrir el modal en modo edición
   const openEdit = async (quote: Quote) => {
+    setEditingQuote(quote.idCotizacion)
     try {
-      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) }) // 👈 TOKEN
-      const listData = await listResp.json()
-      const items = listData.value || listData
-      const match = items.find((c: any) => c.numero_cotizacion === quote.id)
-      
-      if (!match) return
-
-      const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) }) // 👈 TOKEN
-      if (!detailResp.ok) return
+      const detailResp = await apiFetch(`/api/cotizaciones/${quote.idCotizacion}/`, { headers: authHeaders(authUser) })
+      if (!detailResp.ok) throw new Error("No se pudo cargar la cotización.")
       
       const data = await detailResp.json()
       
-      // Precargar el formulario
       setEditQuoteId(data.id_cotizacion)
       setQuoteClient(data.cliente_nombre)
       setQuoteAddress(data.cliente_direcciones?.[0]?.ciudad || "")
@@ -252,9 +262,9 @@ const reloadCotizaciones = async () => {
       setQuoteValidity(String(data.dias_vigencia_cotizacion || 30))
       setPaymentTerm(data.condicion_pago_cotizacion)
       setQuoteStatus(data.estado_cotizacion)
+      setOperationType(data.tipo_operacion_cotizacion || "Nacional")
       setQuoteObservation(data.observacion_cotizacion || "")
       
-      // Precargar líneas de productos
       setQuoteLines(
         data.detalles.map((d: any) => ({
           productId: String(d.id_producto),
@@ -265,16 +275,23 @@ const reloadCotizaciones = async () => {
 
       setShow(true)
     } catch (error) {
-      console.error("Error al preparar edición:", error)
+      alert(error instanceof Error ? error.message : "No se pudo cargar la cotización.")
+    } finally {
+      setEditingQuote(null)
     }
   }
 
   const activeQuotes = quotes.filter((quote) => quote.estado === "Vigente")
-  const convertedQuotes = quotes.filter((quote) => quote.estado === "Convertida")
+  const acceptedQuotes = quotes.filter((quote) => quote.estado === "Aceptada")
   const expiredQuotes = quotes.filter((quote) => quote.estado === "Vencida")
+  const filteredQuotes = quotes.filter((quote) =>
+    (!clientFilter || quote.cliente === clientFilter) &&
+    (statusFilter === "sin-anuladas" ? quote.estado !== "Anulada" : !statusFilter || quote.estado === statusFilter),
+  )
+  const clientOptions = [...new Set(quotes.map((quote) => quote.cliente))].sort((a, b) => a.localeCompare(b, "es"))
+  const statusOptions = [...new Set(["Borrador", "Vigente", "Vencida", "Aceptada", "Rechazada", "Anulada", ...quotes.map((quote) => quote.estado)])]
   const totalQuoted = quotes.reduce((sum, quote) => sum + quote.total, 0)
 
-  
   const getPurchaseOrder = (quote: Quote) =>
     ordenes.find(
       (order) => order.cotizacionId === quote.idCotizacion,
@@ -291,8 +308,6 @@ const reloadCotizaciones = async () => {
       ? (facturas.find((invoice) => invoice.oc === order.id) ?? null)
       : null
   }
-
-  
 
 const linkOrder = async () => {
   if (!quoteToLink) return
@@ -317,7 +332,6 @@ const linkOrder = async () => {
     return
   }
 
-  // Evitar asociar una cotización que ya pertenece a otra orden.
   const existingOrder = ordenes.find(
     (purchaseOrder) =>
       purchaseOrder.cotizacionId === quoteToLink.idCotizacion &&
@@ -332,7 +346,7 @@ const linkOrder = async () => {
   }
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/ordenes-compra/${order.idOc}/asociar-cotizacion/`,
       {
         method: "POST",
@@ -363,7 +377,6 @@ const linkOrder = async () => {
       return
     }
 
-    // Actualizar las órdenes compartidas con los datos del backend.
     try {
       await onOrdenesChange()
     } catch (refreshError) {
@@ -373,11 +386,10 @@ const linkOrder = async () => {
       )
     }
 
-    // Actualizar el estado visual de la cotización.
     setQuotes((current) =>
       current.map((quote) =>
         quote.idCotizacion === quoteToLink.idCotizacion
-          ? { ...quote, estado: "Convertida" }
+          ? { ...quote, estado: "Aceptada" }
           : quote,
       ),
     )
@@ -390,22 +402,14 @@ const linkOrder = async () => {
   }
 }
 
-
-
-  const sendByEmail = (quote: Quote) => {
-    const subject = encodeURIComponent(`Cotización ${quote.id} · Ecoterra`)
-    const body = encodeURIComponent(
-      `Estimado cliente, adjuntamos la cotización ${quote.id} por ${fmtCLP(quote.total)}.`,
-    )
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
-  }
-
+  const originalQuoteStatus = quotes.find((quote) => quote.idCotizacion === editQuoteId)?.estado
   const selectedClient = clientes.find((client) => client.razon === quoteClient)
   const lineSubtotal = quoteLines.reduce(
-    (sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0),
+    (sum, line) => sum + Math.round(Number(line.quantity || 0) * Number(line.unitPrice || 0) * 100) / 100,
     0,
   )
-  const lineIva = Math.round(lineSubtotal * 0.19)
+  const ivaRate = operationType === "Internacional" ? 0 : 19
+  const lineIva = Math.round(lineSubtotal * ivaRate) / 100
   const lineTotal = lineSubtotal + lineIva
 
   const resetQuoteForm = () => {
@@ -416,18 +420,20 @@ const linkOrder = async () => {
     setQuoteValidity("30")
     setPaymentTerm("30 días")
     setCurrency("CLP")
+    setOperationType("Nacional")
     setQuoteStatus("Borrador")
     setQuoteObservation("")
     setQuoteLines([{ productId: "", quantity: "", unitPrice: "" }])
   }
 
   const closeQuoteForm = () => {
+    if (savingQuote) return
     setShow(false)
     resetQuoteForm()
   }
 
   const saveQuote = async (status = quoteStatus) => {
-    if (!quoteClient || !quoteLines.some((line) => line.productId && line.quantity)) return
+    if (savingQuote || !quoteClient || !quoteLines.some((line) => line.productId && line.quantity)) return
 
     const selectedClientObj = clientes.find((c) => c.razon === quoteClient)
     if (!selectedClientObj) {
@@ -445,6 +451,7 @@ const linkOrder = async () => {
       dias_vigencia_cotizacion: Number(quoteValidity),
       vigencia_cotizacion: expirationDate,
       condicion_pago_cotizacion: paymentTerm,
+      tipo_operacion_cotizacion: operationType,
       subtotal_cotizacion: lineSubtotal,
       iva_cotizacion: lineIva,
       total_cotizacion: lineTotal,
@@ -466,20 +473,21 @@ const linkOrder = async () => {
         }),
     }
 
+    setSavingQuote(true)
     try {
       const url = editQuoteId ? `/api/cotizaciones/${editQuoteId}/` : "/api/cotizaciones/"
       const method = editQuoteId ? "PUT" : "POST"
 
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         method,
-        headers: authHeaders(authUser), // 👈 TOKEN (incluye Content-Type)
+        headers: authHeaders(authUser),
         body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error("Error del backend:", errorData)
-        alert(`Error al ${editQuoteId ? "actualizar" : "guardar"} la cotización. Revisa la consola.`)
+        alert(Object.values(errorData).flat().join(" ") || "No se pudo guardar la cotización.")
         return
       }
 
@@ -487,11 +495,40 @@ const linkOrder = async () => {
       console.log(editQuoteId ? "Cotización actualizada:" : "Cotización creada:", result)
 
       await reloadCotizaciones()
-      closeQuoteForm()
+      setShow(false)
+      resetQuoteForm()
       return result
     } catch (error) {
       console.error("Error de red:", error)
       alert("No se pudo conectar con el backend.")
+    } finally {
+      setSavingQuote(false)
+    }
+  }
+
+  const cancelQuote = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!quoteToCancel || cancelling || !cancelReason.trim()) return
+    setCancelling(true)
+    setCancelError("")
+    try {
+      const response = await apiFetch(`/api/cotizaciones/${quoteToCancel.idCotizacion}/anular/`, {
+        method: "POST",
+        headers: authHeaders(authUser),
+        body: JSON.stringify({ motivo_anulacion: cancelReason.trim() }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(Object.values(data).flat().join(" ") || "No se pudo anular la cotización.")
+      setQuotes((current) => current.map((quote) => quote.idCotizacion === quoteToCancel.idCotizacion
+        ? { ...quote, estado: data.estado_cotizacion, fechaAnulacion: data.fecha_anulacion,
+            motivoAnulacion: data.motivo_anulacion, usuarioAnulacion: data.id_usuario_anulacion }
+        : quote))
+      setQuoteToCancel(null)
+      setCancelReason("")
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : "No se pudo anular la cotización.")
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -519,12 +556,9 @@ const linkOrder = async () => {
           </div>
         </div>
         <div className="kpi">
-          <div className="kpi-label">Convertidas (mes)</div>
+          <div className="kpi-label">Aceptadas</div>
           <div className="kpi-value tabular cotizaciones-kpi-positive">
-            {convertedQuotes.length}
-          </div>
-          <div className="cotizaciones-kpi-note">
-            Tasa: {quotes.length ? Math.round((convertedQuotes.length / quotes.length) * 100) : 0}%
+            {acceptedQuotes.length}
           </div>
         </div>
         <div className="kpi">
@@ -536,10 +570,32 @@ const linkOrder = async () => {
         <div className="kpi">
           <div className="kpi-label">Valor total</div>
           <div className="kpi-value tabular">{fmtCLP(totalQuoted)}</div>
-          <div className="cotizaciones-kpi-note">CLP mes actual</div>
+          <div className="cotizaciones-kpi-note">CLP</div>
         </div>
       </div>
-      <div className="panel">
+      <div className="cotizaciones-filters">
+        <div className="field">
+          <label className="label" htmlFor="quote-client-filter">Cliente</label>
+          <select id="quote-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+            <option value="">Todos los clientes</option>
+            {clientOptions.map((name) => <option key={name} value={name}>{name || "Sin cliente"}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="quote-status-filter">Estado</label>
+          <select id="quote-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="sin-anuladas">Sin anuladas</option>
+            <option value="">Todos los estados</option>
+            {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </div>
+      </div>
+      {editingQuote !== null && <p role="status">Cargando cotización para editar…</p>}
+      {quotesError && <div role="alert">
+        <p>{quotesError}</p>
+        <button className="btn btn-ghost btn-sm" onClick={() => void reloadCotizaciones()} disabled={isLoadingQuotes}>Reintentar</button>
+      </div>}
+      <div className="panel cotizaciones-table-panel" aria-busy={isLoadingQuotes}>
         <table className="dt w-full">
           <thead>
             <tr>
@@ -557,7 +613,11 @@ const linkOrder = async () => {
             </tr>
           </thead>
           <tbody>
-            {quotes.map((quote) => (
+            {isLoadingQuotes ? (
+              <tr><td colSpan={11} role="status">Cargando Cotizaciones...</td></tr>
+            ) : filteredQuotes.length === 0 ? (
+              <tr><td colSpan={11}>{quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}</td></tr>
+            ) : filteredQuotes.map((quote) => (
               <tr key={quote.id}>
                 {(() => {
                   const order = getPurchaseOrder(quote)
@@ -575,30 +635,23 @@ const linkOrder = async () => {
                       <td>{order?.id ?? "—"}</td>
                       <td>{invoice?.id ?? "—"}</td>
                       <td>
-                        <Badge
-                          t={
-                            quote.estado === "Convertida"
-                              ? "ok"
-                              : quote.estado === "Vencida"
-                                ? "danger"
-                                : "info"
-                          }
-                        >
+                        <span className={`badge cotizaciones-status cotizaciones-status-${quote.estado.toLowerCase()}`}>
                           {quote.estado}
-                        </Badge>
+                        </span>
                       </td>
                       <td>
                         <div className="cotizaciones-row-actions">
                           <button
-                            className="btn btn-ghost btn-sm"
+                            className="btn btn-ghost btn-sm cotizaciones-action-edit"
                             title="Editar productos"
                             aria-label={`Editar ${quote.id}`}
+                            disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
                             onClick={() => openEdit(quote)}
                           >
                             <Ico p={I.edit} size={13} />
                           </button>
                           <button
-                            className="btn btn-ghost btn-sm"
+                            className="btn btn-ghost btn-sm cotizaciones-action-preview"
                             title="Vista previa"
                             aria-label={`Vista previa ${quote.id}`}
                             onClick={() => openPreview(quote)}
@@ -606,28 +659,37 @@ const linkOrder = async () => {
                             <Ico p={I.pdf} size={13} />
                           </button>
                           <button
-                            className="btn btn-ghost btn-sm"
+                            className="btn btn-ghost btn-sm cotizaciones-action-download"
                             title="Descargar PDF"
                             aria-label={`Descargar PDF ${quote.id}`}
                             onClick={() => downloadQuotePdf(quote)}
                           >
                             <Ico p={I.download} size={13} />
                           </button>
+                          {/* BOTÓN DE CORREO ELIMINADO */}
                           <button
-                            className="btn btn-ghost btn-sm"
-                            title="Enviar por correo"
-                            aria-label={`Enviar ${quote.id} por correo`}
-                            onClick={() => sendByEmail(quote)}
-                          >
-                            <Ico p={I.mail} size={13} />
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
+                            className="btn btn-ghost btn-sm cotizaciones-action-link"
                             title="Asociar a orden de compra"
                             aria-label={`Asociar ${quote.id} a una orden de compra`}
+                            disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
                             onClick={() => setQuoteToLink(quote)}
                           >
                             <Ico p={I.link} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm productos-delete-btn"
+                            title="Anular cotización"
+                            aria-label={`Anular ${quote.id}`}
+                            disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
+                              !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
+                                (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
+                            onClick={() => {
+                              setQuoteToCancel(quote)
+                              setCancelReason("")
+                              setCancelError("")
+                            }}
+                          >
+                            <Ico p={I.trash} size={13} />
                           </button>
                         </div>
                       </td>
@@ -742,16 +804,26 @@ const linkOrder = async () => {
                 </select>
               </div>
               <div className="field">
+                <label className="label" htmlFor="quote-operation">Tipo de operación *</label>
+                <select id="quote-operation" className="select" value={operationType}
+                  onChange={(event) => setOperationType(event.target.value as "Nacional" | "Internacional")}>
+                  <option>Nacional</option>
+                  <option>Internacional</option>
+                </select>
+              </div>
+              <div className="field">
                 <label className="label">Estado *</label>
                 <select
                   className="select"
                   value={quoteStatus}
                   onChange={(event) => setQuoteStatus(event.target.value)}
                 >
-                  <option>Borrador</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus !== "Borrador"}>Borrador</option>
                   <option>Vigente</option>
-                  <option>Vencida</option>
-                  <option>Convertida</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Vencida</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Aceptada</option>
+                  <option disabled={Boolean(editQuoteId) && originalQuoteStatus === "Borrador"}>Rechazada</option>
+                  <option value="Anulada" disabled>Anulada (usar botón Anular)</option>
                 </select>
               </div>
             </div>
@@ -851,7 +923,7 @@ const linkOrder = async () => {
                 Subtotal neto <strong>{fmtCLP(lineSubtotal)}</strong>
               </span>
               <span>
-                IVA (19%) <strong>{fmtCLP(lineIva)}</strong>
+                IVA ({ivaRate}%) <strong>{fmtCLP(lineIva)}</strong>
               </span>
               <strong className="cotizaciones-summary-total">
                 Total{" "}
@@ -864,15 +936,26 @@ const linkOrder = async () => {
               <button
                 className="btn btn-primary"
                 disabled={
-                  !quoteClient ||
+                  savingQuote || !quoteClient ||
                   !quoteAddress ||
                   !quoteLines.some((line) => line.productId && line.quantity)
                 }
-                onClick={() => saveQuote("Borrador")}
+                onClick={() => saveQuote(quoteStatus === "Borrador" ? "Vigente" : quoteStatus)}
+              >
+                <Ico p={I.check} size={14} /> {editQuoteId ? "Actualizar cotización" : "Emitir cotización"}
+              </button>
+              <button
+                className="btn cotizaciones-save-draft"
+                disabled={
+                  savingQuote || !quoteClient ||
+                  !quoteAddress ||
+                  !quoteLines.some((line) => line.productId && line.quantity)
+                }
+                onClick={() => saveQuote(editQuoteId ? quoteStatus : "Borrador")}
               >
                 <Ico p={I.check} size={14} /> {editQuoteId ? "Guardar cambios" : "Guardar borrador"}
               </button>
-              <button className="btn btn-ghost" onClick={async () => {
+              <button className="btn btn-ghost" disabled={savingQuote} onClick={async () => {
                 const tab = window.open("about:blank", "_blank")
                 if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
                 tab.opener = null
@@ -888,26 +971,6 @@ const linkOrder = async () => {
               }}>
                 <Ico p={I.download} size={14} /> Exportar PDF
               </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  const subject = encodeURIComponent("Nueva cotización Ecoterra")
-                  window.location.href = `mailto:?subject=${subject}`
-                }}
-              >
-                <Ico p={I.mail} size={14} /> Enviar por correo
-              </button>
-              <button
-                className="btn btn-navy"
-                disabled={
-                  !quoteClient ||
-                  !quoteAddress ||
-                  !quoteLines.some((line) => line.productId && line.quantity)
-                }
-                onClick={() => saveQuote("Vigente")}
-              >
-                <Ico p={I.check} size={14} /> {editQuoteId ? "Actualizar cotización" : "Emitir cotización"}
-              </button>
             </div>
           </div>
         </div>
@@ -917,12 +980,12 @@ const linkOrder = async () => {
         <div className="modal-backdrop" onClick={() => setPreview(null)}>
           <div
             className="modal cotizaciones-modal cotizaciones-preview-modal"
-            style={{ maxWidth: "900px", width: "100%", padding: 0, overflow: "hidden" }}
+            role="dialog" aria-modal="true" aria-labelledby="quote-preview-title"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="cotizaciones-preview-head" style={{ padding: "1rem 1.5rem", borderBottom: "1px solid #E2E8F0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div className="cotizaciones-preview-head">
               <div>
-                <h2 style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0 }}>
+                <h2 id="quote-preview-title" style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0 }}>
                   Cotización {preview.id}
                 </h2>
               </div>
@@ -930,46 +993,48 @@ const linkOrder = async () => {
                 <button className="btn btn-ghost btn-sm" onClick={() => downloadQuotePdf(preview)}>
                   <Ico p={I.download} size={14} /> Imprimir / PDF
                 </button>
-                <button onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
+                <button aria-label="Cerrar vista previa" onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
                   <Ico p={I.x} size={18} />
                 </button>
               </div>
             </div>
 
-            <div className="documento-container" style={{ padding: "2rem", backgroundColor: "#fff", color: "#000" }}>
+            <div className="cotizaciones-preview-body">
               {isLoadingDetail ? (
                 <p style={{ textAlign: "center", padding: "2rem" }}>Cargando documento...</p>
               ) : detail ? (
-                <div style={{ border: "2px solid #000", maxWidth: "800px", margin: "0 auto" }}>
+                <div className="cotizaciones-document">
                   
                   {/* HEADER DEL DOCUMENTO */}
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "1.5rem", borderBottom: "2px solid #000" }}>
                     <div>
-                      <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#0f9d58", letterSpacing: "-1px", marginBottom: "0.5rem" }}>
-                        EcoTerra
+                      <div className="cotizaciones-document-logo">
+                        <BrandLogo />
                       </div>
                       <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>Ecoterra LLC.</div>
                       <div style={{ fontSize: "0.85rem" }}>600 CLEVELAND STREET STE 393 OFC 665</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "1.8rem", fontWeight: "bold", marginBottom: "0.5rem" }}>QUOTE</div>
+                      <div style={{ fontSize: "1.8rem", fontWeight: "bold", marginBottom: "0.5rem" }}>COTIZACIÓN</div>
                       <div style={{ fontSize: "1rem", fontWeight: "bold" }}>{detail.numero_cotizacion}</div>
                       <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-                        <strong>DATE:</strong> {detail.fecha_cotizacion}
+                        <strong>EMISIÓN:</strong> {detail.fecha_cotizacion}
                       </div>
                       <div style={{ fontSize: "0.85rem" }}>
                         <strong>VIGENCIA:</strong> {detail.vigencia_cotizacion}
                       </div>
+                      <div>Estado: {detail.estado_cotizacion}</div>
                     </div>
                   </div>
 
                   {/* BLOQUE CLIENTE */}
                   <div style={{ display: "flex", borderBottom: "2px solid #000" }}>
                     <div style={{ flex: 2, padding: "1.5rem", borderRight: "2px solid #000", fontSize: "0.9rem" }}>
-                      <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Customer:</div>
+                      <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Cliente:</div>
                       <div style={{ fontWeight: "bold", marginBottom: "0.25rem" }}>{detail.cliente_nombre}</div>
                       <div style={{ marginBottom: "0.25rem" }}>RUT: {detail.cliente_rut}</div>
                       <div style={{ marginBottom: "0.25rem" }}>Representante: {detail.cliente_representante || "—"}</div>
+                      <div>{[detail.cliente_pais, detail.cliente_region, detail.cliente_ciudad].filter(Boolean).join(" · ")}</div>
                       
                       {detail.cliente_direcciones && detail.cliente_direcciones.length > 0 && (
                         <div style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
@@ -997,12 +1062,12 @@ const linkOrder = async () => {
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
                     <thead>
                       <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #000" }}>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "40px" }}>ITEM</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "80px" }}>CODE</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", textAlign: "left" }}>DESCRIPTION</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>QUANTITY</th>
-                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>UNIT PRICE</th>
-                        <th style={{ padding: "0.5rem", width: "120px" }}>AMOUNT</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "52px" }}>ÍTEM</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "80px" }}>CÓDIGO</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", textAlign: "left" }}>DESCRIPCIÓN</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>CANTIDAD</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>PRECIO UNITARIO</th>
+                        <th style={{ padding: "0.5rem", width: "120px" }}>IMPORTE</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1010,8 +1075,8 @@ const linkOrder = async () => {
                         <tr key={idx} style={{ borderBottom: "1px solid #000" }}>
                           <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{idx + 1}</td>
                           <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{line.codigo_producto}</td>
-                          <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.nombre_producto}</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad_dc).toLocaleString('es-CL')}</td>
+                          <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.nombre_producto}{line.descripcion_dc && line.descripcion_dc !== line.nombre_producto && <div>{line.descripcion_dc}</div>}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad_dc).toLocaleString('es-CL')} {line.unidad_producto}</td>
                           <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{fmtCLP(Number(line.precio_unitario_dc))}</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(line.subtotal_dc))}</td>
                         </tr>
@@ -1034,11 +1099,11 @@ const linkOrder = async () => {
                     <table style={{ width: "300px", borderCollapse: "collapse", fontSize: "0.9rem" }}>
                       <tbody>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>NET VALUE</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>SUBTOTAL NETO</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.subtotal_cotizacion))}</td>
                         </tr>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>IVA (19%)</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>IVA ({detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)</td>
                           <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.iva_cotizacion))}</td>
                         </tr>
                         <tr>
@@ -1051,21 +1116,54 @@ const linkOrder = async () => {
 
                   {/* OBSERVACIONES / NOTAS */}
                   <div style={{ padding: "1.5rem", minHeight: "120px", fontSize: "0.85rem" }}>
-                    <div style={{ fontWeight: "bold", marginBottom: "0.5rem", textTransform: "uppercase" }}>NOTES:</div>
+                    <div style={{ fontWeight: "bold", marginBottom: "0.5rem", textTransform: "uppercase" }}>OBSERVACIONES:</div>
                     <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
                       {detail.observacion_cotizacion || "Sin observaciones adicionales."}
                     </p>
                     <br />
                     <div style={{ fontWeight: "bold" }}>Condición de Pago:</div>
                     <p style={{ margin: 0 }}>{detail.condicion_pago_cotizacion}</p>
+                    <p>Tipo de operación: {detail.tipo_operacion_cotizacion || "Nacional"}</p>
+                    {detail.estado_cotizacion === "Anulada" && <div>
+                      <p>Motivo de anulación: {detail.motivo_anulacion || "Sin registrar"}</p>
+                      <p>Fecha de anulación: {detail.fecha_anulacion ? new Date(detail.fecha_anulacion).toLocaleString("es-CL") : "Sin registrar"}</p>
+                      <p>Usuario responsable: {detail.id_usuario_anulacion ?? "Sin registrar"}</p>
+                    </div>}
                   </div>
 
                 </div>
               ) : (
-                <p style={{ textAlign: "center", padding: "2rem" }}>No se pudo cargar el detalle.</p>
+                <div role="alert">
+                  <p>{previewError || "No se pudo cargar el detalle."}</p>
+                  <button className="btn btn-ghost btn-sm" onClick={() => void openPreview(preview)}>Reintentar</button>
+                </div>
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {quoteToCancel && (
+        <div className="modal-backdrop">
+          <form className="modal cotizaciones-modal cotizaciones-cancel-modal" role="dialog" aria-modal="true"
+            aria-labelledby="cancel-quote-title" onSubmit={cancelQuote}>
+            <h2 id="cancel-quote-title">¿Anular esta cotización?</h2>
+            <p>{quoteToCancel.id} dejará de estar vigente, pero permanecerá registrada en el historial del sistema.</p>
+            <div className="field">
+              <label className="label" htmlFor="cancel-quote-reason">Motivo de anulación *</label>
+              <textarea id="cancel-quote-reason" className="textarea" required autoFocus
+                value={cancelReason} disabled={cancelling}
+                onChange={(event) => setCancelReason(event.target.value)} />
+            </div>
+            {cancelError && <p role="alert">{cancelError}</p>}
+            <div className="cotizaciones-summary-actions">
+              <button type="button" className="btn btn-ghost" disabled={cancelling}
+                onClick={() => setQuoteToCancel(null)}>Cancelar</button>
+              <button type="submit" className="btn btn-danger" disabled={cancelling || !cancelReason.trim()}>
+                {cancelling ? "Anulando…" : "Confirmar anulación"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

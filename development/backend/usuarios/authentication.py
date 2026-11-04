@@ -1,3 +1,4 @@
+# backend/usuarios/authentication.py
 from django.core import signing
 from django.core.signing import BadSignature, SignatureExpired
 
@@ -14,6 +15,7 @@ TOKEN_MAX_AGE = 8 * 60 * 60
 TOKEN_SALT = "ecoterra.api.auth"
 
 
+# Genera un token firmado que contiene el identificador del usuario.
 def crear_token(usuario):
     """Genera un token firmado para el usuario autenticado."""
     return signing.dumps(
@@ -26,6 +28,7 @@ def crear_token(usuario):
 class BearerTokenAuthentication(BaseAuthentication):
     """Autentica solicitudes que incluyen Authorization: Bearer <token>."""
 
+    # Valida el token Bearer y su vigencia de ocho horas y devuelve el usuario activo asociado.
     def authenticate(self, request):
         auth = get_authorization_header(request).split()
 
@@ -67,6 +70,7 @@ class BearerTokenAuthentication(BaseAuthentication):
 
         return (usuario, token)
 
+    # Indica Bearer como esquema de autenticación en las respuestas de acceso no autorizado.
     def authenticate_header(self, request):
         return "Bearer"
 
@@ -74,6 +78,7 @@ class BearerTokenAuthentication(BaseAuthentication):
 class IsUsuarioAutenticado(BasePermission):
     """Permite el acceso solo a usuarios autenticados y activos."""
 
+    # Permite el acceso únicamente cuando la solicitud contiene un usuario del sistema activo.
     def has_permission(self, request, view):
         usuario = request.user
 

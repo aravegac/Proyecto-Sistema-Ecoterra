@@ -1,9 +1,14 @@
-
+# backend/ventas/serializers.py
 from rest_framework import serializers
-from .models import OrdenCompra
+from django.db import transaction
+from cotizaciones.models import Cotizacion
+from .models import OrdenCompra, NotaCredito
+from decimal import Decimal
 
 
 class OrdenCompraSerializer(serializers.ModelSerializer):
+    archivo = serializers.FileField(write_only=True, required=False)
+    factura_numero = serializers.CharField(source="factura.numero_factura", read_only=True, allow_null=True)
     cliente_nombre = serializers.CharField(
         source="id_cliente.razon_social",
         read_only=True,
@@ -27,8 +32,28 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
             "numero_oc",
             "fecha_oc",
             "ruta_documento_oc",
+            "tipo_operacion_oc",
+            "archivo",
+            "factura_numero",
         ]
+        extra_kwargs = {"ruta_documento_oc": {"required": False, "allow_blank": True}}
 
+    def validate_archivo(self, archivo):
+        if archivo.size > 25 * 1024 * 1024:
+            raise serializers.ValidationError("El PDF no puede superar 25 MB.")
+        firma = archivo.read(5)
+        archivo.seek(0)
+        if firma != b"%PDF-":
+            raise serializers.ValidationError("Selecciona un archivo PDF válido.")
+        return archivo
+
+    def validate(self, attrs):
+        ruta = attrs.get("ruta_documento_oc", self.instance.ruta_documento_oc if self.instance else "")
+        if not attrs.get("archivo") and not ruta:
+            raise serializers.ValidationError({"archivo": "Adjunta el documento de la orden de compra."})
+        return attrs
+
+    # Devuelve un resumen de la cotización asociada a la orden o nulo cuando no existe.
     def get_cotizacion_detalle(self, obj):
         cotizacion = obj.id_cotizacion
 
@@ -44,6 +69,7 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
             "estado_cotizacion": cotizacion.estado_cotizacion,
         }
 
+    # Exige una cotización aceptada del mismo cliente que no esté asociada a otra orden de compra.
     def validate_id_cotizacion(self, cotizacion):
         if cotizacion is None:
             return None
@@ -63,9 +89,9 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
                 "La cotización pertenece a un cliente diferente."
             )
 
-        if cotizacion.estado_cotizacion != "Vigente":
+        if cotizacion.estado_actual != "Aceptada":
             raise serializers.ValidationError(
-                "Solo se pueden asociar cotizaciones en estado Vigente."
+                "Solo se pueden asociar cotizaciones aceptadas."
             )
 
         ordenes_existentes = OrdenCompra.objects.filter(
@@ -84,6 +110,32 @@ class OrdenCompraSerializer(serializers.ModelSerializer):
 
         return cotizacion
 
+    def bloquear_y_validar_cotizacion(self, attrs):
+        from facturacion.models import Factura
+
+        if self.instance and Factura.objects.filter(id_orden_compra=self.instance).exists():
+            cliente = attrs.get("id_cliente", self.instance.id_cliente)
+            operacion = attrs.get("tipo_operacion_oc", self.instance.tipo_operacion_oc)
+            if cliente.pk != self.instance.id_cliente_id or operacion != self.instance.tipo_operacion_oc:
+                raise serializers.ValidationError("No se puede cambiar el cliente o tipo de operación de una orden facturada.")
+        cotizacion = attrs.get("id_cotizacion", self.instance.id_cotizacion if self.instance else None)
+        if cotizacion:
+            cotizacion = Cotizacion.objects.select_for_update().get(pk=cotizacion.pk)
+            self.validate_id_cotizacion(cotizacion)
+            attrs["id_cotizacion"] = cotizacion
+
+    @transaction.atomic
+    def create(self, validated_data):
+        self.bloquear_y_validar_cotizacion(validated_data)
+        return super().create(validated_data)
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        instance = OrdenCompra.objects.select_for_update().get(pk=instance.pk)
+        self.instance = instance
+        self.bloquear_y_validar_cotizacion(validated_data)
+        return super().update(instance, validated_data)
+
 
 class OrdenCompraFacturacionSerializer(OrdenCompraSerializer):
     """Alias de campos para la ruta histórica /orden-compras/."""
@@ -96,4 +148,136 @@ class OrdenCompraFacturacionSerializer(OrdenCompraSerializer):
             "id", "id_cliente", "cliente_nombre", "id_cotizacion",
             "cotizacion_numero", "cotizacion_detalle", "numero_oc",
             "fecha_orden", "ruta_documento_oc",
+            "tipo_operacion_oc", "archivo", "factura_numero",
         ]
+
+
+class NotaCreditoSerializer(serializers.ModelSerializer):
+    moneda = serializers.CharField(read_only=True)
+    tipo_operacion = serializers.CharField(read_only=True)
+    # Campos de solo lectura extraídos de la factura relacionada
+    factura_numero = serializers.CharField(
+        source="id_factura.numero_factura",
+        read_only=True,
+    )
+    cliente_nombre = serializers.CharField(
+        source="id_factura.id_cliente.razon_social",
+        read_only=True,
+    )
+    cliente_id = serializers.IntegerField(
+        source="id_factura.id_cliente.id",
+        read_only=True,
+    )
+    factura_total = serializers.DecimalField(
+        source="id_factura.total",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+
+    # Campo de escritura: el usuario envía el subtotal bruto
+    subtotal_bruto = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        write_only=True,
+        required=True,
+        min_value=Decimal("0.01"),
+    )
+
+    class Meta:
+        model = NotaCredito
+        fields = [
+            "id",
+            "id_factura",
+            "factura_numero",
+            "cliente_id",
+            "cliente_nombre",
+            "factura_total",
+            "moneda",
+            "tipo_operacion",
+            "numero_nc",
+            "fecha_emision",
+            "subtotal",
+            "iva",
+            "total",
+            "subtotal_bruto",
+            "motivo",
+            "estado",
+            "ruta_pdf_nc",
+            "creado_en",
+            "id_usuario_anulacion_nc",
+            "fecha_anulacion_nc",
+            "motivo_anulacion_nc",
+        ]
+        read_only_fields = [
+            "id",
+            "subtotal",
+            "iva",
+            "total",
+            "ruta_pdf_nc",
+            "creado_en",
+            "estado",
+            "id_usuario_anulacion_nc",
+            "fecha_anulacion_nc",
+            "motivo_anulacion_nc",
+        ]
+
+    # Exige una factura emitida o pagada para conservar los datos comerciales de origen.
+    def validate(self, attrs):
+        if self.instance and self.instance.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar notas de crédito pendientes.")
+        if self.instance and "estado" in self.initial_data:
+            raise serializers.ValidationError({"estado": "Usa las acciones Emitir o Anular."})
+        factura = attrs.get("id_factura", self.instance.id_factura if self.instance else None)
+
+        if factura:
+            if factura.estado not in {"EMITIDA", "PAGADA"}:
+                raise serializers.ValidationError(
+                    {
+                        "id_factura": (
+                            "Selecciona una factura emitida o pagada para registrar una nota de crédito."
+                        )
+                    }
+                )
+
+        return attrs
+
+    # Calcula los importes desde el subtotal bruto y guarda la nota de crédito.
+    @transaction.atomic
+    def create(self, validated_data):
+        from facturacion.models import Factura
+
+        factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(
+            pk=validated_data["id_factura"].pk
+        )
+        validated_data["id_factura"] = factura
+        self.validate(validated_data)
+        subtotal_bruto = validated_data.pop("subtotal_bruto")
+        nota = NotaCredito(**validated_data)
+        nota.calcular_totales(subtotal_bruto)
+        if nota.total > Decimal("9999999999.99"):
+            raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.save()
+        return nota
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        from facturacion.models import Factura
+
+        nota = NotaCredito.objects.select_for_update().get(pk=instance.pk)
+        if nota.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar notas de crédito pendientes.")
+        factura = validated_data.get("id_factura", nota.id_factura)
+        factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(pk=factura.pk)
+        validated_data["id_factura"] = factura
+        self.instance = nota
+        self.validate(validated_data)
+        subtotal_bruto = validated_data.pop("subtotal_bruto", nota.subtotal)
+        for field, value in validated_data.items():
+            setattr(nota, field, value)
+        nota.calcular_totales(subtotal_bruto)
+        if nota.total > Decimal("9999999999.99"):
+            raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.ruta_pdf_nc = ""
+        nota.save()
+        return nota

@@ -9,6 +9,56 @@ from config.test_support import SalesTablesMixin
 
 
 class ClienteModelTests(SalesTablesMixin, TestCase):
+    def test_ubicacion_cliente_se_guarda_y_se_actualiza_por_api(self):
+        api = self.authenticated_api()
+        response = api.post(
+            "/api/clientes/",
+            {
+                "rut": "11.111.111-1",
+                "razon_social": "Cliente Ubicación",
+                "pais": "Chile",
+                "region": "Santiago Metropolitan Region",
+                "ciudad": "Santiago",
+                "telefono": "+56 9 1234 5678",
+                "email": "ubicacion@example.com",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        cliente = Cliente.objects.get(pk=response.data["id"])
+        self.assertEqual(cliente.pais, "Chile")
+        self.assertEqual(cliente.region, "Santiago Metropolitan Region")
+        url = f"/api/clientes/{cliente.pk}/"
+        response = api.patch(
+            url,
+            {"region": "Valparaíso", "ciudad": "Viña del Mar"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        response = api.get(url)
+        self.assertEqual(response.data["pais"], "Chile")
+        self.assertEqual(response.data["region"], "Valparaíso")
+        self.assertEqual(response.data["ciudad"], "Viña del Mar")
+
+    def test_cliente_antiguo_puede_editarse_sin_ubicacion_nueva(self):
+        cliente = Cliente.objects.create(
+            rut="11111111-1",
+            razon_social="Cliente antiguo",
+            ciudad="Santiago",
+            telefono="123456",
+            email="antiguo@example.com",
+        )
+        response = self.authenticated_api().patch(
+            f"/api/clientes/{cliente.pk}/",
+            {"razon_social": "Cliente actualizado"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pais"], "")
+        self.assertEqual(response.data["region"], "")
+        self.assertEqual(response.data["ciudad"], "Santiago")
+
+    # Crea un cliente de pruebas autenticado con el token de un usuario administrador.
     def authenticated_api(self):
         user, _ = Usuario.objects.get_or_create(
             email="cliente-tests@example.com",
@@ -18,6 +68,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         api.credentials(HTTP_AUTHORIZATION=f"Bearer {crear_token(user)}")
         return api
 
+    # Comprueba que un cliente puede guardar varias direcciones.
     def test_cliente_puede_tener_varias_direcciones(self):
         cliente = Cliente.objects.create(
             rut="76.123.456-7",
@@ -53,6 +104,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(cliente.direcciones.count(), 2)
         self.assertEqual(cliente.direcciones.first().nombre, "Bodega principal")
 
+    # Comprueba que el modelo permite persistir dos direcciones principales para el mismo cliente sin pasar por el serializer.
     def test_unica_direccion_principal_por_cliente(self):
         cliente = Cliente.objects.create(
             rut="76.987.654-5",
@@ -89,6 +141,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         )
         self.assertEqual(cliente.direcciones.filter(principal=True).count(), 2)
 
+    # Comprueba que la API devuelve clientes con sus direcciones.
     def test_endpoint_api_devuelve_clientes(self):
         cliente = Cliente.objects.create(
             rut="77.123.456-1",
@@ -117,6 +170,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.data[0]["rut"], "77.123.456-1")
         self.assertEqual(response.data[0]["direcciones"][0]["nombre"], "Oficina central")
 
+    # Comprueba que la API crea y elimina un cliente.
     def test_endpoint_api_crea_y_elimina_cliente(self):
         api = self.authenticated_api()
 
@@ -144,6 +198,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(delete_response.status_code, 204)
         self.assertFalse(Cliente.objects.filter(id=cliente_id).exists())
 
+    # Comprueba que la API acepta y normaliza un RUT válido.
     def test_endpoint_api_normaliza_y_acepta_rut_valido(self):
         response = self.authenticated_api().post(
             "/api/clientes/",
@@ -160,6 +215,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["rut"], "11111111-1")
 
+    # Comprueba que la API rechaza un RUT con dígito verificador incorrecto.
     def test_endpoint_api_rechaza_rut_invalido(self):
         response = self.authenticated_api().post(
             "/api/clientes/",
@@ -174,6 +230,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data["rut"][0], "Ingresa un RUT chileno válido.")
 
+    # Comprueba que la API rechaza correos inválidos.
     def test_endpoint_api_rechaza_correo_invalido(self):
         response = self.authenticated_api().post(
             "/api/clientes/",
@@ -189,6 +246,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("email", response.data)
 
+    # Comprueba que la API persiste los cambios del cliente.
     def test_endpoint_api_actualiza_cliente(self):
         cliente = Cliente.objects.create(
             rut="79.123.456-8",
@@ -212,6 +270,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(cliente.razon_social, "Cliente Actualizado")
         self.assertEqual(cliente.ciudad, "Concepción")
 
+    # Comprueba que la API crea, modifica y elimina direcciones del cliente.
     def test_endpoint_api_gestiona_direcciones_de_cliente(self):
         api = self.authenticated_api()
         cliente = Cliente.objects.create(
@@ -258,6 +317,7 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(delete_response.status_code, 204)
         self.assertFalse(Direccion.objects.filter(id=address_id).exists())
 
+    # Comprueba que la API explica por qué rechaza otra dirección principal.
     def test_endpoint_api_explica_direccion_principal_duplicada(self):
         api = self.authenticated_api()
         cliente = Cliente.objects.create(

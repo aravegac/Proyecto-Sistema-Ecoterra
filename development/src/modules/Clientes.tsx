@@ -1,4 +1,5 @@
 // client/src/modules/Clientes.tsx
+import LocationFields from "../LocationFields"
 import React, { useState } from "react"
 import { Badge, I, Ico, PageTitle } from "../shared"
 
@@ -7,6 +8,8 @@ export type Client = {
   rut: string
   razon: string
   fantasia: string
+  pais: string
+  region: string
   ciudad: string
   tel: string
   email: string
@@ -45,6 +48,8 @@ const emptyNewClient: NewClientInput = {
   rut: "",
   razon: "",
   fantasia: "",
+  pais: "",
+  region: "",
   ciudad: "",
   tel: "",
   email: "",
@@ -70,11 +75,14 @@ const emptyAddress: AddressInput = {
   principal: false,
 }
 
+// Convierte los datos del cliente seleccionado a los campos del formulario de edición.
 const clientToInput = (client: Client): NewClientInput => ({
   ...emptyNewClient,
   rut: client.rut,
   razon: client.razon,
   fantasia: client.fantasia,
+  pais: client.pais,
+  region: client.region,
   ciudad: client.ciudad,
   tel: client.tel,
   email: client.email,
@@ -86,6 +94,7 @@ const clientToInput = (client: Client): NewClientInput => ({
   representante: client.rep === "-" ? "" : client.rep,
 })
 
+// Muestra y filtra clientes y gestiona sus formularios de creación, edición y direcciones.
 export default function Clientes({
   clientes,
   loadError,
@@ -121,18 +130,26 @@ export default function Clientes({
   const [showAddressForm, setShowAddressForm] = useState(false)
   const [addressError, setAddressError] = useState("")
 
+  // Limpia los datos y errores y abre el formulario de creación de clientes.
   const openNewClient = () => {
     setNewClient(emptyNewClient)
     setSaveError("")
     setShowNew(true)
   }
 
+  // Actualiza el campo indicado del formulario de nuevo cliente conservando los demás campos.
   const updateNewClient = (field: keyof NewClientInput, value: string) => {
-    setNewClient((current) => ({ ...current, [field]: value }))
+    setNewClient(/* Calcula el nuevo valor de NewClient devolviendo ({ ...current, [field]: value }). */ (current) => ({ ...current, [field]: value }))
   }
 
+  // Valida el teléfono, solicita la creación del cliente y muestra los errores de guardado.
   const saveNewClient = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (!newClient.pais || !newClient.ciudad) {
+      setSaveError("Selecciona el país y la ciudad del cliente.")
+      return
+    }
 
     if (newClient.telefono && !PHONE_REGEX.test(newClient.telefono)) {
       setSaveError("El teléfono solo puede contener números y los símbolos + - ( )")
@@ -152,6 +169,7 @@ export default function Clientes({
     }
   }
 
+  // Pide confirmación, elimina el cliente seleccionado y limpia su selección.
   const deleteSelectedClient = async () => {
     if (!selected || !window.confirm(`¿Eliminar a ${selected.razon}?`)) return
 
@@ -166,6 +184,7 @@ export default function Clientes({
     }
   }
 
+  // Carga el cliente seleccionado en el formulario y activa su modo de edición.
   const startEditing = () => {
     if (!selected) return
     setEditClient(clientToInput(selected))
@@ -173,14 +192,21 @@ export default function Clientes({
     setEditing(true)
   }
 
+  // Actualiza el campo indicado del formulario de edición del cliente.
   const updateEditClient = (field: keyof NewClientInput, value: string) => {
-    setEditClient((current) => ({ ...current, [field]: value }))
+    setEditClient(/* Calcula el nuevo valor de EditClient devolviendo ({ ...current, [field]: value }). */ (current) => ({ ...current, [field]: value }))
   }
 
   // 👇 ÚNICA declaración de saveEditedClient
+  // Valida el teléfono, guarda los cambios del cliente y actualiza su selección.
   const saveEditedClient = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!selected) return
+
+    if (!editClient.ciudad) {
+      setEditError("Selecciona la ciudad del cliente.")
+      return
+    }
 
     if (editClient.telefono && !PHONE_REGEX.test(editClient.telefono)) {
       setEditError("El teléfono solo puede contener números y los símbolos + - ( )")
@@ -200,6 +226,7 @@ export default function Clientes({
     }
   }
 
+  // Carga una dirección existente o valores vacíos y abre el formulario de direcciones.
   const openAddressForm = (address?: Address) => {
     setEditingAddress(address ?? null)
     setAddressForm(
@@ -223,6 +250,7 @@ export default function Clientes({
     setAddressError("")
   }
 
+  // Crea o modifica la dirección del cliente y actualiza sus direcciones en la vista de detalle.
   const saveAddress = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!selected) return
@@ -233,10 +261,10 @@ export default function Clientes({
       const saved = editingAddress
         ? await onUpdateAddress(selected, editingAddress, addressForm)
         : await onCreateAddress(selected, addressForm)
-      setSelected((current) => {
+      setSelected(/* Añade o reemplaza la dirección guardada dentro del cliente seleccionado. */ (current) => {
         if (!current) return current
         const dirs = editingAddress
-          ? current.dirs.map((address) => (address.id === saved.id ? saved : address))
+          ? current.dirs.map(/* Transforma cada elemento de la lista devolviendo (address.id === saved.id ? saved : address). */ (address) => (address.id === saved.id ? saved : address))
           : [...current.dirs, saved]
         return { ...current, dirs }
       })
@@ -250,14 +278,15 @@ export default function Clientes({
     }
   }
 
+  // Pide confirmación, elimina la dirección y actualiza el detalle del cliente seleccionado.
   const deleteAddress = async (address: Address) => {
     if (!selected || !window.confirm(`¿Eliminar la dirección ${address.nombre}?`)) return
 
     setAddressError("")
     try {
       await onDeleteAddress(selected, address)
-      setSelected((current) =>
-        current ? { ...current, dirs: current.dirs.filter((item) => item.id !== address.id) } : current,
+      setSelected(/* Calcula el nuevo valor de Selected devolviendo current ? { ...current, dirs: current.dirs.filter((item) => item.id !== address.id) } : current. */ (current) =>
+        current ? { ...current, dirs: current.dirs.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== address.id. */ (item) => item.id !== address.id) } : current,
       )
     } catch (error) {
       setAddressError(error instanceof Error ? error.message : "No se pudo eliminar la dirección")
@@ -265,7 +294,7 @@ export default function Clientes({
   }
 
   const filtered = clientes.filter(
-    (client) =>
+    /* Comprueba qué elementos cumplen la condición evaluando client.razon.toLowerCase().includes(search.toLowerCase()) || client.rut.includes(search). */ (client) =>
       client.razon.toLowerCase().includes(search.toLowerCase()) ||
       client.rut.includes(search),
   )
@@ -295,7 +324,7 @@ export default function Clientes({
               className="input clientes-search-input"
               placeholder="Buscar por razón social o RUT…"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={/* Ejecuta setSearch(event.target.value) al invocarse este callback. */ (event) => setSearch(event.target.value)}
             />
           </div>
           <span className="clientes-count">{filtered.length} clientes</span>
@@ -305,7 +334,7 @@ export default function Clientes({
             <tr>
               <th>RUT</th>
               <th>Razón Social</th>
-              <th>Ciudad</th>
+              <th>País / Región / Ciudad</th>
               <th>Representante</th>
               <th>Teléfono</th>
               <th>Dirs.</th>
@@ -314,10 +343,10 @@ export default function Clientes({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((client) => (
+            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
               <tr
                 key={client.id}
-                onClick={() => setSelected(client)}
+                onClick={/* Ejecuta setSelected(client) al invocarse este callback. */ () => setSelected(client)}
                 className="clientes-row"
               >
                 <td className="clientes-rut">{client.rut}</td>
@@ -325,7 +354,7 @@ export default function Clientes({
                   <div className="clientes-name">{client.razon}</div>
                   <div className="clientes-fantasia">{client.fantasia}</div>
                 </td>
-                <td>{client.ciudad}</td>
+                <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
                 <td>{client.rep}</td>
                 <td>{client.tel}</td>
                 <td>
@@ -341,7 +370,7 @@ export default function Clientes({
                 <td>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={(event) => {
+                    onClick={/* Detiene la propagación del evento y selecciona el cliente de la fila. */ (event) => {
                       event.stopPropagation()
                       setSelected(client)
                     }}
@@ -355,10 +384,10 @@ export default function Clientes({
         </table>
       </div>
       {selected && (
-        <div className="slideover-backdrop" onClick={() => setSelected(null)}>
+        <div className="slideover-backdrop" onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)}>
           <div
             className="slideover"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >
             <div className="clientes-detail-header">
               <div className="clientes-detail-title-row">
@@ -366,10 +395,10 @@ export default function Clientes({
                   <span className="clientes-detail-rut">{selected.rut}</span>
                   <h2 className="clientes-detail-title">{selected.razon}</h2>
                   <p className="clientes-detail-subtitle">
-                    {selected.fantasia} · {selected.ciudad}
+                    {selected.fantasia} · {[selected.pais, selected.region, selected.ciudad].filter(Boolean).join(" · ")}
                   </p>
                 </div>
-                <button onClick={() => setSelected(null)} className="clientes-detail-close">
+                <button aria-label="Cerrar detalles del cliente" onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)} className="clientes-detail-close">
                   <Ico p={I.x} size={18} />
                 </button>
               </div>
@@ -380,17 +409,23 @@ export default function Clientes({
                   ["RUT", "rut"],
                   ["Razón Social", "razon_social"],
                   ["Nombre de Fantasía", "nombre_fantasia"],
-                  ["Ciudad", "ciudad"],
                   ["Teléfono", "telefono"],
                   ["Correo Electrónico", "email"],
                   ["Representante", "representante"],
-                ].map(([label, field]) => (
+                ].map(/* Renderiza el contenido de cada elemento de [
+                  ["RUT", "rut"],
+                  ["Razón Social", "razon_social"],
+                  ["Nombre de Fantasía", "nombre_fantasia"],
+                  ["Teléfono", "telefono"],
+                  ["Correo Electrónico", "email"],
+                  ["Representante", "representante"],
+                ]. */ ([label, field]) => (
                   <div className="field" key={label}>
                     <label className="label">{label}</label>
                     <input
                       className="input"
                       value={editClient[field as keyof NewClientInput]}
-                      onChange={(event) =>
+                      onChange={/* Ejecuta updateEditClient(field as keyof NewClientInput, event.target.value) al invocarse este callback. */ (event) =>
                         updateEditClient(field as keyof NewClientInput, event.target.value)
                       }
                       required={
@@ -404,23 +439,24 @@ export default function Clientes({
                     />
                   </div>
                 ))}
+                <LocationFields value={editClient} onChange={(location) => setEditClient((current) => ({ ...current, ...location }))} />
                 <div className="field">
                   <label className="label">Estado</label>
                   <select
                     className="input"
                     value={editClient.estado}
-                    onChange={(event) => updateEditClient("estado", event.target.value)}
+                    onChange={/* Ejecuta updateEditClient("estado", event.target.value) al invocarse este callback. */ (event) => updateEditClient("estado", event.target.value)}
                   >
                     <option value="Activo">Activo</option>
                     <option value="Inactivo">Inactivo</option>
                   </select>
                 </div>
                 {editError && <p style={{ color: "#B91C1C" }}>{editError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="submit" disabled={saving}>
                     <Ico p={I.check} size={14} /> Guardar cambios
                   </button>
-                  <button className="btn btn-ghost" type="button" onClick={() => setEditing(false)}>
+                  <button className="btn btn-ghost" type="button" onClick={/* Ejecuta setEditing(false) al invocarse este callback. */ () => setEditing(false)}>
                     Cancelar
                   </button>
                 </div>
@@ -428,11 +464,19 @@ export default function Clientes({
             ) : (
               <div className="clientes-detail-body">
                 {[
+                  { label: "País", value: selected.pais || "Sin registrar" },
+                  { label: "Región", value: selected.region || "Sin registrar" },
+                  { label: "Ciudad", value: selected.ciudad },
                   { label: "Estado", value: selected.estado },
                   { label: "Teléfono", value: selected.tel },
                   { label: "Correo Electrónico", value: selected.email },
                   { label: "Representante", value: selected.rep },
-                ].map((field) => (
+                ].map(/* Renderiza el contenido de cada elemento de [
+                  { label: "Estado", value: selected.estado },
+                  { label: "Teléfono", value: selected.tel },
+                  { label: "Correo Electrónico", value: selected.email },
+                  { label: "Representante", value: selected.rep },
+                ]. */ (field) => (
                   <div className="field" key={field.label}>
                     <label className="label">{field.label}</label>
                     <input className="input" value={field.value} readOnly />
@@ -441,21 +485,21 @@ export default function Clientes({
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <label className="label">Direcciones ({selected.dirs.length})</label>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAddressForm()}>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta openAddressForm() al invocarse este callback. */ () => openAddressForm()}>
                       <Ico p={I.plus} size={12} /> Agregar
                     </button>
                   </div>
-                  {selected.dirs.map((address) => (
+                  {selected.dirs.map(/* Renderiza el contenido de cada elemento de selected.dirs. */ (address) => (
                     <div key={address.id} className="clientes-address" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <span>
                         {address.nombre} · {address.ciudad}{" "}
                         <Badge t={address.principal ? "ok" : "neutral"}>{address.tipo}</Badge>
                       </span>
                       <span style={{ display: "flex", gap: 4 }}>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => openAddressForm(address)} title="Editar dirección" aria-label={`Editar ${address.nombre}`}>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta openAddressForm(address) al invocarse este callback. */ () => openAddressForm(address)} title="Editar dirección" aria-label={`Editar ${address.nombre}`}>
                           <Ico p={I.edit} size={12} />
                         </button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => deleteAddress(address)} title="Eliminar dirección" aria-label={`Eliminar ${address.nombre}`}>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta deleteAddress(address) al invocarse este callback. */ () => deleteAddress(address)} title="Eliminar dirección" aria-label={`Eliminar ${address.nombre}`}>
                           <Ico p={I.trash} size={12} />
                         </button>
                       </span>
@@ -466,31 +510,31 @@ export default function Clientes({
                     <form onSubmit={saveAddress} style={{ marginTop: 12, padding: 12, border: "1px solid #E2E8F0" }}>
                       <div className="field">
                         <label className="label">Nombre de dirección</label>
-                        <input className="input" value={addressForm.nombre} onChange={(event) => setAddressForm((current) => ({ ...current, nombre: event.target.value }))} required />
+                        <input className="input" value={addressForm.nombre} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, nombre: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, nombre: event.target.value }). */ (current) => ({ ...current, nombre: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Calle</label>
-                        <input className="input" value={addressForm.calle} onChange={(event) => setAddressForm((current) => ({ ...current, calle: event.target.value }))} required />
+                        <input className="input" value={addressForm.calle} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, calle: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, calle: event.target.value }). */ (current) => ({ ...current, calle: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Ciudad</label>
-                        <input className="input" value={addressForm.ciudad} onChange={(event) => setAddressForm((current) => ({ ...current, ciudad: event.target.value }))} required />
+                        <input className="input" value={addressForm.ciudad} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, ciudad: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, ciudad: event.target.value }). */ (current) => ({ ...current, ciudad: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Región</label>
-                        <input className="input" value={addressForm.region} onChange={(event) => setAddressForm((current) => ({ ...current, region: event.target.value }))} required />
+                        <input className="input" value={addressForm.region} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, region: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, region: event.target.value }). */ (current) => ({ ...current, region: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">País</label>
-                        <input className="input" value={addressForm.pais} onChange={(event) => setAddressForm((current) => ({ ...current, pais: event.target.value }))} required />
+                        <input className="input" value={addressForm.pais} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, pais: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, pais: event.target.value }). */ (current) => ({ ...current, pais: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Código postal</label>
-                        <input className="input" value={addressForm.codigo_postal ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, codigo_postal: event.target.value }))} />
+                        <input className="input" value={addressForm.codigo_postal ?? ""} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, codigo_postal: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, codigo_postal: event.target.value }). */ (current) => ({ ...current, codigo_postal: event.target.value }))} />
                       </div>
                       <div className="field">
                         <label className="label">Tipo</label>
-                        <select className="input" value={addressForm.tipo} onChange={(event) => setAddressForm((current) => ({ ...current, tipo: event.target.value }))}>
+                        <select className="input" value={addressForm.tipo} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, tipo: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, tipo: event.target.value }). */ (current) => ({ ...current, tipo: event.target.value }))}>
                           <option value="Despacho">Despacho</option>
                           <option value="Facturación">Facturación</option>
                           <option value="Otro">Otro</option>
@@ -498,29 +542,29 @@ export default function Clientes({
                       </div>
                       <div className="field">
                         <label className="label">Contacto de recepción</label>
-                        <input className="input" value={addressForm.contacto_recepcion} onChange={(event) => setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
+                        <input className="input" value={addressForm.contacto_recepcion} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, contacto_recepcion: event.target.value }). */ (current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Teléfono de contacto</label>
-                        <input className="input" value={addressForm.telefono_contacto} onChange={(event) => setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value }))} required />
+                        <input className="input" value={addressForm.telefono_contacto} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, telefono_contacto: event.target.value }). */ (current) => ({ ...current, telefono_contacto: event.target.value }))} required />
                       </div>
                       <div className="field">
                         <label className="label">Instrucciones de entrega</label>
-                        <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value }))} />
+                        <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, instrucciones_entrega: event.target.value }). */ (current) => ({ ...current, instrucciones_entrega: event.target.value }))} />
                       </div>
                       <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                        <input type="checkbox" checked={addressForm.principal} onChange={(event) => setAddressForm((current) => ({ ...current, principal: event.target.checked }))} />
+                        <input type="checkbox" checked={addressForm.principal} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, principal: event.target.checked })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, principal: event.target.checked }). */ (current) => ({ ...current, principal: event.target.checked }))} />
                         Dirección principal
                       </label>
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <div className="clientes-detail-actions">
                         <button className="btn btn-primary btn-sm" type="submit" disabled={saving}><Ico p={I.check} size={12} /> Guardar dirección</button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>Cancelar</button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Cancela la edición de dirección, restablece sus campos y cierra el formulario. */ () => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>Cancelar</button>
                       </div>
                     </form>
                   )}
                 </div>
                 {deleteError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{deleteError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="button" onClick={startEditing}>
                     <Ico p={I.edit} size={14} /> Editar cliente
                   </button>
@@ -539,7 +583,7 @@ export default function Clientes({
             className="modal"
             style={{ width: 540, padding: 24 }}
             onSubmit={saveNewClient}
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >
             <h2 style={{ fontWeight: 700, color: "#0F172A", marginBottom: 18 }}>
               Nuevo Cliente
@@ -555,18 +599,24 @@ export default function Clientes({
                 ["RUT", "rut"],
                 ["Razón Social", "razon_social"],
                 ["Nombre de Fantasía", "nombre_fantasia"],
-                ["Ciudad", "ciudad"],
                 ["Teléfono", "telefono"],
                 ["Correo Electrónico", "email"],
                 ["Representante", "representante"],
-              ].map(([label, field]) => (
+              ].map(/* Renderiza el contenido de cada elemento de [
+                ["RUT", "rut"],
+                ["Razón Social", "razon_social"],
+                ["Nombre de Fantasía", "nombre_fantasia"],
+                ["Teléfono", "telefono"],
+                ["Correo Electrónico", "email"],
+                ["Representante", "representante"],
+              ]. */ ([label, field]) => (
                 <div className="field" key={label}>
                   <label className="label">{label}</label>
                   <input
                     className="input"
                     placeholder={label}
                     value={newClient[field as keyof NewClientInput]}
-                    onChange={(event) =>
+                    onChange={/* Ejecuta updateNewClient(field as keyof NewClientInput, event.target.value) al invocarse este callback. */ (event) =>
                       updateNewClient(field as keyof NewClientInput, event.target.value)
                     }
                     required={field === "rut" || field === "razon_social" || field === "ciudad"}
@@ -574,12 +624,13 @@ export default function Clientes({
                   />
                 </div>
               ))}
+              <LocationFields value={newClient} onChange={(location) => setNewClient((current) => ({ ...current, ...location }))} />
               <div className="field">
                 <label className="label">Estado</label>
                 <select
                   className="input"
                   value={newClient.estado}
-                  onChange={(event) => updateNewClient("estado", event.target.value)}
+                  onChange={/* Ejecuta updateNewClient("estado", event.target.value) al invocarse este callback. */ (event) => updateNewClient("estado", event.target.value)}
                 >
                   <option value="Activo">Activo</option>
                   <option value="Inactivo">Inactivo</option>
@@ -594,7 +645,7 @@ export default function Clientes({
               <button
                 className="btn btn-ghost"
                 type="button"
-                onClick={() => setShowNew(false)}
+                onClick={/* Ejecuta setShowNew(false) al invocarse este callback. */ () => setShowNew(false)}
               >
                 Cancelar
               </button>

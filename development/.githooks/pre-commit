@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$staged_files" ]; then
+  exit 0
+fi
+
+for file in $staged_files; do
+  full_path="$repo_root/$file"
+
+  if [[ "$file" == .env.example || "$file" == .env.local.example || "$file" == .env.*.example || "$file" == .githooks/pre-commit ]]; then
+    continue
+  fi
+
+  if [[ "$file" == .env* || "$file" == *.pem || "$file" == *.key || "$file" == *.crt ]]; then
+    echo "ERROR: Se detectó un archivo secreto en el commit: $file" >&2
+    echo "Usa .env.local.example o .env.example como plantilla y no subas los valores reales." >&2
+    exit 1
+  fi
+
+  if [ -f "$full_path" ] && grep -Eiq 'DATABASE_URL=|SECRET_KEY=|postgresql://|api[_-]?key|supabase.*(key|token)' "$full_path"; then
+    echo "ERROR: Posible secreto detectado en $file" >&2
+    echo "Revisa el archivo antes de hacer commit." >&2
+    exit 1
+  fi
+done
+
+exit 0

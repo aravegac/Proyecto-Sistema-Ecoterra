@@ -6,7 +6,7 @@ import path from 'node:path'
 import siteConfiguration from './.figma/make/site.json'
 
 // Vite config — https://vitejs.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(/* Configura Vite según el modo con plugins, proxy de la API, alias y opciones de compilación. */ ({ mode }) => {
   // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
   const apiTarget = process.env.VITE_API_TARGET || 'http://127.0.0.1:8000'
@@ -81,13 +81,17 @@ type FigmaSiteConfiguration = {
 }
 
 /** Applies /.figma/make/site.json to the generated document shell. */
+// Aplica la configuración del sitio de Figma al HTML generado y al archivo robots.txt.
 function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
+  // Elimina caracteres distintos de letras, números, guion y guion bajo de un valor HTML.
   function sanitizeHtmlValue(value: string | undefined): string {
     return value?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
   }
+  // Escapa ampersands y signos de menor y mayor para insertar texto en HTML.
   function escapeHtmlText(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
+  // Sustituye el marcador de comentario HTML indicado por el contenido recibido.
   function replaceHtmlCommentSlot(html: string, slotName: string, content: string): string {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
@@ -106,14 +110,16 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
 
   return {
     name: 'figma-site-configuration',
+    // Registra el middleware que responde al archivo robots.txt configurado.
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(/* Responde a la ruta robots.txt configurada o continúa con el siguiente middleware. */ (req, res, next) => {
         if (!robotsTxt || req.url?.split('?')[0] !== '/robots.txt') return next()
 
         res.setHeader('Content-Type', 'text/plain; charset=utf-8')
         res.end(robotsTxt)
       })
     },
+    // Emite robots.txt en la compilación cuando la configuración impide indexar el sitio.
     generateBundle() {
       if (!robotsTxt) return
 
@@ -125,6 +131,7 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     },
     transformIndexHtml: {
       order: 'pre',
+      // Completa los marcadores y las etiquetas HTML con metadatos, analítica y scripts del sitio.
       handler(html) {
         let result = html
         result = replaceHtmlCommentSlot(result, 'figma:lang', language)
@@ -236,15 +243,17 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
  * `update` or `full-reload` so a stale overlay can't survive a
  * fixed build.
  */
+// Conserva el último error de Vite y lo reenvía a las conexiones nuevas hasta que se actualiza la aplicación.
 function figmaErrorOverlayReplay(): Plugin {
   return {
     name: 'figma-error-overlay-replay',
     apply: 'serve',
+    // Intercepta los mensajes WebSocket para conservar errores y reenviarlos a nuevas conexiones.
     configureServer(server) {
       let lastError: object | null = null
 
       const origSend = server.ws.send.bind(server.ws) as (...args: any[]) => void
-      server.ws.send = ((...args: any[]) => {
+      server.ws.send = (/* Conserva o limpia el último error según el mensaje y reenvía el evento WebSocket original. */ (...args: any[]) => {
         const payload = args[0]
         if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
           const type = (payload as { type?: string }).type
@@ -257,7 +266,7 @@ function figmaErrorOverlayReplay(): Plugin {
         return origSend(...args)
       }) as typeof server.ws.send
 
-      server.ws.on('connection', (socket) => {
+      server.ws.on('connection', /* Reenvía el último error al cliente que acaba de conectarse. */ (socket) => {
         if (lastError !== null) {
           socket.send(JSON.stringify(lastError))
         }
@@ -278,6 +287,7 @@ function figmaErrorOverlayReplay(): Plugin {
  * mounted component family. React reports a successful refresh while leaving
  * the old tree mounted until the page is reloaded.
  */
+// Recarga la página si un módulo deja de registrar componentes compatibles con React Refresh.
 function figmaReactRefreshBoundaryFallback(): Plugin {
   const hadRefreshBoundary = new Map<string, boolean>()
   let sendFullReload: (() => void) | null = null
@@ -286,9 +296,11 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
     name: 'figma-react-refresh-boundary-fallback',
     apply: 'serve',
     enforce: 'post',
+    // Registra la función que enviará al navegador una recarga completa.
     configureServer(server) {
-      sendFullReload = () => server.ws.send({ type: 'full-reload', path: '*' })
+      sendFullReload = /* Ejecuta server.ws.send({ type: 'full-reload', path: '*' }) al invocarse este callback. */ () => server.ws.send({ type: 'full-reload', path: '*' })
     },
+    // Detecta la pérdida de un límite de React Refresh y programa una recarga completa.
     transform(code, id) {
       if (!/\.[jt]sx?(?:\?|$)/.test(id) || id.includes('/node_modules/')) return null
 
@@ -298,7 +310,7 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
       hadRefreshBoundary.set(moduleId, hasRefreshBoundary)
 
       if (previousHadRefreshBoundary && !hasRefreshBoundary) {
-        queueMicrotask(() => sendFullReload?.())
+        queueMicrotask(/* Ejecuta sendFullReload?.() al invocarse este callback. */ () => sendFullReload?.())
       }
 
       return null
@@ -317,6 +329,7 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
  * builds (`vite build`) skip it entirely so the route doesn't leak
  * into shipped bundles.
  */
+// Expone durante el desarrollo una página de Figma Kit y el módulo virtual con sus historias.
 function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin {
   const storiesGlob = Array.isArray(options.storiesGlob) ? options.storiesGlob : [options.storiesGlob]
   const ROUTE = '/.figma/make/kit.html'
@@ -342,16 +355,19 @@ function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin
   return {
     name: 'figma-make-kit',
     apply: 'serve',
+    // Resuelve el identificador virtual de historias de Figma a su identificador interno.
     resolveId(id) {
       if (id === VIRTUAL_ID) return RESOLVED_ID
       return null
     },
+    // Devuelve el código del módulo virtual de historias cuando se solicita su identificador interno.
     load(id) {
       if (id !== RESOLVED_ID) return null
       return STORIES_MODULE
     },
+    // Registra el middleware que sirve la página de Figma Kit durante el desarrollo.
     configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
+      server.middlewares.use(/* Sirve el HTML de Figma Kit en su ruta de desarrollo y propaga los errores al middleware. */ async (req, res, next) => {
         const url = req.url || ''
         if (url.split('?')[0] !== ROUTE) return next()
 

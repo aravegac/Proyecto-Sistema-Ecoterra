@@ -1,4 +1,4 @@
-
+# backend/facturacion/models.py
 from decimal import Decimal
 
 from django.db import models
@@ -74,6 +74,19 @@ class Factura(models.Model):
         default="PENDIENTE",
         db_column="estado_factura",
     )
+    observacion_factura = models.TextField(blank=True, default="")
+    moneda_factura = models.CharField(
+        max_length=3, choices=[("CLP", "CLP"), ("USD", "USD")], default="CLP",
+    )
+    fecha_anulacion_factura = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion_factura = models.TextField(null=True, blank=True)
+    id_usuario_anulacion_factura = models.IntegerField(null=True, blank=True)
+    fecha_pago_factura = models.DateTimeField(null=True, blank=True)
+    id_usuario_pago_factura = models.IntegerField(null=True, blank=True)
+
+    @property
+    def tipo_operacion(self):
+        return self.id_orden_compra.tipo_operacion_oc
 
     
     ruta_pdf_factura = models.CharField(
@@ -93,9 +106,11 @@ class Factura(models.Model):
             models.Index(fields=["numero_factura"]),
         ]
 
+    # Devuelve el número de factura y su cliente como representación textual.
     def __str__(self):
         return f"Factura {self.numero_factura} - {self.id_cliente}"
 
+    # Suma los detalles y calcula el IVA según la operación de la orden de compra.
     def recalcular_totales(self, guardar=True):
         if not self.pk:
             raise ValueError(
@@ -115,7 +130,8 @@ class Factura(models.Model):
 
         subtotal = resultado["subtotal"] or Decimal("0.00")
         subtotal = subtotal.quantize(Decimal("0.01"))
-        iva = (subtotal * Decimal("0.19")).quantize(Decimal("0.01"))
+        tasa = Decimal("0") if self.tipo_operacion == "Internacional" else Decimal("0.19")
+        iva = (subtotal * tasa).quantize(Decimal("0.01"))
 
         self.subtotal = subtotal
         self.iva = iva
@@ -178,6 +194,7 @@ class DetalleFactura(models.Model):
         db_table = "detalle_factura"
         managed = False
     
+    # Devuelve el identificador del detalle, el producto y su cantidad.
     def __str__(self):
         return f"Detalle {self.id} - {self.id_producto} x {self.cantidad}"
 

@@ -1,6 +1,7 @@
 import React, { useState } from "react"
 import { Badge, I, Ico, PageTitle, Product } from "../shared"
 
+// Muestra controles y resultados de demostración para predicciones de llegada y precio de productos.
 export default function IaPanel({ productos }: { productos: Product[] }) {
   // ── Estados para resultados de predicción ──────────────
   const [showArrivalResult, setShowArrivalResult] = useState(false)
@@ -40,10 +41,12 @@ export default function IaPanel({ productos }: { productos: Product[] }) {
   const totalAlertas = stockAlerts.length
 
   // ── Simulación de predicciones ─────────────────────────
+  // Hace visible el resultado de demostración de la predicción de llegada.
   const handlePredictArrival = () => {
     setShowArrivalResult(true)
   }
 
+  // Hace visible el resultado de demostración de la predicción de precio.
   const handlePredictPrice = () => {
     setShowPriceResult(true)
   }
@@ -142,7 +145,7 @@ export default function IaPanel({ productos }: { productos: Product[] }) {
               <label className="label">Producto</label>
               <select className="select">
                 <option>Seleccionar producto…</option>
-                {productos.map((product) => (
+                {productos.map(/* Renderiza el contenido de cada elemento de productos. */ (product) => (
                   <option key={product.id}>
                     {product.codigo} · {product.nombre}
                   </option>
@@ -208,7 +211,7 @@ export default function IaPanel({ productos }: { productos: Product[] }) {
         </div>
 
         <div className="ia-alerts-list">
-          {stockAlerts.map((alert) => (
+          {stockAlerts.map(/* Renderiza el contenido de cada elemento de stockAlerts. */ (alert) => (
             <div key={alert.id} className="ia-alert-item">
               <div className="ia-alert-icon">
                 <Ico p={I.alert} size={16} />

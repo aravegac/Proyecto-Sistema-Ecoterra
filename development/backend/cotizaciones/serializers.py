@@ -1,3 +1,6 @@
+from decimal import Decimal, ROUND_HALF_UP
+
+from django.db import transaction
 from rest_framework import serializers
 from .models import Cotizacion, DetalleCotizacion
 
@@ -19,6 +22,7 @@ class DetalleCotizacionSerializer(serializers.ModelSerializer):
             "precio_unitario_dc",
             "subtotal_dc",
         ]
+        read_only_fields = ["subtotal_dc"]
 
 
 class CotizacionSerializer(serializers.ModelSerializer):
@@ -29,6 +33,9 @@ class CotizacionSerializer(serializers.ModelSerializer):
     cliente_telefono = serializers.CharField(source="id_cliente.telefono", read_only=True)
     cliente_email = serializers.CharField(source="id_cliente.email", read_only=True)
     cliente_representante = serializers.CharField(source="id_cliente.representante", read_only=True)
+    cliente_pais = serializers.CharField(source="id_cliente.pais", read_only=True)
+    cliente_region = serializers.CharField(source="id_cliente.region", read_only=True)
+    cliente_ciudad = serializers.CharField(source="id_cliente.ciudad", read_only=True)
     
     cliente_direcciones = serializers.SerializerMethodField()
 
@@ -42,22 +49,78 @@ class CotizacionSerializer(serializers.ModelSerializer):
             "cliente_telefono",
             "cliente_email",
             "cliente_representante",
+            "cliente_pais",
+            "cliente_region",
+            "cliente_ciudad",
             "cliente_direcciones",
             "numero_cotizacion",
             "fecha_cotizacion",
             "dias_vigencia_cotizacion",
             "vigencia_cotizacion",
             "condicion_pago_cotizacion",
+            "tipo_operacion_cotizacion",
             "subtotal_cotizacion",
             "iva_cotizacion",
             "total_cotizacion",
             "observacion_cotizacion",
             "estado_cotizacion",
             "ruta_pdf_cotizacion",
+            "fecha_anulacion",
+            "motivo_anulacion",
+            "id_usuario_anulacion",
             "detalles",
         ]
-        read_only_fields = ["id_cotizacion", "numero_cotizacion", "ruta_pdf_cotizacion"]
+        read_only_fields = [
+            "id_cotizacion", "numero_cotizacion", "ruta_pdf_cotizacion",
+            "subtotal_cotizacion", "iva_cotizacion", "total_cotizacion",
+            "fecha_anulacion", "motivo_anulacion", "id_usuario_anulacion",
+        ]
 
+    def validate(self, attrs):
+        estado = attrs.get("estado_cotizacion", self.instance.estado_actual if self.instance else "Borrador")
+        if estado not in Cotizacion.ESTADOS:
+            raise serializers.ValidationError({"estado_cotizacion": "Estado de cotización inválido."})
+        if estado == "Anulada":
+            raise serializers.ValidationError({"estado_cotizacion": "Usa la acción Anular cotización para registrar el motivo y responsable."})
+        if self.instance:
+            actual = self.instance.estado_actual
+            transiciones = {
+                "Borrador": {"Borrador", "Vigente"},
+                "Vigente": {"Vigente", "Vencida", "Aceptada", "Rechazada"},
+            }
+            if estado not in transiciones.get(actual, set()):
+                raise serializers.ValidationError({"estado_cotizacion": "El estado actual no permite esta edición o transición."})
+        attrs["estado_cotizacion"] = estado
+        detalles = attrs.get("detalles")
+        if detalles is None and self.instance:
+            detalles = list(self.instance.detallecotizacion_set.values(
+                "cantidad_dc", "precio_unitario_dc"
+            ))
+        detalles = detalles or []
+        subtotal = Decimal("0")
+        for detalle in detalles:
+            cantidad = detalle["cantidad_dc"]
+            precio = detalle["precio_unitario_dc"]
+            if cantidad <= 0 or precio < 0:
+                raise serializers.ValidationError({
+                    "detalles": "La cantidad debe ser positiva y el precio no puede ser negativo."
+                })
+            importe = (cantidad * precio).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            detalle["subtotal_dc"] = importe
+            subtotal += importe
+        operacion = attrs.get(
+            "tipo_operacion_cotizacion",
+            self.instance.tipo_operacion_cotizacion if self.instance else "Nacional",
+        )
+        tasa = Decimal("0.19") if operacion == "Nacional" else Decimal("0")
+        iva = (subtotal * tasa).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        total = subtotal + iva
+        if total > Decimal("9999999999.99"):
+            raise serializers.ValidationError({"detalles": "El total supera el importe máximo permitido."})
+        attrs.update(subtotal_cotizacion=subtotal, iva_cotizacion=iva, total_cotizacion=total)
+        return attrs
+
+    # Devuelve los datos de las direcciones del cliente asociado a la cotización.
     def get_cliente_direcciones(self, obj):
         direcciones = obj.id_cliente.direcciones.all()
         return [
@@ -73,6 +136,8 @@ class CotizacionSerializer(serializers.ModelSerializer):
             for d in direcciones
         ]
 
+    # Genera el número de cotización y guarda su cabecera junto con sus detalles.
+    @transaction.atomic
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         ultimo = Cotizacion.objects.order_by("-id_cotizacion").first()
@@ -87,6 +152,8 @@ class CotizacionSerializer(serializers.ModelSerializer):
 
         return cotizacion
 
+    # Actualiza la cabecera de la cotización y reemplaza sus detalles cuando se envían.
+    @transaction.atomic
     def update(self, instance, validated_data):
         """
         Permite actualizar la cotización y reemplazar sus detalles (productos).
@@ -106,8 +173,10 @@ class CotizacionSerializer(serializers.ModelSerializer):
 
         return instance
 
+    # Añade los detalles de productos a la representación de salida de la cotización.
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        data["estado_cotizacion"] = instance.estado_actual
         data["detalles"] = DetalleCotizacionSerializer(
             instance.detallecotizacion_set.all(), many=True
         ).data

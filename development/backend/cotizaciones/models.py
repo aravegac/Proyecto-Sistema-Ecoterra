@@ -1,8 +1,10 @@
 # cotizaciones/models.py
 from django.db import models
+from django.utils import timezone
 
 
 class Cotizacion(models.Model):
+    ESTADOS = ["Borrador", "Vigente", "Vencida", "Aceptada", "Rechazada", "Anulada"]
     id_cotizacion = models.AutoField(primary_key=True, db_column="id_cotizacion")
     id_cliente = models.ForeignKey(
         "clientes.Cliente",
@@ -15,17 +17,33 @@ class Cotizacion(models.Model):
     dias_vigencia_cotizacion = models.IntegerField(db_column="dias_vigencia_cotizacion")
     vigencia_cotizacion = models.DateField(db_column="vigencia_cotizacion")
     condicion_pago_cotizacion = models.CharField(max_length=100, db_column="condicion_pago_cotizacion")
+    tipo_operacion_cotizacion = models.CharField(
+        max_length=20, choices=[("Nacional", "Nacional"), ("Internacional", "Internacional")],
+        default="Nacional", db_column="tipo_operacion_cotizacion",
+    )
     subtotal_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="subtotal_cotizacion")
     iva_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="iva_cotizacion")
     total_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="total_cotizacion")
     observacion_cotizacion = models.TextField(null=True, blank=True, db_column="observacion_cotizacion")
     estado_cotizacion = models.CharField(max_length=50, db_column="estado_cotizacion")
     ruta_pdf_cotizacion = models.CharField(max_length=255, db_column="ruta_pdf_cotizacion")
+    fecha_anulacion = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion = models.TextField(null=True, blank=True)
+    id_usuario_anulacion = models.IntegerField(null=True, blank=True)
+
+    @property
+    def estado_actual(self):
+        if self.estado_cotizacion == "Convertida":
+            return "Aceptada"
+        if self.estado_cotizacion == "Vigente" and self.vigencia_cotizacion < timezone.localdate():
+            return "Vencida"
+        return self.estado_cotizacion
 
     class Meta:
         db_table = "cotizacion"
         managed = False
 
+    # Devuelve el número de cotización como representación textual.
     def __str__(self):
         return self.numero_cotizacion
 
@@ -52,5 +70,6 @@ class DetalleCotizacion(models.Model):
         db_table = "detalle_cotizacion"
         managed = False
 
+    # Devuelve el identificador del detalle y el número de su cotización.
     def __str__(self):
         return f"Detalle {self.id_dc} - {self.id_cotizacion.numero_cotizacion}"

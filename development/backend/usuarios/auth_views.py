@@ -1,3 +1,5 @@
+# backend/usuarios/auth_views.py
+
 from django.contrib.auth.hashers import check_password
 from django.db import connection
 
@@ -11,21 +13,10 @@ from .serializers import ROLE_ID_TO_LABEL
 from .authentication import crear_token
 
 
-def _cargar_permisos(id_rol):
-    """Devuelve un dict { 'modulo:accion': True } con los permisos del rol."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT p.modulo_permiso, p.nombre_permiso
-            FROM rol_permiso rp
-            INNER JOIN permiso p ON p.id_permiso = rp.id_permiso
-            WHERE rp.id_rol = %s AND p.activo_permiso = TRUE
-            """,
-            [id_rol],
-        )
-        return {f"{modulo}:{nombre}": True for modulo, nombre in cursor.fetchall()}
+from .permissions import permisos_efectivos
 
 
+# Valida correo, contraseña y estado del usuario y devuelve su sesión con rol, permisos y token firmado.
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -59,7 +50,7 @@ def login_view(request):
             status=status.HTTP_403_FORBIDDEN,
         )
 
-    permisos = _cargar_permisos(usuario.id_rol)
+    permisos = permisos_efectivos(usuario)
     token = crear_token(usuario)
 
     return Response({

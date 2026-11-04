@@ -1,7 +1,7 @@
 // AppLayout.tsx
 import React, { ReactNode, useState } from "react"
 
-import logoEcoterra from "@/imports/logo_ecoterra.png"
+import BrandLogo from "../BrandLogo"
 
 import { AuthUser, canAccessModule, I, Ico, Screen } from "../shared"
 
@@ -58,14 +58,16 @@ const NAV: NavGroup[] = [
   },
 ]
 
+// Obtiene hasta dos iniciales en mayúsculas del nombre o un signo de interrogación si está vacío.
 const getInitials = (nombre: string) =>
   nombre
     .split(" ")
-    .map((n) => n[0])
+    .map(/* Transforma cada elemento de la lista devolviendo n[0]. */ (n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase() || "?"
 
+// Muestra el menú lateral con los módulos autorizados, la opción de contraerlo y los datos de la sesión.
 function Sidebar({
   cur,
   onNav,
@@ -100,33 +102,12 @@ function Sidebar({
           borderBottom: "1px solid #1E293B",
           display: "flex",
           alignItems: "center",
-          padding: "0 12px",
+          padding: collapsed ? "0 4px" : "0 12px",
           gap: 8,
           flexShrink: 0,
         }}
       >
-        {collapsed ? (
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 7,
-              background: "white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              overflow: "hidden",
-              padding: 3,
-            }}
-          >
-            <img
-              src={logoEcoterra}
-              alt="Ecoterra"
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          </div>
-        ) : (
+        {!collapsed && (
           <div
             style={{
               flex: 1,
@@ -144,24 +125,22 @@ function Sidebar({
                 alignItems: "center",
               }}
             >
-              <img
-                src={logoEcoterra}
-                alt="Ecoterra"
-                style={{
-                  height: 22,
-                  width: "auto",
-                  objectFit: "contain",
-                  display: "block",
-                }}
-              />
+              <BrandLogo className="sidebar-logo" />
             </div>
           </div>
         )}
         <button
           onClick={toggle}
+          className="sidebar-toggle"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
           style={{
-            marginLeft: collapsed ? "auto" : 0,
-            color: "#475569",
+            marginLeft: 0,
+            width: 44,
+            height: 44,
+            display: "grid",
+            placeItems: "center",
+            color: "#CBD5E1",
             background: "none",
             border: "none",
             cursor: "pointer",
@@ -169,14 +148,14 @@ function Sidebar({
             flexShrink: 0,
           }}
         >
-          <Ico p={I.menu} size={15} />
+          <Ico p={I.menu} size={20} />
         </button>
       </div>
 
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px 16px" }}>
-        {NAV.map((group, groupIndex) => {
+        {NAV.map(/* Renderiza cada grupo del menú únicamente con sus módulos autorizados y oculta los grupos vacíos. */ (group, groupIndex) => {
           // Filtrar items por permisos
-          const visibleItems = group.items.filter((item) =>
+          const visibleItems = group.items.filter(/* Comprueba qué elementos cumplen la condición evaluando canAccessModule(user, item.moduleId). */ (item) =>
             canAccessModule(user, item.moduleId),
           )
 
@@ -189,11 +168,11 @@ function Sidebar({
                 <div className="nav-section">{group.label}</div>
               )}
               {collapsed && group.label && <div style={{ height: 10 }} />}
-              {visibleItems.map((item) => (
+              {visibleItems.map(/* Renderiza el contenido de cada elemento de visibleItems. */ (item) => (
                 <div
                   key={item.id}
                   className={`nav-item ${cur === item.id ? "active" : ""}`}
-                  onClick={() => onNav(item.id)}
+                  onClick={/* Ejecuta onNav(item.id) al invocarse este callback. */ () => onNav(item.id)}
                   title={collapsed ? item.label : undefined}
                 >
                   <span className="nav-icon">
@@ -275,11 +254,11 @@ function Sidebar({
               alignItems: "center",
               borderRadius: 6,
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={/* Actualiza el color y el fondo del botón según el evento del puntero. */ (e) => {
               e.currentTarget.style.color = "#DC2626"
               e.currentTarget.style.background = "#1E293B"
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={/* Actualiza el color y el fondo del botón según el evento del puntero. */ (e) => {
               e.currentTarget.style.color = "#94A3B8"
               e.currentTarget.style.background = "none"
             }}
@@ -292,6 +271,7 @@ function Sidebar({
   )
 }
 
+// Muestra el módulo actual, la fecha, las notificaciones y los controles del usuario.
 function Topbar({
   screen,
   user,
@@ -302,14 +282,14 @@ function Topbar({
   onLogout: () => void
 }) {
   const label =
-    NAV.flatMap((group) => group.items).find((item) => item.id === screen)
+    NAV.flatMap(/* Devuelve group.items al invocarse este callback. */ (group) => group.items).find(/* Identifica el elemento buscado evaluando item.id === screen. */ (item) => item.id === screen)
       ?.label ?? ""
 
   return (
     <div className="topbar">
       <div className="topbar-brand">
         <div className="topbar-logo">
-          <img src={logoEcoterra} alt="Ecoterra" />
+          <BrandLogo />
         </div>
         <div className="topbar-context">
           <span className="topbar-company">Ecoterra</span>
@@ -410,6 +390,7 @@ function Topbar({
   )
 }
 
+// Organiza el menú lateral, la barra superior y el contenido de la pantalla seleccionada.
 export default function AppLayout({
   screen,
   onNav,
@@ -438,7 +419,7 @@ export default function AppLayout({
         cur={screen}
         onNav={onNav}
         collapsed={collapsed}
-        toggle={() => setCollapsed(!collapsed)}
+        toggle={/* Ejecuta setCollapsed((current) => !current) al invocarse este callback. */ () => setCollapsed((current) => !current)}
         user={user}
         onLogout={onLogout}
       />

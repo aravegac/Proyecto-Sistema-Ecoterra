@@ -3,6 +3,7 @@ import os
 import sys
 
 
+# Ejecuta el comando administrativo de Django recibido por la consola.
 def main():
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     from django.core.management import execute_from_command_line

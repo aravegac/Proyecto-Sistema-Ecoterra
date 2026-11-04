@@ -26,6 +26,7 @@ type QuoteDetail = {
   fecha_cotizacion: string
   vigencia_cotizacion: string
   condicion_pago_cotizacion: string
+  tipo_operacion_cotizacion?: "Nacional" | "Internacional"
   subtotal_cotizacion: number
   iva_cotizacion: number
   total_cotizacion: number
@@ -35,8 +36,9 @@ type QuoteDetail = {
 }
 
 // Función que se exporta para abrir la nueva ventana con el HTML
+// Construye una vista HTML de la cotización y abre una ventana para imprimirla.
 export const printCotizacion = (detail: QuoteDetail) => {
-  const direccionPrincipal = detail.cliente_direcciones.find(d => d.principal) || detail.cliente_direcciones[0]
+  const direccionPrincipal = detail.cliente_direcciones.find(/* Identifica el elemento buscado evaluando d.principal. */ d => d.principal) || detail.cliente_direcciones[0]
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -213,7 +215,7 @@ export const printCotizacion = (detail: QuoteDetail) => {
             </tr>
           </thead>
           <tbody>
-            ${detail.detalles.map((item, idx) => `
+            ${detail.detalles.map(/* Transforma cada elemento de la lista devolviendo ` <tr> <td class="center">${idx + 1}</td> <td class="center">${item.codigo_producto}</td> <td>${item.nombre_producto}</td> <td class="center">${Number(item.cantidad_dc).toLocaleString('es-CL')}</td> <td class="right">${fmtCLP(Number(item.precio_unitario_dc))}</td> <td class="right">${fmtCLP(Number(item.subtotal_dc))}</td> </tr> `. */ (item, idx) => `
               <tr>
                 <td class="center">${idx + 1}</td>
                 <td class="center">${item.codigo_producto}</td>
@@ -224,7 +226,7 @@ export const printCotizacion = (detail: QuoteDetail) => {
               </tr>
             `).join('')}
             <!-- Filas vacías para mantener el estilo de la imagen -->
-            ${Array.from({ length: Math.max(0, 5 - detail.detalles.length) }).map(() => `
+            ${Array.from({ length: Math.max(0, 5 - detail.detalles.length) }).map(/* Transforma cada elemento de la lista devolviendo ` <tr> <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td> </tr> `. */ () => `
               <tr>
                 <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td>
               </tr>
@@ -240,7 +242,7 @@ export const printCotizacion = (detail: QuoteDetail) => {
               <td class="value">${fmtCLP(Number(detail.subtotal_cotizacion))}</td>
             </tr>
             <tr>
-              <td class="label">IVA (19%)</td>
+              <td class="label">IVA (${detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)</td>
               <td class="value">${fmtCLP(Number(detail.iva_cotizacion))}</td>
             </tr>
             <tr>

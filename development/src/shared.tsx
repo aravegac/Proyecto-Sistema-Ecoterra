@@ -1,6 +1,7 @@
 // shared.tsx
 import React, { ReactNode } from "react"
 
+// Renderiza un icono SVG con la ruta, el tamaño, el color y el grosor recibidos.
 export function Ico({
   p,
   size = 16,
@@ -109,18 +110,42 @@ export type Product = {
 
 export type BadgeType = "ok" | "warn" | "danger" | "info" | "neutral" | "purple"
 
+// Renderiza una etiqueta visual con la variante de estilo y el contenido recibidos.
 export function Badge({ t, children }: { t: BadgeType; children: ReactNode }) {
   return <span className={`badge badge-${t}`}>{children}</span>
 }
 
+// Formatea un número con los separadores de la configuración regional de Chile.
 export function fmt(n: number) {
   return n.toLocaleString("es-CL")
 }
 
+// Formatea un número con separadores chilenos y el símbolo de peso.
 export function fmtCLP(n: number) {
   return `$${n.toLocaleString("es-CL")}`
 }
 
+export type Currency = "CLP" | "USD"
+
+export function formatMoney(value: number, currency: Currency = "CLP") {
+  return new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+// Usa la regla de Decimal del API: redondeo a centavos con mitad al par.
+export function redondearImporte(valor: number): number {
+  const centavos = Math.abs(valor) * 100
+  const inferior = Math.floor(centavos)
+  const mitad = Math.abs(centavos - inferior - 0.5) <= Number.EPSILON * Math.max(1, centavos) * 2
+  const redondeado = mitad ? inferior + inferior % 2 : Math.round(centavos)
+  return Math.sign(valor) * redondeado / 100
+}
+
+// Renderiza el título de página, el subtítulo y las acciones recibidas.
 export function PageTitle({
   title,
   sub,
@@ -180,6 +205,7 @@ export type AuthUser = {
  * Verifica si el usuario tiene un permiso específico.
  * Los administradores (id_rol === 1) siempre tienen acceso total.
  */
+// Comprueba el permiso modulo:accion del usuario concediendo acceso directo al administrador.
 export function can(
   user: AuthUser | null,
   modulo: string,
@@ -194,6 +220,7 @@ export function can(
  * Verifica si el usuario puede ver el módulo completo.
  * Es true si tiene AL MENOS UN permiso del módulo.
  */
+// Permite módulos públicos y comprueba si el usuario es administrador o tiene algún permiso del módulo.
 export function canAccessModule(
   user: AuthUser | null,
   moduleId?: string,
@@ -202,7 +229,7 @@ export function canAccessModule(
   if (!user) return false
   if (user.id_rol === 1) return true
   const prefix = `${moduleId}:`
-  return Object.keys(user.permisos ?? {}).some((key) => key.startsWith(prefix))
+  return Object.entries(user.permisos ?? {}).some(([key, enabled]) => enabled === true && key.startsWith(prefix))
 }
 
 // ---------- Mapeo screen → módulo de permisos ----------
@@ -226,6 +253,7 @@ export const SCREEN_TO_MODULE: Record<Screen, string | undefined> = {
  * Headers para peticiones autenticadas.
  * El token permite verificar la identidad en el backend.
  */
+// Construye los encabezados JSON y añade el token Bearer cuando la sesión lo incluye.
 export function authHeaders(
   user: AuthUser | null,
 ): HeadersInit {

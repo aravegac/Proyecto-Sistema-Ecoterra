@@ -7,7 +7,7 @@ from config.test_support import SalesTablesMixin
 from pypdf import PdfReader
 from rest_framework.test import APIClient
 
-from clientes.models import Cliente
+from clientes.models import Cliente, Direccion
 from inventario.models import Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
@@ -17,6 +17,86 @@ from .models import Cotizacion, DetalleCotizacion
 
 
 class PdfIntegrationTests(SalesTablesMixin, TestCase):
+    def test_pdf_incluye_logo_contactos_direcciones_y_auditoria(self):
+        self.customer.representante = "Representante de prueba"
+        self.customer.pais = "Chile"
+        self.customer.region = "Metropolitana"
+        self.customer.save()
+        Direccion.objects.create(
+            cliente=self.customer, nombre="Bodega principal", calle="Calle Uno 123",
+            ciudad="Santiago", region="Metropolitana", pais="Chile",
+            tipo="Despacho", contacto_recepcion="Recepción", telefono_contacto="456",
+        )
+        base, quote = self.create_quote()
+        response = self.api.post(f"{base}/anular/", {"motivo_anulacion": "Duplicada por error"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        response = self.api.post(f"{base}/generar-pdf/")
+        self.assertEqual(response.status_code, 200)
+        quote.refresh_from_db()
+        pdf = PdfReader(BytesIO(self.files[quote.ruta_pdf_cotizacion]))
+        self.assertGreater(len(pdf.pages[0].images), 0)
+        text = "\n".join(page.extract_text() for page in pdf.pages)
+        for expected in [
+            "Representante de prueba", "test@example.com", "Teléfono: 123",
+            "Bodega principal: Calle Uno 123", "Metropolitana", "PDF-001",
+            "Estado: Anulada", "Duplicada por error", f"Usuario responsable: {self.user.pk}",
+        ]:
+            self.assertIn(expected, text)
+
+    def test_tipo_operacion_recalcula_totales_y_se_refleja_en_pdf(self):
+        base, record = self.create_quote()
+        for operacion, iva, total in (
+            ("Internacional", "0.00", "4500000.00"),
+            ("Nacional", "855000.00", "5355000.00"),
+        ):
+            with self.subTest(operacion=operacion):
+                response = self.api.patch(f"{base}/", {
+                    "tipo_operacion_cotizacion": operacion,
+                    "subtotal_cotizacion": 1,
+                    "iva_cotizacion": 999,
+                    "total_cotizacion": 1,
+                    "detalles": [{
+                        "id_producto": self.product.pk,
+                        "descripcion_dc": "Producto prueba",
+                        "cantidad_dc": 3,
+                        "precio_unitario_dc": 1500000,
+                        "subtotal_dc": 1,
+                    }],
+                }, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                self.assertEqual(response.data["subtotal_cotizacion"], "4500000.00")
+                self.assertEqual(response.data["iva_cotizacion"], iva)
+                self.assertEqual(response.data["total_cotizacion"], total)
+                self.assertEqual(response.data["detalles"][0]["subtotal_dc"], "4500000.00")
+                record.refresh_from_db()
+                self.assertEqual(record.tipo_operacion_cotizacion, operacion)
+                response = self.api.post(f"{base}/generar-pdf/")
+                self.assertEqual(response.status_code, 200)
+                record.refresh_from_db()
+                text = "\n".join(
+                    page.extract_text()
+                    for page in PdfReader(BytesIO(self.files[record.ruta_pdf_cotizacion])).pages
+                )
+                self.assertIn(f"Tipo de operación: {operacion}", text)
+                self.assertIn("IVA (0%)" if operacion == "Internacional" else "IVA (19%)", text)
+
+        response = self.api.patch(
+            f"{base}/", {"tipo_operacion_cotizacion": "Internacional"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_cotizacion"], "4500000.00")
+
+    def test_rechaza_tipo_operacion_invalido_sin_modificar_cotizacion(self):
+        base, record = self.create_quote()
+        self.assertEqual(record.tipo_operacion_cotizacion, "Nacional")
+        response = self.api.patch(
+            f"{base}/", {"tipo_operacion_cotizacion": "Exterior"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        record.refresh_from_db()
+        self.assertEqual(record.tipo_operacion_cotizacion, "Nacional")
+
+    # Prepara los usuarios, datos y servicios simulados necesarios para cada prueba.
     def setUp(self):
         self.api = APIClient()
         self.user = Usuario.objects.create(nombre="Admin pruebas", email="pdf@example.com", id_rol=1)
@@ -36,9 +116,12 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.addCleanup(self.quote_storage_patch.stop)
         self.bucket = client.return_value.storage.from_.return_value
         quote_client.return_value.storage.from_.return_value = self.bucket
+        # Simula una subida guardando los bytes del documento bajo su ruta en memoria.
         self.bucket.upload.side_effect = lambda path, content, **kwargs: self.files.update({path: content})
+        # Simula un enlace firmado que incluye la ruta del archivo y el tiempo de vigencia recibido.
         self.bucket.create_signed_url.side_effect = lambda path, ttl: {"signedURL": f"https://storage.example/{path}?ttl={ttl}"}
 
+    # Crea una cotización de prueba con la cantidad indicada de líneas y devuelve su URL y modelo.
     def create_quote(self, lines=1):
         response = self.api.post("/api/cotizaciones/", {
             "id_cliente": self.customer.pk, "fecha_cotizacion": "2026-10-25",
@@ -53,6 +136,7 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.status_code, 201, response.data)
         return f"/api/cotizaciones/{response.data['id_cotizacion']}", Cotizacion.objects.get(pk=response.data["id_cotizacion"])
 
+    # Crea una factura de prueba mediante la API y devuelve su URL y modelo.
     def create_invoice(self):
         response = self.api.post("/api/facturas/", {
             "cliente_id": self.customer.pk, "id_oc": self.order.pk,
@@ -64,6 +148,7 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.assertEqual(invoice.ruta_pdf_factura, "")
         return f"/api/facturas/{invoice.pk}", invoice
 
+    # Genera el PDF de prueba y verifica su almacenamiento, contenido y enlace firmado sin caché.
     def generate(self, base, record, field):
         self.assertEqual(self.api.get(f"{base}/pdf/").status_code, 404)
         response = self.api.post(f"{base}/generar-pdf/")
@@ -73,7 +158,8 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.assertIn(path, self.files)
         pdf = PdfReader(BytesIO(self.files[path]))
         text = "\n".join(page.extract_text() for page in pdf.pages)
-        for expected in ("Cliente & Compañía", "Polímero agrícola", "$2.380,00"):
+        total_esperado = "2,380.00" if isinstance(record, Factura) else "$2.380,00"
+        for expected in ("Cliente & Compañía", "Polímero agrícola", total_esperado):
             self.assertIn(expected, text)
         response = self.api.get(f"{base}/pdf/")
         self.assertEqual(response.status_code, 200)
@@ -81,6 +167,7 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.assertEqual(response["Cache-Control"], "no-store")
         return path
 
+    # Comprueba que una cotización puede crearse, generar y consultar su PDF y regenerarlo después de editarse.
     def test_quote_create_generate_consult_edit_regenerate(self):
         base, quote = self.create_quote()
         previous = self.generate(base, quote, "ruta_pdf_cotizacion")
@@ -92,21 +179,27 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         self.assertNotEqual(previous, current)
         self.assertIn(previous, self.files)
 
+    # Comprueba que una factura puede crearse y generar y consultar su PDF.
     def test_invoice_create_generate_consult(self):
         base, invoice = self.create_invoice()
         self.generate(base, invoice, "ruta_pdf_factura")
 
-    def test_invoice_state_change_invalidates_pdf(self):
+    def test_invoice_payment_preserves_issued_pdf(self):
         base, invoice = self.create_invoice()
         self.generate(base, invoice, "ruta_pdf_factura")
+        original = invoice.ruta_pdf_factura
         response = self.api.patch(f"{base}/acciones/", {"estado": "PAGADA"}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(self.api.get(f"{base}/pdf/").status_code, 404)
+        self.assertEqual(self.api.get(f"{base}/pdf/").status_code, 200)
         self.assertEqual(self.api.post(f"{base}/generar-pdf/").status_code, 200)
         invoice.refresh_from_db()
         pdf = PdfReader(BytesIO(self.files[invoice.ruta_pdf_factura]))
-        self.assertIn("PAGADA", pdf.pages[0].extract_text())
+        self.assertEqual(invoice.estado, "PAGADA")
+        self.assertEqual(invoice.ruta_pdf_factura, original)
+        self.bucket.upload.assert_called_once()
+        self.assertIn(invoice.numero_factura, pdf.pages[0].extract_text())
 
+    # Comprueba que el PDF multipágina conserva el último producto, los totales y la numeración.
     def test_multipage_quote_keeps_last_product_and_totals(self):
         base, quote = self.create_quote(lines=90)
         self.assertEqual(self.api.post(f"{base}/generar-pdf/").status_code, 200)
@@ -119,6 +212,7 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         for number, page in enumerate(pdf.pages, 1):
             self.assertIn(f"Página {number}", page.extract_text())
 
+    # Comprueba que las solicitudes sin sesión o con token inválido se rechazan.
     def test_anonymous_and_invalid_token_are_denied(self):
         base, _ = self.create_quote()
         anonymous = APIClient()
@@ -128,6 +222,7 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
             self.assertEqual(anonymous.get(route).status_code, 401)
             anonymous.credentials()
 
+    # Comprueba que un usuario sin permiso no puede consultar ni generar PDF.
     def test_user_without_permission_cannot_read_or_generate(self):
         base, _ = self.create_quote()
         user = Usuario.objects.create(nombre="Sin permisos", email="denied@example.com", id_rol=3)
@@ -138,14 +233,20 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
                 self.assertEqual(self.api.post(f"{prefix}/generar-pdf/").status_code, 403)
         self.bucket.upload.assert_not_called()
 
+    # Comprueba que un fallo de Storage conserva la asociación anterior del documento.
     def test_storage_failure_preserves_previous_association(self):
         for create, field in ((self.create_quote, "ruta_pdf_cotizacion"), (self.create_invoice, "ruta_pdf_factura")):
             base, record = create()
             original = self.generate(base, record, field)
             self.bucket.upload.side_effect = RuntimeError("Storage unavailable")
-            with self.assertLogs(level="ERROR"):
+            if isinstance(record, Factura):
                 response = self.api.post(f"{base}/generar-pdf/")
-            self.assertGreaterEqual(response.status_code, 500)
+                self.assertEqual(response.status_code, 200)
+            else:
+                with self.assertLogs(level="ERROR"):
+                    response = self.api.post(f"{base}/generar-pdf/")
+                self.assertGreaterEqual(response.status_code, 500)
             record.refresh_from_db()
             self.assertEqual(getattr(record, field), original)
+            # Restablece la subida simulada guardando los bytes por ruta después de probar el fallo de Storage.
             self.bucket.upload.side_effect = lambda path, content, **kwargs: self.files.update({path: content})

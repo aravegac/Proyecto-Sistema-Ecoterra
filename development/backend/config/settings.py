@@ -132,8 +132,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
-    "http://localhost:8443",
-    "http://127.0.0.1:8443",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True

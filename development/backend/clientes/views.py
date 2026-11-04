@@ -1,3 +1,4 @@
+# backend/clientes/views.py
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.exceptions import NotFound
 
@@ -39,13 +40,16 @@ class DireccionListCreateView(ListCreateAPIView):
         "POST": ("direcciones", "Crear"),
     }
 
+    # Añade al contexto del serializer el cliente indicado en la URL.
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["cliente"] = Cliente.objects.get(pk=self.kwargs["cliente_id"])
         return context
 
+    # Devuelve únicamente las direcciones del cliente indicado en la URL.
     def get_queryset(self):
         return Direccion.objects.filter(cliente_id=self.kwargs["cliente_id"])
+    # Guarda la dirección vinculada al cliente de la URL o responde que el cliente no existe.
     def perform_create(self, serializer):
         try:
             cliente = Cliente.objects.get(pk=self.kwargs["cliente_id"])
@@ -64,6 +68,7 @@ class DireccionDetailView(RetrieveUpdateDestroyAPIView):
     "DELETE": ("direcciones", "Eliminar"),
     }
 
+    # Limita la consulta, edición y eliminación de direcciones al cliente de la URL.
     def get_queryset(self):
         return Direccion.objects.filter(cliente_id=self.kwargs["cliente_id"])
 

@@ -19,5 +19,6 @@ class Proveedor(models.Model):
         verbose_name = "proveedor"
         verbose_name_plural = "proveedores"
 
+    # Devuelve el nombre de empresa y el país como representación textual del proveedor.
     def __str__(self):
         return f"{self.nombre_empresa} ({self.pais})"

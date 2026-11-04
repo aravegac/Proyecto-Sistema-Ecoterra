@@ -21,11 +21,13 @@ from django.db.models.functions import Coalesce
 
 from .models import Inventario, Movimiento, Producto
 from .serializers import (
+    CAPACIDAD_ENVASE,
     InventarioSerializer,
     MovimientoSerializer,
     ProductoSerializer,
 )
 # ---------- CÁLCULOS DE STOCK - Productos ----------
+# Anota cada producto con la suma de sus lotes disponibles y la suma de todos sus lotes.
 def productos_con_stock():
     campo_decimal = DecimalField(
         max_digits=12,
@@ -122,6 +124,11 @@ class InventarioDetailView(RetrieveUpdateDestroyAPIView):
     "DELETE": ("lotes", "Eliminar"),
     }
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update()
+        return super().update(request, *args, **kwargs)
+
 
 # ---------- Movimientos ----------
 class MovimientoListView(ListCreateAPIView):
@@ -134,6 +141,7 @@ class MovimientoListView(ListCreateAPIView):
     "POST": ("movimientos", "Crear"),
     }
 
+    # Valida el movimiento, bloquea el lote y registra la entrada, salida o ajuste junto con los stocks anterior y posterior.
     def create(self, request, *args, **kwargs):
         tipo = request.data.get("tipo_movimiento")
         cantidad_raw = request.data.get("cantidad_movimiento")
@@ -201,6 +209,13 @@ class MovimientoListView(ListCreateAPIView):
                 lote.cantidad = lote.cantidad - cantidad
             else:  # Ajuste → ESTABLECE la cantidad final
                 lote.cantidad = cantidad
+
+            capacidad = CAPACIDAD_ENVASE.get(lote.tipo_envase)
+            if capacidad is not None and lote.cantidad > capacidad and lote.cantidad > stock_anterior:
+                return Response(
+                    {"detail": f"El stock no puede superar {capacidad} L para este envase."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             stock_posterior = lote.cantidad
             lote.save(update_fields=["cantidad"])
