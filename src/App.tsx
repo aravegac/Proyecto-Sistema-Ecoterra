@@ -12,7 +12,7 @@ import OrdenesCompra, {
   type PurchaseOrder,
   mapOrdenFromApi,
 } from "./modules/OrdenesCompra"
-import Facturacion, { Invoice } from "./modules/Facturacion" // 👈 Solo una vez, y trae el Invoice correcto
+import Facturacion, { Invoice, mapFacturaFromApi } from "./modules/Facturacion" // 👈 Solo una vez, y trae el Invoice correcto
 import NotasCredito from "./modules/NotasCredito"
 import IaPanel from "./modules/IaPanel"
 import Usuarios, { User, UserInput } from "./modules/Usuarios"
@@ -128,22 +128,6 @@ const mapMovimientoFromApi = (
     user: usuario?.nombre || "—",
   }
 }
-
-// Adapta la factura de la API y convierte sus identificadores e importes al formato de la interfaz.
-const mapFacturaFromApi = (item: any): Invoice => ({
-  id: item.numero_factura,
-  id_interno: Number(item.id_factura ?? item.id),
-  oc: item.oc_numero || "",
-  cliente: item.cliente_nombre || "",
-  fecha: item.fecha_factura,
-  venc: item.fecha_factura,
-  subtotal: Number(item.subtotal_factura),
-  iva: Number(item.iva_factura),
-  total: Number(item.total_factura),
-  estado: item.estado_factura,
-  observacion: item.observacion_factura || "",
-  tipoOperacion: item.tipo_operacion || "Nacional",
-})
 
 // ---------- Datos iniciales (fallback) ----------
 const initialProductos = [

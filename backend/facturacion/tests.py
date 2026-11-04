@@ -10,7 +10,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from config.test_support import SalesTablesMixin
-from clientes.models import Cliente
+from clientes.models import Cliente, Direccion
 from inventario.models import Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
@@ -21,6 +21,169 @@ from ventas.models import OrdenCompra
 
 
 class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_emision_pago_y_anulacion_tienen_reglas_y_trazabilidad(self, storage):
+        bucket = storage.return_value.storage.from_.return_value
+        invoice = self.invoice()
+        url = f"/api/facturas/{invoice.pk}"
+        self.assertEqual(self.api.post(f"{url}/pagar/", {}, format="json").status_code, 400)
+        response = self.api.post(f"{url}/emitir/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "EMITIDA")
+        self.assertTrue(invoice.ruta_pdf_factura.startswith(f"facturas/{invoice.pk}/"))
+        path = invoice.ruta_pdf_factura
+        self.assertEqual(self.api.post(f"{url}/emitir/").status_code, 200)
+        bucket.upload.assert_called_once()
+        response = self.api.post(f"{url}/pagar/", {"id_usuario_pago_factura": 999}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "PAGADA")
+        self.assertEqual(invoice.id_usuario_pago_factura, self.admin.pk)
+        self.assertIsNotNone(invoice.fecha_pago_factura)
+        self.assertEqual(invoice.ruta_pdf_factura, path)
+        for route in ["anular", "pagar", "emitir"]:
+            response = self.api.post(f"{url}/{route}/", {"motivo_anulacion_factura": "Error"}, format="json")
+            self.assertEqual(response.status_code, 400, response.data)
+
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_anulacion_permitida_solo_en_pendientes_o_emitidas(self, storage):
+        storage.return_value.storage.from_.return_value.create_signed_url.return_value = {
+            "signedURL": "https://storage.example/historial.pdf"
+        }
+        for state in ["PENDIENTE", "EMITIDA"]:
+            with self.subTest(state=state):
+                order = OrdenCompra.objects.create(
+                    id_cliente=self.customer, numero_oc=f"OC-CANCEL-{state}",
+                    fecha_oc=date(2026, 11, 4), ruta_documento_oc="oc.pdf",
+                )
+                payload = deepcopy(self.payload)
+                payload["id_oc"] = order.pk
+                response = self.create(payload)
+                invoice = Factura.objects.get(pk=response.data["id"])
+                url = f"/api/facturas/{invoice.pk}"
+                if state == "EMITIDA":
+                    self.assertEqual(self.api.post(f"{url}/emitir/").status_code, 200)
+                    invoice.refresh_from_db()
+                path = invoice.ruta_pdf_factura
+                self.assertEqual(self.api.post(f"{url}/anular/", {}, format="json").status_code, 400)
+                response = self.api.post(f"{url}/anular/", {
+                    "motivo_anulacion_factura": "  Documento duplicado  ", "id_usuario_anulacion_factura": 999,
+                }, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                invoice.refresh_from_db()
+                self.assertEqual(invoice.estado, "ANULADA")
+                self.assertEqual(invoice.motivo_anulacion_factura, "Documento duplicado")
+                self.assertEqual(invoice.id_usuario_anulacion_factura, self.admin.pk)
+                self.assertIsNotNone(invoice.fecha_anulacion_factura)
+                self.assertEqual(invoice.ruta_pdf_factura, path)
+                self.assertEqual(self.api.get(f"{url}/pdf/").status_code, 200 if path else 404)
+                fecha = invoice.fecha_anulacion_factura
+                for route in ["anular", "emitir", "pagar", "generar-pdf"]:
+                    self.assertEqual(self.api.post(f"{url}/{route}/", {
+                        "motivo_anulacion_factura": "Otro motivo",
+                    }, format="json").status_code, 400)
+                invoice.refresh_from_db()
+                self.assertEqual(invoice.fecha_anulacion_factura, fecha)
+                self.assertEqual(invoice.motivo_anulacion_factura, "Documento duplicado")
+
+    def test_estados_finales_bloquean_datos_comerciales_y_borrado(self):
+        invoice = self.invoice()
+        for state in ["EMITIDA", "PAGADA", "ANULADA"]:
+            with self.subTest(state=state):
+                Factura.objects.filter(pk=invoice.pk).update(estado=state)
+                response = self.api.patch(f"/api/facturas/{invoice.pk}/", {
+                    "observacion_factura": "Modificar",
+                    "detalles": [{"id_producto": self.product.pk, "cantidad": 99, "precio_unitario": 100}],
+                }, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.api.delete(f"/api/facturas/{invoice.pk}/").status_code, 405)
+                invoice.refresh_from_db()
+                self.assertEqual(invoice.total, Decimal("2380"))
+                self.assertEqual(invoice.observacion_factura, "")
+                self.assertEqual(invoice.detalles.get().cantidad, Decimal("2"))
+
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_fallo_storage_deja_factura_pendiente_y_permite_reintentar(self, storage):
+        invoice = self.invoice()
+        bucket = storage.return_value.storage.from_.return_value
+        bucket.upload.side_effect = RuntimeError("Storage no disponible")
+        with self.assertLogs("facturacion.views", level="ERROR"):
+            response = self.api.post(f"/api/facturas/{invoice.pk}/emitir/")
+        self.assertEqual(response.status_code, 502)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "PENDIENTE")
+        self.assertEqual(invoice.ruta_pdf_factura, "")
+        bucket.upload.side_effect = None
+        response = self.api.post(f"/api/facturas/{invoice.pk}/emitir/")
+        self.assertEqual(response.status_code, 200, response.data)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "EMITIDA")
+
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_fallo_al_guardar_emision_retira_pdf_y_revierte_estado(self, storage):
+        invoice = self.invoice()
+        bucket = storage.return_value.storage.from_.return_value
+        with patch("facturacion.models.Factura.save", side_effect=IntegrityError("Conflicto")):
+            with self.assertLogs("facturacion.views", level="ERROR"):
+                response = self.api.post(f"/api/facturas/{invoice.pk}/emitir/")
+        self.assertEqual(response.status_code, 502)
+        bucket.remove.assert_called_once_with([bucket.upload.call_args.args[0]])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "PENDIENTE")
+        self.assertEqual(invoice.ruta_pdf_factura, "")
+
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_permisos_de_edicion_y_anulacion_se_aplican_por_accion(self, storage):
+        invoice = self.invoice()
+        user = Usuario.objects.create(
+            nombre="Operador", email="estados-factura@example.com", id_rol=2,
+            permisos={"facturacion:Crear": True, "facturacion:Consultar": True,
+                      "facturacion:Editar": False, "facturacion:Eliminar": False},
+        )
+        self.api.force_authenticate(user=user)
+        url = f"/api/facturas/{invoice.pk}"
+        for route in ["emitir", "pagar", "anular", "generar-pdf"]:
+            self.assertEqual(self.api.post(f"{url}/{route}/").status_code, 403)
+        storage.return_value.storage.from_.return_value.upload.assert_not_called()
+        user.permisos["facturacion:Eliminar"] = True
+        response = self.api.post(f"{url}/anular/", {"motivo_anulacion_factura": "Corrección"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.id_usuario_anulacion_factura, user.pk)
+
+    def test_cambio_estado_por_edicion_directa_se_rechaza(self):
+        invoice = self.invoice()
+        for field in ["estado", "estado_factura"]:
+            response = self.api.patch(f"/api/facturas/{invoice.pk}/", {field: "PAGADA"}, format="json")
+            self.assertEqual(response.status_code, 400)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "PENDIENTE")
+
+    def test_acciones_rechazan_cuerpo_invalido(self):
+        invoice = self.invoice()
+        for ruta, method in [("anular", self.api.post), ("acciones", self.api.patch)]:
+            response = method(f"/api/facturas/{invoice.pk}/{ruta}/", [], format="json")
+            self.assertEqual(response.status_code, 400)
+
+    def test_detalle_completo_y_filtros_por_cliente_y_estado(self):
+        Direccion.objects.create(
+            cliente=self.customer, nombre="Bodega", calle="Av. Principal 123", ciudad="Santiago",
+            region="Metropolitana", pais="Chile", tipo="Despacho",
+            contacto_recepcion="Recepción", telefono_contacto="456",
+        )
+        invoice = self.invoice()
+        response = self.api.get(f"/api/facturas/{invoice.pk}/")
+        self.assertEqual(response.data["cliente_id"], self.customer.pk)
+        self.assertEqual(response.data["id_oc"], self.order.pk)
+        self.assertEqual(response.data["cliente_email"], self.customer.email)
+        self.assertEqual(response.data["cliente_direcciones"][0]["calle"], "Av. Principal 123")
+        self.assertEqual(response.data["detalles_factura"][0]["producto_codigo"], "QA-FAC-1")
+        response = self.api.get(f"/api/facturas/?cliente_id={self.customer.pk}&estado=PENDIENTE")
+        self.assertEqual([item["id"] for item in response.data], [invoice.pk])
+        for query in [f"cliente_id={self.other_customer.pk}", "estado=PAGADA"]:
+            self.assertEqual(self.api.get(f"/api/facturas/?{query}").data, [])
+        self.assertEqual(self.api.get("/api/facturas/?cliente_id=abc").status_code, 400)
     def test_operacion_heredada_observacion_e_importes_en_api_y_pdf(self):
         for operacion, iva, total in [
             ("Nacional", "855000.00", "5355000.00"),
@@ -234,19 +397,23 @@ class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
         second = self.invoice()
         self.assertNotEqual(first.numero_factura, second.numero_factura)
 
-    # Comprueba que todos los estados permitidos se guardan mediante la acción de estado.
-    def test_19_all_supported_states_persist(self):
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_19_accion_historica_respeta_transiciones(self, storage):
         invoice = self.invoice()
-        for state in ("EMITIDA", "PAGADA", "ANULADA", "PENDIENTE"):
+        for state in ("EMITIDA", "PAGADA"):
             response = self.api.patch(f"/api/facturas/{invoice.pk}/acciones/", {"estado": state}, format="json")
             self.assertEqual(response.status_code, 200, response.data)
             invoice.refresh_from_db()
             self.assertEqual(invoice.estado, state)
+        for state in ("ANULADA", "PENDIENTE", "EMITIDA"):
+            response = self.api.patch(f"/api/facturas/{invoice.pk}/acciones/", {"estado": state}, format="json")
+            self.assertEqual(response.status_code, 400)
+        storage.return_value.storage.from_.return_value.upload.assert_called_once()
 
     # Comprueba que un estado inválido no modifica la factura.
     def test_20_invalid_state_does_not_change_record(self):
         invoice = self.invoice()
-        for value in ("INVALIDO", "", None):
+        for value in ("INVALIDO", "", None, [], {}):
             response = self.api.patch(f"/api/facturas/{invoice.pk}/acciones/", {"estado": value}, format="json")
             self.assertEqual(response.status_code, 400)
         invoice.refresh_from_db()
@@ -281,13 +448,12 @@ class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
         self.assertEqual(Factura.objects.count(), 0)
         self.assertEqual(DetalleFactura.objects.count(), 0)
 
-    # Comprueba que eliminar una factura elimina sus detalles y conserva cliente y producto.
-    def test_25_delete_cascades_to_details_in_test_database(self):
+    def test_25_facturas_no_permiten_borrado_fisico(self):
         invoice = self.invoice()
         response = self.api.delete(f"/api/facturas/{invoice.pk}/")
-        self.assertEqual(response.status_code, 204)
-        self.assertEqual(Factura.objects.count(), 0)
-        self.assertEqual(DetalleFactura.objects.count(), 0)
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(Factura.objects.count(), 1)
+        self.assertEqual(DetalleFactura.objects.count(), 1)
         self.assertTrue(Cliente.objects.filter(pk=self.customer.pk).exists())
         self.assertTrue(Producto.objects.filter(pk=self.product.pk).exists())
 

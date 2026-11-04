@@ -18,6 +18,7 @@ from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 
 from reportlab.lib.utils import ImageReader  
 from reportlab.platypus import Image          
@@ -414,10 +415,12 @@ class OrdenCompraViewSet(VentasOrdenCompraViewSet):
 # ============================================================
 
 class FacturaViewSet(viewsets.ModelViewSet):
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
     queryset = Factura.objects.select_related(
         "id_cliente",
         "id_orden_compra"
     ).prefetch_related(
+        "id_cliente__direcciones",
         Prefetch(
             "detalles",
             queryset=DetalleFactura.objects.select_related("id_producto")
@@ -437,8 +440,31 @@ class FacturaViewSet(viewsets.ModelViewSet):
         "DELETE": ("facturacion", "Eliminar"),
     }
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        cliente = self.request.query_params.get("cliente_id")
+        estado = self.request.query_params.get("estado")
+        if cliente:
+            if not cliente.isdecimal():
+                raise ValidationError({"cliente_id": "Selecciona un cliente válido."})
+            queryset = queryset.filter(id_cliente_id=cliente)
+        if estado:
+            queryset = queryset.filter(estado=estado.upper())
+        return queryset
+
+    def get_permissions(self):
+        if self.action == "anular" or (
+            self.action == "estado" and isinstance(self.request.data, dict) and self.request.data.get("estado") == "ANULADA"
+        ):
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("facturacion", "Eliminar")}
+        elif self.action in {"emitir", "generar_pdf", "marcar_pagada", "estado"}:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("facturacion", "Editar")}
+        return super().get_permissions()
+
     # Actualiza la factura y convierte los conflictos de integridad en una respuesta HTTP 409.
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         try:
             return super().update(request, *args, **kwargs)
         except IntegrityError:
@@ -478,58 +504,50 @@ class FacturaViewSet(viewsets.ModelViewSet):
     # POST /api/facturas/{id}/generar-pdf/
     # --------------------------------------------------------
 
-    # Genera y sube un PDF nuevo de la factura a Supabase y guarda su ruta en la factura.
-    @action(
-        detail=True,
-        methods=["post"],
-        url_path="generar-pdf",
-    )
-    
+    @action(detail=True, methods=["post"], url_path="generar-pdf")
+    @transaction.atomic
     def generar_pdf(self, request, pk=None):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         factura = self.get_object()
+        if self.action in {"emitir", "estado"} and factura.estado not in {"PENDIENTE", "EMITIDA"}:
+            raise ValidationError("El estado actual no permite emitir esta factura.")
+        if factura.estado == "ANULADA":
+            raise ValidationError("Una factura anulada solo permite consultar su documento histórico.")
+        if factura.estado in {"EMITIDA", "PAGADA"} and factura.ruta_pdf_factura:
+            return Response(self.get_serializer(factura).data)
+        if not factura.detalles.exists():
+            raise ValidationError("La factura necesita al menos un producto para emitirse.")
+        self.get_serializer(factura).validar_orden_disponible(factura.id_orden_compra)
+        if factura.id_orden_compra.id_cliente_id != factura.id_cliente_id:
+            raise ValidationError("El cliente de la factura no corresponde a la orden de compra.")
+        if factura.estado == "PENDIENTE":
+            factura.estado = "EMITIDA"
+            factura.fecha_emision = timezone.localdate()
 
+        bucket = None
+        ruta = f"facturas/{factura.pk}/{uuid4().hex}.pdf"
+        uploaded = False
         try:
-            contenido_pdf = generar_pdf_factura(factura)
-
-            cliente_supabase = obtener_cliente_supabase()
-            bucket = obtener_nombre_bucket()
-
-            ruta_storage = f"facturas/{factura.pk}/{uuid4().hex}.pdf"
-
-            cliente_supabase.storage.from_(bucket).upload(
-                ruta_storage,
-                contenido_pdf,
-                file_options={
-                    "content-type": "application/pdf",
-                    "upsert": "false",
-                },
-            )
-
-            factura.ruta_pdf_factura = ruta_storage
-            factura.save(update_fields=["ruta_pdf_factura"])
-
-            return Response(
-                {
-                    "mensaje": "PDF generado y guardado correctamente.",
-                    "numero_factura": factura.numero_factura,
-                    "ruta_pdf_factura": factura.ruta_pdf_factura,
-                },
-                status=status.HTTP_200_OK,
-            )
-
+            contenido = generar_pdf_factura(factura)
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, contenido, file_options={"content-type": "application/pdf", "upsert": "false"})
+            uploaded = True
+            factura.ruta_pdf_factura = ruta
+            factura.save(update_fields=["estado", "fecha_emision", "ruta_pdf_factura"])
+            return Response(self.get_serializer(factura).data)
         except Exception:
-            logger.exception("Error al generar o guardar el PDF de la factura")
-            return Response(
-                {
-                    "error": (
-                        "No se pudo generar o guardar el PDF. "
-                        "Revisa la configuración de Supabase Storage "
-                        "y los registros del backend."
-                    )
-                },
-                status=500,
-            )
+            transaction.set_rollback(True)
+            if uploaded:
+                try:
+                    bucket.remove([ruta])
+                except Exception:
+                    logger.exception("No se pudo retirar el PDF de una emisión fallida")
+            logger.exception("Error al emitir o generar el PDF de la factura")
+            return Response({"error": "No se pudo emitir la factura y guardar su PDF. Intenta nuevamente."}, status=502)
 
+    @action(detail=True, methods=["post"], url_path="emitir")
+    def emitir(self, request, pk=None):
+        return self.generar_pdf(request, pk)
 
     # --------------------------------------------------------
     # OBTENER URL FIRMADA TEMPORAL
@@ -545,12 +563,11 @@ class FacturaViewSet(viewsets.ModelViewSet):
     def obtener_pdf(self, request, pk=None):
         factura = self.get_object()
 
-        if not factura.ruta_pdf_factura:
+        if factura.estado == "PENDIENTE" or not factura.ruta_pdf_factura:
             return Response(
                 {
                     "error": (
-                        "Esta factura todavía no tiene un PDF guardado. "
-                        "Primero debes generarlo."
+                        "La factura debe estar emitida y tener un PDF guardado para consultarlo."
                     )
                 },
                 status=status.HTTP_404_NOT_FOUND,
@@ -611,35 +628,43 @@ class FacturaViewSet(viewsets.ModelViewSet):
     # PATCH /api/facturas/{id}/acciones/
     # --------------------------------------------------------
 
-    # Valida y cambia el estado de la factura e invalida el PDF guardado anteriormente.
-    @action(
-        detail=True,
-        methods=["patch"],
-        url_path="acciones",
-    )
-    def estado(self, request, pk=None):
+    @transaction.atomic
+    def cambiar_estado(self, request, nuevo_estado, pk):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         factura = self.get_object()
-        nuevo_estado = request.data.get("estado")
-
-        estados_validos = [
-            opcion[0]
-            for opcion in Factura.ESTADO_CHOICES
-        ]
-
-        if nuevo_estado not in estados_validos:
-            return Response(
-                {
-                    "error": "Estado no válido.",
-                    "estados_permitidos": estados_validos,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        permitidos = {"PENDIENTE": {"ANULADA"}, "EMITIDA": {"PAGADA", "ANULADA"}}
+        if not isinstance(nuevo_estado, str) or nuevo_estado not in permitidos.get(factura.estado, set()):
+            raise ValidationError({"estado": "El estado actual no permite esta acción."})
+        campos = ["estado"]
+        if nuevo_estado == "ANULADA":
+            motivo = request.data.get("motivo_anulacion_factura") if isinstance(request.data, dict) else None
+            if not isinstance(motivo, str) or not motivo.strip():
+                raise ValidationError({"motivo_anulacion_factura": "Ingresa el motivo de anulación."})
+            factura.fecha_anulacion_factura = timezone.now()
+            factura.motivo_anulacion_factura = motivo.strip()
+            factura.id_usuario_anulacion_factura = request.user.pk
+            campos += ["fecha_anulacion_factura", "motivo_anulacion_factura", "id_usuario_anulacion_factura"]
+        else:
+            factura.fecha_pago_factura = timezone.now()
+            factura.id_usuario_pago_factura = request.user.pk
+            campos += ["fecha_pago_factura", "id_usuario_pago_factura"]
         factura.estado = nuevo_estado
-        factura.ruta_pdf_factura = ""
-        factura.save(update_fields=["estado", "ruta_pdf_factura"])
+        factura.save(update_fields=campos)
+        return Response(self.get_serializer(factura).data)
 
-        return Response(
-            FacturaSerializer(factura).data,
-            status=status.HTTP_200_OK,
-        )
+    @action(detail=True, methods=["post"], url_path="anular")
+    def anular(self, request, pk=None):
+        return self.cambiar_estado(request, "ANULADA", pk)
+
+    @action(detail=True, methods=["post"], url_path="pagar")
+    def marcar_pagada(self, request, pk=None):
+        return self.cambiar_estado(request, "PAGADA", pk)
+
+    @action(detail=True, methods=["patch"], url_path="acciones")
+    def estado(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationError("Envía los datos de la acción como un objeto.")
+        nuevo_estado = request.data.get("estado")
+        if nuevo_estado == "EMITIDA":
+            return self.generar_pdf(request, pk)
+        return self.cambiar_estado(request, nuevo_estado, pk)

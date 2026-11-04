@@ -8,6 +8,7 @@ from .models import Factura, DetalleFactura
 from ventas.models import OrdenCompra
 from ventas.serializers import OrdenCompraFacturacionSerializer as OrdenCompraSerializer
 from clientes.models import Cliente
+from clientes.serializers import DireccionSerializer
 from inventario.models import Producto
 
 
@@ -29,6 +30,8 @@ class DetalleFacturaEntradaSerializer(serializers.Serializer):
 
 
 class DetalleFacturaSerializer(serializers.ModelSerializer):
+    producto_codigo = serializers.CharField(source="id_producto.codigo", read_only=True)
+    producto_unidad = serializers.CharField(source="id_producto.unidad", read_only=True)
     producto_nombre = serializers.CharField(
         source="id_producto.nombre",
         read_only=True,
@@ -42,6 +45,8 @@ class DetalleFacturaSerializer(serializers.ModelSerializer):
             "id_factura",
             "id_producto",
             "producto_nombre",
+            "producto_codigo",
+            "producto_unidad",
             "descripcion_df",
             "cantidad",
             "precio_unitario",
@@ -53,10 +58,17 @@ class DetalleFacturaSerializer(serializers.ModelSerializer):
 
 class FacturaSerializer(serializers.ModelSerializer):
     tipo_operacion = serializers.CharField(read_only=True)
+    cliente_rut = serializers.CharField(source="id_cliente.rut", read_only=True)
+    cliente_telefono = serializers.CharField(source="id_cliente.telefono", read_only=True)
+    cliente_email = serializers.CharField(source="id_cliente.email", read_only=True)
+    cliente_representante = serializers.CharField(source="id_cliente.representante", read_only=True)
+    cliente_pais = serializers.CharField(source="id_cliente.pais", read_only=True)
+    cliente_region = serializers.CharField(source="id_cliente.region", read_only=True)
+    cliente_ciudad = serializers.CharField(source="id_cliente.ciudad", read_only=True)
+    cliente_direcciones = DireccionSerializer(source="id_cliente.direcciones", many=True, read_only=True)
     cliente_id = serializers.PrimaryKeyRelatedField(
         queryset=Cliente.objects.all(),
         source="id_cliente",
-        write_only=True,
         required=False,
     )
 
@@ -75,7 +87,6 @@ class FacturaSerializer(serializers.ModelSerializer):
     id_oc = serializers.PrimaryKeyRelatedField(
         queryset=OrdenCompra.objects.all(),
         source="id_orden_compra",
-        write_only=True,
         required=False,
     )
 
@@ -142,6 +153,8 @@ class FacturaSerializer(serializers.ModelSerializer):
             "cliente_id",
             "id_cliente",
             "cliente_nombre",
+            "cliente_rut", "cliente_telefono", "cliente_email", "cliente_representante",
+            "cliente_pais", "cliente_region", "cliente_ciudad", "cliente_direcciones",
             "id_orden_compra",
             "id_oc",
             "oc_numero",
@@ -158,6 +171,8 @@ class FacturaSerializer(serializers.ModelSerializer):
             "ruta_pdf_factura",
             "observacion_factura",
             "tipo_operacion",
+            "fecha_anulacion_factura", "motivo_anulacion_factura", "id_usuario_anulacion_factura",
+            "fecha_pago_factura", "id_usuario_pago_factura",
             "detalles",
             "detalles_factura",
         ]
@@ -169,6 +184,8 @@ class FacturaSerializer(serializers.ModelSerializer):
             "iva",
             "total",
             "estado",
+            "fecha_anulacion_factura", "motivo_anulacion_factura", "id_usuario_anulacion_factura",
+            "fecha_pago_factura", "id_usuario_pago_factura",
         ]
 
     # Obtiene el número de la orden asociada a la factura usando su identificador como alternativa.
@@ -209,6 +226,10 @@ class FacturaSerializer(serializers.ModelSerializer):
 
     # Exige cliente, orden y productos, comprueba su coherencia y rechaza órdenes facturadas o productos repetidos.
     def validate(self, attrs):
+        if self.instance and self.instance.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar facturas pendientes.")
+        if self.instance and ("estado" in self.initial_data or "estado_factura" in self.initial_data):
+            raise serializers.ValidationError({"estado": "Usa las acciones Emitir, Marcar pagada o Anular."})
         cliente = attrs.get("id_cliente", getattr(self.instance, "id_cliente", None))
         orden = attrs.get("id_orden_compra", getattr(self.instance, "id_orden_compra", None))
         detalles = attrs.get("detalles")
@@ -325,6 +346,8 @@ class FacturaSerializer(serializers.ModelSerializer):
         orden = OrdenCompra.objects.select_for_update().get(pk=orden.pk)
         self.validar_orden_disponible(orden)
         factura = Factura.objects.select_for_update().get(pk=instance.pk)
+        if factura.estado != "PENDIENTE":
+            raise serializers.ValidationError("Solo se pueden editar facturas pendientes.")
         cliente = validated_data.get("id_cliente", factura.id_cliente)
         if orden.id_cliente_id != cliente.pk:
             raise serializers.ValidationError({"cliente_id": "La orden de compra cambió de cliente. Vuelve a seleccionarla."})

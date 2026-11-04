@@ -9,6 +9,7 @@ import {
   PageTitle,
   AuthUser,
   authHeaders,
+  can,
 } from "../shared"
 
 export type Invoice = {
@@ -24,7 +25,63 @@ export type Invoice = {
   estado: string
   observacion?: string
   tipoOperacion?: string
+  clienteId?: number
+  ocId?: number
+  rutaPDF?: string
 }
+
+export const mapFacturaFromApi = (data: any): Invoice => ({
+  id: String(data.numero_factura ?? data.id),
+  id_interno: Number(data.id_factura ?? data.id),
+  clienteId: data.cliente_id == null ? undefined : Number(data.cliente_id),
+  ocId: data.id_oc == null ? undefined : Number(data.id_oc),
+  oc: String(data.oc_numero || ""),
+  cliente: data.cliente_nombre || "",
+  fecha: String(data.fecha_factura ?? data.fecha_emision ?? ""),
+  venc: String(data.fecha_factura ?? data.fecha_emision ?? ""),
+  subtotal: Number(data.subtotal_factura ?? data.subtotal ?? 0),
+  iva: Number(data.iva_factura ?? data.iva ?? 0),
+  total: Number(data.total_factura ?? data.total ?? 0),
+  estado: estadoLegible(data.estado_factura ?? data.estado ?? "PENDIENTE"),
+  observacion: data.observacion_factura || "",
+  tipoOperacion: data.tipo_operacion || "Nacional",
+  rutaPDF: data.ruta_pdf_factura || "",
+})
+
+type InvoiceDetail = {
+  id: number
+  numero_factura: string
+  cliente_id: number
+  id_oc: number
+  cliente_nombre: string
+  cliente_rut: string
+  cliente_telefono: string
+  cliente_email: string
+  cliente_representante: string | null
+  cliente_pais: string
+  cliente_region: string
+  cliente_ciudad: string
+  cliente_direcciones: { id: number; nombre: string; calle: string; ciudad: string; region: string; pais: string }[]
+  fecha_emision: string
+  estado: string
+  subtotal: string
+  iva: string
+  total: string
+  oc_numero: string
+  tipo_operacion: string
+  observacion_factura: string
+  ruta_pdf_factura: string
+  fecha_anulacion_factura: string | null
+  motivo_anulacion_factura: string | null
+  id_usuario_anulacion_factura: number | null
+  fecha_pago_factura: string | null
+  id_usuario_pago_factura: number | null
+  detalles_factura: {
+    id: number; id_producto: number; producto_nombre: string; producto_codigo: string; producto_unidad: string
+    descripcion_df: string; cantidad: string; precio_unitario: string; subtotal_df: string
+  }[]
+}
+type InvoiceAction = "emitir" | "pagar" | "anular"
 
 type ProductoAPI = {
   id: number
@@ -161,6 +218,19 @@ export default function Facturacion({
 }: FacturacionProps) {
   const [invoices, setInvoices] = useState<Invoice[]>(facturas)
   const [preview, setPreview] = useState<Invoice | null>(null)
+  const [clientFilter, setClientFilter] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
+  const [previewDetail, setPreviewDetail] = useState<InvoiceDetail | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState("")
+  const [previewRetry, setPreviewRetry] = useState(0)
+  const [editingInvoiceId, setEditingInvoiceId] = useState<number | null>(null)
+  const [editingLoading, setEditingLoading] = useState(false)
+  const [invoiceAction, setInvoiceAction] = useState<{ invoice: Invoice; action: InvoiceAction } | null>(null)
+  const [actionReason, setActionReason] = useState("")
+  const [actionError, setActionError] = useState("")
+  const [actionLoading, setActionLoading] = useState(false)
+  const [listError, setListError] = useState("")
   const [showNew, setShowNew] = useState(false)
 
   const [productos, setProductos] = useState<ProductoAPI[]>([])
@@ -296,6 +366,105 @@ export default function Facturacion({
     return () => { active = false; controller.abort() }
   }, [showNew, ordenSeleccionada, authUser, documentRetry])
 
+  useEffect(() => {
+    setPreviewDetail(null)
+    setPreviewError("")
+    if (!preview) return
+    let active = true
+    setPreviewLoading(true)
+    const load = async () => {
+      try {
+        const data = await fetchInvoiceDetail(preview)
+        if (active) setPreviewDetail(data)
+      } catch (error) {
+        if (active) setPreviewError(error instanceof Error ? error.message : "No se pudo cargar la factura.")
+      } finally {
+        if (active) setPreviewLoading(false)
+      }
+    }
+    void load()
+    return () => { active = false }
+  }, [preview?.id, preview?.id_interno, authUser, previewRetry])
+
+  const filteredInvoices = invoices.filter((invoice) =>
+    (!clientFilter || String(invoice.clienteId ?? invoice.cliente) === clientFilter) &&
+    (!statusFilter || invoice.estado.toUpperCase() === statusFilter),
+  )
+  const clientOptions = [...new Map(invoices.map((invoice) =>
+    [String(invoice.clienteId ?? invoice.cliente), invoice.cliente],
+  )).entries()].sort((a, b) => a[1].localeCompare(b[1], "es"))
+  const editingInvoice = invoices.find((invoice) => invoice.id_interno === editingInvoiceId)
+
+  const invoiceId = async (invoice: Invoice): Promise<number> => {
+    if (invoice.id_interno && Number.isInteger(invoice.id_interno)) return invoice.id_interno
+    const response = await fetch("/api/facturas/", { headers: authHeaders(authUser) })
+    const data = await response.json()
+    if (!response.ok) throw new Error(errorDeRespuesta(data, response.status))
+    const found = extraerLista(data)?.find((item) => item.numero_factura === invoice.id)
+    const id = Number(found?.id_factura ?? found?.id)
+    if (!Number.isInteger(id) || id <= 0) throw new Error("No se encontró la factura.")
+    return id
+  }
+
+  const fetchInvoiceDetail = async (invoice: Invoice): Promise<InvoiceDetail> => {
+    const id = await invoiceId(invoice)
+    const response = await fetch(`/api/facturas/${id}/`, { headers: authHeaders(authUser) })
+    const data = await response.json()
+    if (!response.ok) throw new Error(errorDeRespuesta(data, response.status))
+    return data
+  }
+
+  const syncInvoice = (data: any) => {
+    const saved = mapFacturaFromApi(data)
+    setInvoices((current) => [saved, ...current.filter((invoice) => invoice.id !== saved.id)])
+    onCreated(saved)
+    return saved
+  }
+
+  const openEditInvoice = async (invoice: Invoice) => {
+    setEditingLoading(true)
+    setListError("")
+    try {
+      const data = await fetchInvoiceDetail(invoice)
+      if (data.estado !== "PENDIENTE") throw new Error("Solo se pueden editar facturas pendientes.")
+      setEditingInvoiceId(data.id)
+      setOrdenSeleccionada(String(data.id_oc))
+      setObservacion(data.observacion_factura || "")
+      setDetalles(data.detalles_factura.map((line) => ({
+        producto_id: String(line.id_producto), cantidad: String(line.cantidad), precio_unitario: String(line.precio_unitario),
+      })))
+      setErrorGuardado("")
+      setShowNew(true)
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : "No se pudo cargar la factura.")
+    } finally {
+      setEditingLoading(false)
+    }
+  }
+
+  const confirmAction = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!invoiceAction || actionLoading) return
+    setActionLoading(true)
+    setActionError("")
+    try {
+      const id = await invoiceId(invoiceAction.invoice)
+      const response = await fetch(`/api/facturas/${id}/${invoiceAction.action}/`, {
+        method: "POST", headers: authHeaders(authUser),
+        body: JSON.stringify(invoiceAction.action === "anular" ? { motivo_anulacion_factura: actionReason.trim() } : {}),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(errorDeRespuesta(data, response.status))
+      syncInvoice(data)
+      if (preview?.id_interno === id) setPreviewDetail(data)
+      setInvoiceAction(null)
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "No se pudo completar la acción.")
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   const ordenActual = ordenesCompra.find(
   (orden) =>
     String(orden.id_oc) === String(ordenSeleccionada),
@@ -318,7 +487,7 @@ export default function Facturacion({
   const ivaCalculado = redondearImporte(subtotalCalculado * ivaRate / 100)
   const totalCalculado = subtotalCalculado + ivaCalculado
 
-  const totalFacturado = invoices.reduce(
+  const totalFacturado = invoices.filter((invoice) => ["EMITIDA", "PAGADA"].includes(invoice.estado.toUpperCase())).reduce(
     (sum, invoice) =>
       sum + Number(invoice.total ?? invoice.subtotal + invoice.iva),
     0,
@@ -334,13 +503,11 @@ export default function Facturacion({
       ["Pendiente", "PENDIENTE"].includes(invoice.estado),
   ).length
 
-  const vencidas = invoices.filter(
-    (invoice) =>
-      ["Vencida", "VENCIDA"].includes(invoice.estado),
-  ).length
+  const anuladas = invoices.filter((invoice) => invoice.estado.toUpperCase() === "ANULADA").length
 
 
   const openNewInvoice = () => {
+    setEditingInvoiceId(null)
     setOrdenSeleccionada("")
     setObservacion("")
     setDetalles([createDetalle()])
@@ -355,76 +522,20 @@ export default function Facturacion({
     setErrorGuardado("")
   }
 
-const downloadInvoicePdf = async (invoice: Invoice) => {
-  const printWindow = window.open("about:blank", "_blank")
-
-  if (!printWindow) {
-    alert("Permite las ventanas emergentes para abrir el PDF.")
-    return
+  const downloadInvoicePdf = async (invoice: Invoice) => {
+    if (invoice.estado.toUpperCase() === "PENDIENTE") return
+    const tab = window.open("about:blank", "_blank")
+    if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
+    tab.opener = null
+    tab.document.body.textContent = "Cargando PDF…"
+    try {
+      const id = await invoiceId(invoice)
+      tab.location.href = await getDocumentPdfUrl(`/api/facturas/${id}`, authUser)
+    } catch (error) {
+      tab.close()
+      alert(error instanceof Error ? error.message : "No se pudo abrir el PDF.")
+    }
   }
-
-  if (!authUser) {
-    printWindow.close()
-    alert("Tu sesión ha expirado. Inicia sesión nuevamente.")
-    return
-  }
-
-  printWindow.document.title = `Factura ${invoice.id}`
-  printWindow.opener = null
-  printWindow.document.body.textContent = "Cargando PDF..."
-
-  try {
-    const headers = authHeaders(authUser)
-
-    const respuestaFacturas = await fetch("/api/facturas/", {
-      headers,
-    })
-
-    const datosFacturas = await respuestaFacturas
-      .json()
-      .catch(() => null)
-
-    if (!respuestaFacturas.ok) {
-      throw new Error(
-        errorDeRespuesta(datosFacturas, respuestaFacturas.status),
-      )
-    }
-
-    const listaFacturas = extraerLista(datosFacturas)
-
-    if (!listaFacturas) {
-      throw new Error("La API no devolvió una lista de facturas válida.")
-    }
-
-    const facturaAPI = listaFacturas.find(
-      (item: any) =>
-        item.numero_factura === invoice.id
-    )
-
-    if (!facturaAPI) {
-      throw new Error(
-        `No se encontró la factura ${invoice.id} en el backend.`
-      )
-    }
-
-    const facturaId =
-      facturaAPI.id_factura ?? facturaAPI.id
-
-    if (facturaId === undefined || facturaId === null) {
-      throw new Error("No se encontró el ID interno de la factura.")
-    }
-
-    printWindow.location.href = await getDocumentPdfUrl(`/api/facturas/${facturaId}`, authUser)
-  } catch (error) {
-    printWindow.close()
-
-    alert(
-      error instanceof Error
-        ? error.message
-        : "No se pudo abrir el PDF de la factura."
-    )
-  }
-}
 
   const guardarFactura = async () => {
     if (guardando) return
@@ -481,8 +592,8 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
     setGuardando(true)
 
     try {
-      const respuesta = await fetch("/api/facturas/", {
-        method: "POST",
+      const respuesta = await fetch(editingInvoiceId ? `/api/facturas/${editingInvoiceId}/` : "/api/facturas/", {
+        method: editingInvoiceId ? "PUT" : "POST",
         headers: {
           ...authHeaders(authUser),
           "Content-Type": "application/json",
@@ -507,42 +618,11 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
         )
       }
 
-      const facturaCreada: Invoice = {
-        id_interno: Number(data.id_factura ?? data.id),
-        observacion: data.observacion_factura || "",
-        tipoOperacion: data.tipo_operacion || tipoOperacion,
-        id: String(data.numero_factura ?? data.id),
-        oc: String(
-          data.oc_numero ?? ordenActual.numero_oc ?? ordenActual.id_oc,
-        ),
-        cliente:
-          data.cliente_nombre ||
-          nombreCliente ||
-          `Cliente ${clienteId}`,
-        fecha: String(
-          data.fecha_factura ?? data.fecha_emision ?? "",
-        ),
-        venc: String(data.fecha_factura ?? data.fecha_emision ?? ""),
-        subtotal: Number(
-          data.subtotal_factura ?? data.subtotal ?? 0,
-        ),
-        iva: Number(data.iva_factura ?? data.iva ?? 0),
-        total: Number(data.total_factura ?? data.total ?? 0),
-        estado: estadoLegible(
-          data.estado_factura ?? data.estado ?? "PENDIENTE",
-        ),
-      }
-
-      setInvoices((actuales) => [
-        facturaCreada,
-        ...actuales.filter(
-          (item) => item.id !== facturaCreada.id,
-        ),
-      ])
-      onCreated(facturaCreada)
+      const facturaCreada = syncInvoice(data)
 
       setPreview(facturaCreada)
       setShowNew(false)
+      setEditingInvoiceId(null)
       setOrdenSeleccionada("")
       setDetalles([createDetalle()])
       setErrorGuardado("")
@@ -565,6 +645,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
       >
         <button
           className="btn btn-primary"
+          disabled={!can(authUser, "facturacion", "Crear")}
           onClick={openNewInvoice}
         >
           <Ico p={I.plus} size={14} /> Nueva factura
@@ -589,17 +670,35 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
           </div>
         </div>
         <div className="kpi">
-          <div className="kpi-label">Vencidas</div>
+          <div className="kpi-label">Anuladas</div>
           <div className="kpi-value tabular facturacion-danger-value">
-            {vencidas}
+            {anuladas}
           </div>
         </div>
       </div>
 
-      <div className="panel">
-        {invoices.length === 0 ? (
+      <div className="facturacion-filters">
+        <div className="field">
+          <label className="label" htmlFor="invoice-client-filter">Cliente</label>
+          <select id="invoice-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+            <option value="">Todos los clientes</option>
+            {clientOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="invoice-status-filter">Estado</label>
+          <select id="invoice-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">Todos los estados</option>
+            {["PENDIENTE", "EMITIDA", "PAGADA", "ANULADA"].map((state) => <option key={state} value={state}>{estadoLegible(state)}</option>)}
+          </select>
+        </div>
+      </div>
+      {listError && <p role="alert">{listError}</p>}
+      {editingLoading && <p role="status">Cargando factura para editar…</p>}
+      <div className="panel facturacion-table-panel">
+        {filteredInvoices.length === 0 ? (
           <p style={{ padding: 20 }}>
-            No hay facturas para mostrar.
+            No hay facturas para los filtros seleccionados.
           </p>
         ) : (
           <table className="dt w-full">
@@ -616,7 +715,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
               </tr>
             </thead>
             <tbody>
-              {invoices.map((invoice) => (
+              {filteredInvoices.map((invoice) => (
                 <tr key={invoice.id}>
                   <td className="facturacion-id-cell">
                     {invoice.id}
@@ -659,10 +758,23 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                       <button
                         className="btn btn-ghost btn-sm"
                         title="Imprimir o guardar como PDF"
+                        disabled={invoice.estado.toUpperCase() === "PENDIENTE" || (!invoice.rutaPDF && (invoice.estado.toUpperCase() === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
                         onClick={() => downloadInvoicePdf(invoice)}
                       >
                         <Ico p={I.download} size={13} />
                       </button>
+                      <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${invoice.id}`}
+                        disabled={editingLoading || invoice.estado.toUpperCase() !== "PENDIENTE" || !can(authUser, "facturacion", "Editar")}
+                        onClick={() => void openEditInvoice(invoice)}><Ico p={I.edit} size={13} /></button>
+                      {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
+                        const state = invoice.estado.toUpperCase()
+                        const allowed = action === "emitir" ? state === "PENDIENTE" : action === "pagar" ? state === "EMITIDA" : ["PENDIENTE", "EMITIDA"].includes(state)
+                        return <button key={action} className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
+                          disabled={!allowed || !can(authUser, "facturacion", action === "anular" ? "Eliminar" : "Editar")}
+                          onClick={() => { setInvoiceAction({ invoice, action }); setActionReason(""); setActionError("") }}>
+                          {action === "emitir" ? "Emitir" : action === "pagar" ? "Marcar pagada" : "Anular"}
+                        </button>
+                      })}
                     </div>
                   </td>
                 </tr>
@@ -673,77 +785,95 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
       </div>
 
       {preview && (
-        <div
-          className="modal-backdrop"
-          onClick={() => setPreview(null)}
-        >
-          <div
-            className="modal facturacion-modal"
-            onClick={(event) => event.stopPropagation()}
-          >
+        <div className="modal-backdrop" onClick={() => setPreview(null)}>
+          <div className="modal facturacion-modal facturacion-modal-wide" role="dialog" aria-modal="true"
+            aria-labelledby="invoice-preview-title" onClick={(event) => event.stopPropagation()}>
             <div className="facturacion-modal-header">
-              <div>
-                <h2 className="facturacion-modal-title">
-                  Vista previa — {preview.id}
-                </h2>
-                <p className="facturacion-modal-subtitle">
-                  Documento electrónico
-                </p>
-              </div>
-              <button
-                aria-label="Cerrar vista previa de factura"
-                onClick={() => setPreview(null)}
-                className="facturacion-icon-button"
-              >
-                <Ico p={I.x} size={18} />
-              </button>
+              <h2 id="invoice-preview-title" className="facturacion-modal-title">Factura {preview.id}</h2>
+              <button aria-label="Cerrar vista previa de factura" className="facturacion-icon-button" onClick={() => setPreview(null)}><Ico p={I.x} size={18} /></button>
             </div>
-
-            <div className="facturacion-preview-card">
-              <div className="facturacion-preview-header">
-                <strong className="facturacion-preview-brand">
-                  Ecoterra
-                </strong>
-                <strong>{preview.id}</strong>
+            {previewLoading ? <p role="status">Cargando detalle de factura…</p> : previewError ? <div role="alert">
+              <p>{previewError}</p>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPreviewRetry((value) => value + 1)}>Reintentar</button>
+            </div> : previewDetail && <>
+              <dl className="facturacion-detail-grid">
+                {[
+                  ["Cliente", previewDetail.cliente_nombre], ["RUT", previewDetail.cliente_rut],
+                  ["Orden de compra", previewDetail.oc_numero], ["Fecha de emisión", previewDetail.fecha_emision],
+                  ["Estado", estadoLegible(previewDetail.estado)], ["Tipo de operación", previewDetail.tipo_operacion],
+                  ["Teléfono", previewDetail.cliente_telefono], ["Email", previewDetail.cliente_email],
+                  ["Representante", previewDetail.cliente_representante],
+                  ["Ubicación", [previewDetail.cliente_pais, previewDetail.cliente_region, previewDetail.cliente_ciudad].filter(Boolean).join(" · ")],
+                ].map(([label, value]) => <div key={label}><dt className="label">{label}</dt><dd>{value || "—"}</dd></div>)}
+              </dl>
+              {previewDetail.cliente_direcciones.length > 0 && <section className="facturacion-detail-section">
+                <h3>Direcciones del cliente</h3>
+                {previewDetail.cliente_direcciones.map((address) => <p key={address.id}>{address.nombre}: {[address.calle, address.ciudad, address.region, address.pais].filter(Boolean).join(", ")}</p>)}
+              </section>}
+              <section className="facturacion-detail-section">
+                <h3>Productos / Servicios</h3>
+                <div className="facturacion-table-panel"><table className="dt w-full">
+                  <thead><tr><th>Código</th><th>Descripción</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+                  <tbody>{previewDetail.detalles_factura.map((line) => <tr key={line.id}>
+                    <td>{line.producto_codigo}</td><td>{line.descripcion_df || line.producto_nombre}</td>
+                    <td>{Number(line.cantidad).toLocaleString("es-CL")} {line.producto_unidad}</td>
+                    <td>{fmtCLP(Number(line.precio_unitario))}</td><td>{fmtCLP(Number(line.subtotal_df))}</td>
+                  </tr>)}</tbody>
+                </table></div>
+              </section>
+              <div className="facturacion-summary">
+                <div className="facturacion-preview-totals"><span>Subtotal neto</span><span>{fmtCLP(Number(previewDetail.subtotal))}</span></div>
+                <div className="facturacion-preview-totals"><span>IVA ({previewDetail.tipo_operacion === "Internacional" ? 0 : 19}%)</span><span>{fmtCLP(Number(previewDetail.iva))}</span></div>
+                <div className="facturacion-preview-totals"><strong>Total CLP</strong><strong>{fmtCLP(Number(previewDetail.total))}</strong></div>
               </div>
-              <p className="facturacion-preview-client">
-                {preview.cliente}
-              </p>
-              <p className="facturacion-preview-meta">
-                OC {preview.oc} · Emisión {preview.fecha}
-              </p>
-              <div className="facturacion-preview-totals">
-                <span>SUBTOTAL CLP</span>
-                <span>{fmtCLP(preview.subtotal)}</span>
+              <section className="facturacion-detail-section">
+                <h3>Observación</h3><p style={{ whiteSpace: "pre-wrap" }}>{previewDetail.observacion_factura || "Sin observaciones"}</p>
+              </section>
+              {previewDetail.estado === "PAGADA" && <section className="facturacion-detail-section">
+                <h3>Registro de pago</h3>
+                <p>Fecha: {previewDetail.fecha_pago_factura ? new Date(previewDetail.fecha_pago_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
+                <p>Usuario responsable: {previewDetail.id_usuario_pago_factura ?? "Sin registrar"}</p>
+              </section>}
+              {previewDetail.estado === "ANULADA" && <section className="facturacion-detail-section">
+                <h3>Anulación</h3><p>Motivo: {previewDetail.motivo_anulacion_factura || "Sin registrar"}</p>
+                <p>Fecha: {previewDetail.fecha_anulacion_factura ? new Date(previewDetail.fecha_anulacion_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
+                <p>Usuario responsable: {previewDetail.id_usuario_anulacion_factura ?? "Sin registrar"}</p>
+              </section>}
+              <div className="facturacion-form-actions">
+                <button className="btn btn-ghost" disabled={previewDetail.estado === "PENDIENTE" || (!previewDetail.ruta_pdf_factura && (previewDetail.estado === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
+                  onClick={() => void downloadInvoicePdf(mapFacturaFromApi(previewDetail))}><Ico p={I.download} size={14} /> Consultar PDF</button>
+                <button className="btn btn-ghost" onClick={() => setPreview(null)}>Cerrar</button>
               </div>
-              <div className="facturacion-preview-totals">
-                <span>IVA ({preview.tipoOperacion === "Internacional" ? 0 : 19}%)</span>
-                <span>{fmtCLP(preview.iva)}</span>
-              </div>
-              <div className="facturacion-preview-totals">
-                <span>TOTAL CLP</span>
-                <span>
-                  {fmtCLP(
-                    preview.total ??
-                      preview.subtotal + preview.iva,
-                  )}
-                </span>
-              </div>
-              <p>Tipo de operación: {preview.tipoOperacion || "Nacional"}</p>
-              <p style={{ whiteSpace: "pre-wrap" }}>Observación: {preview.observacion || "Sin observaciones"}</p>
-              <div className="facturacion-preview-actions">
-                {/* BOTÓN DE CORREO ELIMINADO */}
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => downloadInvoicePdf(preview)}
-                >
-                  <Ico p={I.download} size={14} /> Imprimir / PDF
-                </button>
-              </div>
-            </div>
+            </>}
           </div>
         </div>
       )}
+
+      {invoiceAction && <div className="modal-backdrop" onClick={() => { if (!actionLoading) setInvoiceAction(null) }}>
+        <form className="modal facturacion-modal facturacion-action-modal" role="dialog" aria-modal="true"
+          aria-labelledby="invoice-action-title" onClick={(event) => event.stopPropagation()} onSubmit={confirmAction}>
+          <h2 id="invoice-action-title" className="facturacion-modal-title">
+            {invoiceAction.action === "emitir" ? "¿Emitir esta factura?" : invoiceAction.action === "pagar" ? "¿Marcar esta factura como pagada?" : "¿Anular esta factura?"}
+          </h2>
+          <p>{invoiceAction.invoice.id}</p>
+          <p>{invoiceAction.action === "emitir" ? "Se generará el PDF y sus datos comerciales quedarán bloqueados."
+            : invoiceAction.action === "pagar" ? "Confirma que el pago fue recibido. Una factura pagada queda bloqueada para edición y anulación."
+            : "La factura dejará de estar vigente y permanecerá en el historial con el motivo y responsable."}</p>
+          {invoiceAction.action === "anular" && <div className="field">
+            <label className="label" htmlFor="invoice-cancel-reason">Motivo de anulación *</label>
+            <textarea id="invoice-cancel-reason" className="textarea" required value={actionReason} disabled={actionLoading}
+              onChange={(event) => setActionReason(event.target.value)} />
+          </div>}
+          {actionError && <p role="alert">{actionError}</p>}
+          <div className="facturacion-form-actions">
+            <button className="btn btn-ghost" type="button" disabled={actionLoading} onClick={() => setInvoiceAction(null)}>Cancelar</button>
+            <button className={`btn ${invoiceAction.action === "anular" ? "btn-danger" : "btn-primary"}`} type="submit"
+              disabled={actionLoading || (invoiceAction.action === "anular" && !actionReason.trim())}>
+              {actionLoading ? "Procesando…" : invoiceAction.action === "emitir" ? "Confirmar emisión" : invoiceAction.action === "pagar" ? "Confirmar pago" : "Confirmar anulación"}
+            </button>
+          </div>
+        </form>
+      </div>}
 
       {showNew && (
         <div
@@ -759,7 +889,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
             <div className="facturacion-modal-header">
               <div>
                 <h2 className="facturacion-modal-title" id="invoice-form-title">
-                  Nueva factura
+                  {editingInvoiceId ? "Editar factura pendiente" : "Nueva factura"}
                 </h2>
                 <p className="facturacion-modal-subtitle facturacion-modal-subtitle-spaced">
                   Selecciona una orden de compra y agrega sus productos.
@@ -818,7 +948,7 @@ const downloadInvoicePdf = async (invoice: Invoice) => {
                         <option
                           key={String(orden.id_oc)}
                           value={String(orden.id_oc)}
-                          disabled={Boolean(orden.factura_numero) || invoices.some((invoice) => invoice.oc === orden.numero_oc)}
+                          disabled={(Boolean(orden.factura_numero) && orden.factura_numero !== editingInvoice?.id) || invoices.some((invoice) => invoice.oc === orden.numero_oc && invoice.id_interno !== editingInvoiceId)}
                         >
                           {orden.numero_oc ||
                             `OC #${orden.id_oc}`}

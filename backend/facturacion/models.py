@@ -75,6 +75,11 @@ class Factura(models.Model):
         db_column="estado_factura",
     )
     observacion_factura = models.TextField(blank=True, default="")
+    fecha_anulacion_factura = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion_factura = models.TextField(null=True, blank=True)
+    id_usuario_anulacion_factura = models.IntegerField(null=True, blank=True)
+    fecha_pago_factura = models.DateTimeField(null=True, blank=True)
+    id_usuario_pago_factura = models.IntegerField(null=True, blank=True)
 
     @property
     def tipo_operacion(self):

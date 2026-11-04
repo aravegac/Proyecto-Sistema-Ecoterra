@@ -500,6 +500,42 @@ body,
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
+.facturacion-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.facturacion-filters .field {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.facturacion-table-panel {
+  overflow-x: auto;
+}
+.facturacion-action-group {
+  flex-wrap: wrap;
+}
+.facturacion-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.facturacion-detail-section {
+  margin-top: 16px;
+  overflow-wrap: anywhere;
+}
+.facturacion-detail-section h3 {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.facturacion-action-modal {
+  width: min(520px, 100%);
+}
+.facturacion-action-modal p {
+  margin: 12px 0;
+}
 .facturacion-line-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;

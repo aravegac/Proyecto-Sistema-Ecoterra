@@ -184,17 +184,19 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
         base, invoice = self.create_invoice()
         self.generate(base, invoice, "ruta_pdf_factura")
 
-    # Comprueba que cambiar el estado invalida el PDF y permite generar uno nuevo.
-    def test_invoice_state_change_invalidates_pdf(self):
+    def test_invoice_payment_preserves_issued_pdf(self):
         base, invoice = self.create_invoice()
         self.generate(base, invoice, "ruta_pdf_factura")
+        original = invoice.ruta_pdf_factura
         response = self.api.patch(f"{base}/acciones/", {"estado": "PAGADA"}, format="json")
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(self.api.get(f"{base}/pdf/").status_code, 404)
+        self.assertEqual(self.api.get(f"{base}/pdf/").status_code, 200)
         self.assertEqual(self.api.post(f"{base}/generar-pdf/").status_code, 200)
         invoice.refresh_from_db()
         pdf = PdfReader(BytesIO(self.files[invoice.ruta_pdf_factura]))
         self.assertEqual(invoice.estado, "PAGADA")
+        self.assertEqual(invoice.ruta_pdf_factura, original)
+        self.bucket.upload.assert_called_once()
         self.assertIn(invoice.numero_factura, pdf.pages[0].extract_text())
 
     # Comprueba que el PDF multipágina conserva el último producto, los totales y la numeración.
@@ -237,9 +239,13 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
             base, record = create()
             original = self.generate(base, record, field)
             self.bucket.upload.side_effect = RuntimeError("Storage unavailable")
-            with self.assertLogs(level="ERROR"):
+            if isinstance(record, Factura):
                 response = self.api.post(f"{base}/generar-pdf/")
-            self.assertGreaterEqual(response.status_code, 500)
+                self.assertEqual(response.status_code, 200)
+            else:
+                with self.assertLogs(level="ERROR"):
+                    response = self.api.post(f"{base}/generar-pdf/")
+                self.assertGreaterEqual(response.status_code, 500)
             record.refresh_from_db()
             self.assertEqual(getattr(record, field), original)
             # Restablece la subida simulada guardando los bytes por ruta después de probar el fallo de Storage.
