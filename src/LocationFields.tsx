@@ -1,3 +1,4 @@
+// LocationFields.tsx
 import React, { useEffect, useId, useState } from "react"
 import { countries } from "./countries"
 
@@ -98,7 +99,16 @@ export default function LocationFields({
         <option value="">{loading ? "Cargando…" : country && !regions.length ? "Sin regiones en el catálogo" : "Seleccionar región…"}</option>
         {value.region && !regions.some(({ name }) => name === value.region) &&
           <option value={value.region}>{value.region}</option>}
-        {regions.map(({ name, state_code }) => <option key={state_code} value={name}>{name}</option>)}
+        {regions.map(({ name, state_code }) => {
+          // 👇 Limpiamos el sufijo "Region", "Province", "State", etc.
+          const cleanName = name
+            .replace(/\s+Region$/i, "")
+            .replace(/\s+Province$/i, "")
+            .replace(/\s+State$/i, "")
+            .replace(/\s+Región$/i, "")
+            .trim();
+          return <option key={state_code} value={name}>{cleanName}</option>;
+        })}
       </select>
     </div>
     <div className="field">

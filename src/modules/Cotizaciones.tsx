@@ -574,19 +574,33 @@ const linkOrder = async () => {
         </div>
       </div>
       <div className="cotizaciones-filters">
-        <div className="field">
+        <div className="field cotizaciones-filter-client">
           <label className="label" htmlFor="quote-client-filter">Cliente</label>
-          <select id="quote-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+          <select 
+            id="quote-client-filter" 
+            className="select" 
+            value={clientFilter} 
+            onChange={(event) => setClientFilter(event.target.value)}
+          >
             <option value="">Todos los clientes</option>
-            {clientOptions.map((name) => <option key={name} value={name}>{name || "Sin cliente"}</option>)}
+            {clientOptions.map((name) => (
+              <option key={name} value={name}>{name || "Sin cliente"}</option>
+            ))}
           </select>
         </div>
-        <div className="field">
+        <div className="field cotizaciones-filter-status">
           <label className="label" htmlFor="quote-status-filter">Estado</label>
-          <select id="quote-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+          <select 
+            id="quote-status-filter" 
+            className="select" 
+            value={statusFilter} 
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
             <option value="sin-anuladas">Sin anuladas</option>
             <option value="">Todos los estados</option>
-            {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
           </select>
         </div>
       </div>
