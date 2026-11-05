@@ -3,3 +3,6 @@ djangorestframework>=3.16,<4.0
 django-cors-headers>=4.7,<5.0
 psycopg[binary]>=3.2,<4.0
 python-dotenv>=1.1,<2.0
+pandas
+scikit-learn
+joblib
