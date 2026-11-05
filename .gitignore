@@ -33,3 +33,4 @@ backend/migrate_passwords.py
 # Docker Compose (contiene credenciales de Supabase)
 docker-compose.yml
 docker-compose.override.yml
+backend/predicciones/artefactos/*.joblib

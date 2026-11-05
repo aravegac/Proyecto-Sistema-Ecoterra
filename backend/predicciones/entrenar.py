@@ -7,6 +7,7 @@ import joblib
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from predicciones.modelos import entrenar
+from predicciones.portables import exportar
 
 if __name__ == "__main__":
     destino = Path(__file__).parent / "artefactos"
@@ -17,6 +18,7 @@ if __name__ == "__main__":
         temporal = f.name
     joblib.dump(modelos, temporal)
     os.replace(temporal, destino / "modelos.joblib")
+    exportar(modelos, destino / "modelos.json")
     reporte = {k: {a:b for a,b in v.items() if a != "modelo"} for k,v in modelos.items()}
     (destino / "metricas.json").write_text(json.dumps(reporte, indent=2))
     print(json.dumps(reporte, indent=2))

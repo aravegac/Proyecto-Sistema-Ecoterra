@@ -76,6 +76,6 @@ def entrenar(destino_datos=None):
 @lru_cache(maxsize=1)
 def cargar():
     from django.conf import settings
-    import joblib
-    ruta = settings.BASE_DIR / "predicciones" / "artefactos" / "modelos.joblib"
-    return joblib.load(ruta)
+    from .portables import leer
+    ruta = settings.BASE_DIR / "predicciones" / "artefactos" / "modelos.json"
+    return leer(ruta)
