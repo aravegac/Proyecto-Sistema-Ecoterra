@@ -90,8 +90,11 @@ function AlertasStock({ productos }: { productos: Product[] }) {
   return <div className="panel ia-alerts-panel">
     <div className="ia-alerts-header">
       <div className="ia-alerts-title"><Ico p={I.alert} size={16} /><span>Alertas de Stockout</span><Badge t={alertas.length ? "danger" : "ok"}>{alertas.length} alertas</Badge></div>
+      <button type="button" className="btn btn-ghost" disabled title="La generación del informe PDF está pendiente de integración." style={{ opacity: .6, cursor: "not-allowed" }}>
+        <Ico p={I.download} size={14} /> Generar Informe Predicción PDF
+      </button>
     </div>
-    <p className="ia-result-note" style={{ padding: "0 20px 12px" }}>Proyección de días restantes pendiente de integración.</p>
+    <p className="ia-result-note" style={{ padding: "0 20px 12px" }}>Informe PDF y proyección de días restantes pendientes de integración.</p>
     <div className="ia-alerts-list">
       {alertas.length === 0 && <div className="ia-empty-state">No hay alertas de stock entre los productos cargados.</div>}
       {alertas.map(producto => {
