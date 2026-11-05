@@ -25,6 +25,10 @@ ESTADOS_FACTURA_VALIDOS = [
     "EMITIDA",
 ]
 
+"""
+QUITAR COMENTARIO SOLAMENTE CUANDO SE QUIERA USAR PRODUCTOS CERCANOS A
+LOS REALES
+
 CODIGOS_PRODUCTOS_COMERCIALES = [
     "POL-001",
     "POL-002",
@@ -34,6 +38,8 @@ CODIGOS_PRODUCTOS_COMERCIALES = [
     "POL-008",
     "POL-009",
 ]
+"""
+productos = Producto.objects.filter(estado=True).order_by("id")
 
 ESTADO_INVENTARIO_DISPONIBLE = "Disponible"
 
@@ -145,7 +151,6 @@ def obtener_predicciones_stock():
 
     productos = Producto.objects.filter(
         estado=True,
-        codigo__in=CODIGOS_PRODUCTOS_COMERCIALES,
     ).order_by("id")
 
     resultados = []

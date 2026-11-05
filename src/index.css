@@ -1684,6 +1684,9 @@ body,
 .ia-alerts-list {
   display: flex;
   flex-direction: column;
+  max-height: 450px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .ia-alert-item {
