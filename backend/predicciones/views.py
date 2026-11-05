@@ -13,10 +13,23 @@ class LlegadaEntrada(serializers.Serializer):
     naviera = serializers.ChoiceField(choices=NAVIERAS)
     carga = serializers.ChoiceField(choices=CARGAS)
     mes = serializers.IntegerField(min_value=1, max_value=12)
+    anio = serializers.IntegerField(min_value=1, max_value=9999)
+
+    def validate(self, attrs):
+        hoy = timezone.localdate()
+        if (attrs["anio"], attrs["mes"]) < (hoy.year, hoy.month):
+            raise serializers.ValidationError({"mes": "Selecciona el mes actual o uno futuro."})
+        return attrs
+
 class PrecioEntrada(serializers.Serializer):
     producto = serializers.IntegerField(min_value=1)
     fecha = serializers.DateField()
     cantidad = serializers.IntegerField(min_value=1, max_value=100)
+    def validate_fecha(self, value):
+        if value < timezone.localdate():
+            raise serializers.ValidationError("La fecha debe ser hoy o una fecha futura.")
+        return value
+
 class Prediccion(APIView):
     permission_classes = [PermisoModulo]
     permisos_por_metodo = {"POST": ("ia", "consultar")}
@@ -24,7 +37,8 @@ class Prediccion(APIView):
     def post(self, request, tipo):
         entrada = (LlegadaEntrada if tipo == "llegada" else PrecioEntrada)(data=request.data)
         entrada.is_valid(raise_exception=True)
-        datos = entrada.validated_data
+        # El año valida el período planificado; el modelo actual utiliza la estacionalidad mensual.
+        datos = {k: v for k, v in entrada.validated_data.items() if k != "anio"}
         if tipo == "precio":
             producto = Producto.objects.filter(pk=datos["producto"], estado=True).first()
             if not producto:

@@ -20,11 +20,20 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
   const [ocupado, setOcupado] = useState(false)
   const llegada = tipo === "llegada"
   const hoy = fechaEnChile()
+  const anioActual = Number(hoy.slice(0, 4))
+  const mesActual = Number(hoy.slice(5, 7))
+  const [anio, setAnio] = useState(anioActual)
+  const [mes, setMes] = useState(mesActual)
   async function consultar(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const valores = Object.fromEntries(new FormData(event.currentTarget))
-    const entrada = llegada ? { ...valores, mes: Number(valores.mes) } : { ...valores, producto: Number(valores.producto), cantidad: Number(valores.cantidad) }
+    const entrada = llegada ? { ...valores, mes: Number(valores.mes), anio: Number(valores.anio) } : { ...valores, producto: Number(valores.producto), cantidad: Number(valores.cantidad) }
     setResultado(null); setError("")
+    const fechaActual = fechaEnChile()
+    if (llegada ? Number(valores.anio) < Number(fechaActual.slice(0, 4)) || (Number(valores.anio) === Number(fechaActual.slice(0, 4)) && Number(valores.mes) < Number(fechaActual.slice(5, 7))) : String(valores.fecha) < fechaActual) {
+      setError(llegada ? "Selecciona el mes actual o uno futuro." : "La fecha debe ser hoy o una fecha futura.")
+      return
+    }
     setOcupado(true)
     try {
       const respuesta = await apiFetch(`/api/predicciones/${tipo}/`, { method: "POST", headers: authHeaders(usuario), body: JSON.stringify(entrada) })
@@ -42,11 +51,16 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
         <label className="field"><span className="label">Puerto de origen</span><select name="puerto" className="select">{puertos.map(v => <option key={v}>{v}</option>)}</select></label>
         <label className="field"><span className="label">Naviera</span><select name="naviera" className="select">{navieras.map(v => <option key={v}>{v}</option>)}</select></label>
         <label className="field"><span className="label">Tipo de carga</span><select name="carga" className="select">{cargas.map(v => <option key={v}>{v}</option>)}</select></label>
-        <label className="field"><span className="label">Mes de embarque</span><select name="mes" defaultValue={Number(hoy.slice(5,7))} className="select">{meses.map((v,i) => <option key={v} value={i+1}>{v}</option>)}</select></label>
+        <label className="field"><span className="label">Año de embarque</span><input required type="number" name="anio" min={anioActual} max="9999" step="1" value={anio} onChange={e => {
+          const nuevoAnio = Number(e.target.value)
+          setAnio(nuevoAnio)
+          if (nuevoAnio === anioActual && mes < mesActual) setMes(mesActual)
+        }} className="input" /></label>
+        <label className="field"><span className="label">Mes de embarque</span><select name="mes" value={mes} onChange={e => setMes(Number(e.target.value))} className="select">{meses.map((v,i) => <option key={v} value={i+1} disabled={anio === anioActual && i+1 < mesActual}>{v}</option>)}</select></label>
       </div> : <>
         <label className="field"><span className="label">Producto</span><select required name="producto" defaultValue="" className="select"><option value="" disabled>Seleccionar producto…</option>{productos.filter(p => p.estado === "Activo").map(p => <option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}</select></label>
         <div className="ia-form-grid">
-          <label className="field"><span className="label">Fecha estimada</span><input required type="date" name="fecha" defaultValue={hoy} className="input" /></label>
+          <label className="field"><span className="label">Fecha estimada</span><input required type="date" name="fecha" min={hoy} defaultValue={hoy} className="input" /></label>
           <label className="field"><span className="label">Cantidad (unidades del producto)</span><input required type="number" name="cantidad" min="1" max="100" step="1" defaultValue="10" className="input" /></label>
 
         </div>
