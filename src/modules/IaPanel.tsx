@@ -1,8 +1,8 @@
 import React, { useState } from "react"
 import { apiFetch } from "../api"
-import { authHeaders, AuthUser, PageTitle, Product } from "../shared"
+import { authHeaders, AuthUser, Badge, I, Ico, PageTitle, Product } from "../shared"
 
-type Resultado = { estimacion: number; total?: number; mae_validacion: number; aviso: string; moneda?: "CLP" | "USD"; tipo_cambio?: number }
+type Resultado = { estimacion: number; total?: number; mae_validacion: number; aviso: string; moneda?: "CLP" | "USD"; tipo_cambio?: number; version?: string }
 const puertos = ["Corpus Christi, TX", "Miami, FL", "Los Angeles, CA"]
 const navieras = ["MSC", "Maersk", "CMA CGM"]
 const cargas = ["Exclusiva", "Consolidada"]
@@ -45,7 +45,10 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
     finally { setOcupado(false) }
   }
   return <div className="panel">
-    <div className="panel-header">Predicción · {llegada ? "Tiempo de llegada" : "Precio esperado"}</div>
+    <div className="panel-header">
+      <span><Ico p={llegada ? I.ship : I.bar} size={15} /> Predicción · {llegada ? "Tiempo de llegada" : "Precio esperado"}</span>
+      <Badge t="info">{resultado?.version ? `Modelo ${resultado.version}` : "Modelo predictivo"}</Badge>
+    </div>
     <form className="ia-card-body" onSubmit={consultar} onChange={() => { setResultado(null); setError("") }}>
       <fieldset disabled={ocupado} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       {llegada ? <div className="ia-form-grid">
@@ -67,17 +70,44 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
           {moneda === "USD" && <label className="field"><span className="label">Tipo de cambio (CLP por 1 USD)</span><input required type="number" name="tipo_cambio" min="0.0001" max="99999999.9999" step="0.0001" placeholder="Ingresa la tasa a utilizar" className="input" /></label>}
         </div>
       </>}
-      <button type="submit" className="btn btn-primary ia-button">{ocupado ? "Calculando…" : "Calcular predicción"}</button>
+      <button type="submit" className={`btn ${llegada ? "btn-primary" : "btn-navy"} ia-button`}><Ico p={I.sparkle} size={14} /> {ocupado ? "Calculando…" : llegada ? "Calcular predicción" : "Predecir precio"}</button>
       </fieldset>
       {error && <p role="alert">{error}</p>}
-      <div aria-live="polite">{resultado && <div className={`ia-result ${llegada ? "ia-result-green" : "ia-result-blue"}`}>
+      <div aria-live="polite">{resultado ? <div className={`ia-result ${llegada ? "ia-result-green" : "ia-result-blue"}`}>
         <div className="ia-result-main"><span className="ia-result-value">{llegada ? resultado.estimacion.toLocaleString("es-CL") : dinero(resultado.estimacion, resultado.moneda)}</span><span className="ia-result-unit">{llegada ? "días estimados" : `${resultado.moneda ?? "CLP"} por unidad`}</span></div>
         {resultado.total != null && <p>Total estimado: <strong>{dinero(resultado.total, resultado.moneda)}</strong></p>}
+        <div className="ia-result-meta">{llegada ? "Confianza y rango: pendientes de validación." : "Variación vs. precio actual: no disponible."}</div>
         <p>Error promedio del modelo: {llegada ? `${resultado.mae_validacion.toLocaleString("es-CL")} días` : dinero(resultado.mae_validacion, resultado.moneda)}.</p>
         {resultado.tipo_cambio != null && <p className="ia-result-note">Conversión: 1 USD = {resultado.tipo_cambio.toLocaleString("es-CL")} CLP · Tasa ingresada por el usuario.</p>}
         <p className="ia-result-note">{resultado.aviso}</p>
-      </div>}</div>
+      </div> : !llegada ? <div className="ia-empty-state">Selecciona producto y fecha para ver la predicción.</div> : null}</div>
     </form>
+  </div>
+}
+
+function AlertasStock({ productos }: { productos: Product[] }) {
+  const alertas = productos.filter(p => p.estado === "Activo" && (p.stock <= 0 || p.stock < p.stockMin))
+  return <div className="panel ia-alerts-panel">
+    <div className="ia-alerts-header">
+      <div className="ia-alerts-title"><Ico p={I.alert} size={16} /><span>Alertas de Stockout</span><Badge t={alertas.length ? "danger" : "ok"}>{alertas.length} alertas</Badge></div>
+    </div>
+    <p className="ia-result-note" style={{ padding: "0 20px 12px" }}>Proyección de días restantes pendiente de integración.</p>
+    <div className="ia-alerts-list">
+      {alertas.length === 0 && <div className="ia-empty-state">No hay alertas de stock entre los productos cargados.</div>}
+      {alertas.map(producto => {
+        const sinStock = producto.stock <= 0
+        const porcentaje = producto.stockMin > 0 ? Math.max(0, Math.min(producto.stock / producto.stockMin * 100, 100)) : 0
+        return <div key={producto.id} className="ia-alert-item">
+          <div className="ia-alert-icon"><Ico p={I.alert} size={16} /></div>
+          <div className="ia-alert-content">
+            <div className="ia-alert-title-row"><span className="ia-alert-name">{producto.nombre}</span><span className="ia-alert-code">{producto.codigo}</span><Badge t={sinStock ? "danger" : "warn"}>{sinStock ? "Sin stock" : "Bajo mínimo"}</Badge></div>
+            <div className="ia-alert-meta">Stock: {producto.stock.toLocaleString("es-CL")} {producto.unidad} / Mínimo: {producto.stockMin.toLocaleString("es-CL")} {producto.unidad}</div>
+            <div className="ia-alert-progress"><div className={`ia-alert-progress-fill ${sinStock ? "bg-danger" : "bg-warn"}`} style={{ width: `${porcentaje}%` }} /></div>
+          </div>
+          <div className="ia-alert-side"><div className={`ia-alert-days ${sinStock ? "text-danger" : "text-warn"}`}>{sinStock ? "0" : "—"}</div><div className="ia-alert-days-label">{sinStock ? "días restantes" : "Días por calcular"}</div></div>
+        </div>
+      })}
+    </div>
   </div>
 }
 
@@ -85,5 +115,6 @@ export default function IaPanel({ productos, usuario }: { productos: Product[]; 
   return <div>
     <PageTitle title="Panel de Inteligencia Artificial" sub="Estimaciones de llegada y precio para apoyar la planificación" />
     <div className="ia-grid"><Modelo tipo="llegada" productos={productos} usuario={usuario} /><Modelo tipo="precio" productos={productos} usuario={usuario} /></div>
+    <AlertasStock productos={productos} />
   </div>
 }
