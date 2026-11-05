@@ -1227,6 +1227,20 @@ body,
   margin-top: 18px;
 }
 
+.cotizaciones-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cotizaciones-filter-client {
+  width: 280px;
+}
+
+.cotizaciones-filter-status {
+  width: 200px;
+}
+
 /* ── Productos ──────────────────────────── */
 .productos-filter-row {
   display: flex;
@@ -1284,10 +1298,7 @@ body,
   gap: 12px;
   margin-bottom: 16px;
 }
-.cotizaciones-filters .field {
-  flex: 1 1 200px;
-  min-width: 0;
-}
+
 .cotizaciones-table-panel {
   overflow-x: auto;
 }
