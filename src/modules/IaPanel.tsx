@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import { apiFetch } from "../api"
 import { authHeaders, AuthUser, PageTitle, Product } from "../shared"
 
-type Resultado = { estimacion: number; total?: number; mae_validacion: number; aviso: string }
+type Resultado = { estimacion: number; total?: number; mae_validacion: number; aviso: string; moneda?: "CLP" | "USD"; tipo_cambio?: number }
 const puertos = ["Corpus Christi, TX", "Miami, FL", "Los Angeles, CA"]
 const navieras = ["MSC", "Maersk", "CMA CGM"]
 const cargas = ["Exclusiva", "Consolidada"]
@@ -12,7 +12,7 @@ function fechaEnChile() {
   const valor = (tipo: string) => partes.find(p => p.type === tipo)!.value
   return `${valor("year")}-${valor("month")}-${valor("day")}`
 }
-const dinero = (n: number) => n.toLocaleString("es-CL", { style: "currency", currency: "CLP" })
+const dinero = (n: number, moneda: "CLP" | "USD" = "CLP") => n.toLocaleString("es-CL", { style: "currency", currency: moneda, minimumFractionDigits: moneda === "USD" ? 2 : 0, maximumFractionDigits: moneda === "USD" ? 2 : 0 })
 
 function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; productos: Product[]; usuario: AuthUser | null }) {
   const [resultado, setResultado] = useState<Resultado | null>(null)
@@ -24,6 +24,7 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
   const mesActual = Number(hoy.slice(5, 7))
   const [anio, setAnio] = useState(anioActual)
   const [mes, setMes] = useState(mesActual)
+  const [moneda, setMoneda] = useState<"CLP" | "USD">("CLP")
   async function consultar(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const valores = Object.fromEntries(new FormData(event.currentTarget))
@@ -62,17 +63,18 @@ function Modelo({ tipo, productos, usuario }: { tipo: "llegada" | "precio"; prod
         <div className="ia-form-grid">
           <label className="field"><span className="label">Fecha estimada</span><input required type="date" name="fecha" min={hoy} defaultValue={hoy} className="input" /></label>
           <label className="field"><span className="label">Cantidad (unidades del producto)</span><input required type="number" name="cantidad" min="1" max="100" step="1" defaultValue="10" className="input" /></label>
-
+          <label className="field"><span className="label">Moneda</span><select name="moneda" value={moneda} onChange={e => setMoneda(e.target.value as "CLP" | "USD")} className="select"><option value="CLP">CLP</option><option value="USD">USD</option></select></label>
+          {moneda === "USD" && <label className="field"><span className="label">Tipo de cambio (CLP por 1 USD)</span><input required type="number" name="tipo_cambio" min="0.0001" max="99999999.9999" step="0.0001" placeholder="Ingresa la tasa a utilizar" className="input" /></label>}
         </div>
       </>}
       <button type="submit" className="btn btn-primary ia-button">{ocupado ? "Calculando…" : "Calcular predicción"}</button>
       </fieldset>
       {error && <p role="alert">{error}</p>}
       <div aria-live="polite">{resultado && <div className={`ia-result ${llegada ? "ia-result-green" : "ia-result-blue"}`}>
-        <div className="ia-result-main"><span className="ia-result-value">{llegada ? resultado.estimacion.toLocaleString("es-CL") : dinero(resultado.estimacion)}</span><span className="ia-result-unit">{llegada ? "días estimados" : "CLP por unidad"}</span></div>
-        {resultado.total != null && <p>Total estimado: <strong>{dinero(resultado.total)}</strong></p>}
-        <p>Error promedio del modelo: {llegada ? `${resultado.mae_validacion.toLocaleString("es-CL")} días` : dinero(resultado.mae_validacion)}.</p>
-
+        <div className="ia-result-main"><span className="ia-result-value">{llegada ? resultado.estimacion.toLocaleString("es-CL") : dinero(resultado.estimacion, resultado.moneda)}</span><span className="ia-result-unit">{llegada ? "días estimados" : `${resultado.moneda ?? "CLP"} por unidad`}</span></div>
+        {resultado.total != null && <p>Total estimado: <strong>{dinero(resultado.total, resultado.moneda)}</strong></p>}
+        <p>Error promedio del modelo: {llegada ? `${resultado.mae_validacion.toLocaleString("es-CL")} días` : dinero(resultado.mae_validacion, resultado.moneda)}.</p>
+        {resultado.tipo_cambio != null && <p className="ia-result-note">Conversión: 1 USD = {resultado.tipo_cambio.toLocaleString("es-CL")} CLP · Tasa ingresada por el usuario.</p>}
         <p className="ia-result-note">{resultado.aviso}</p>
       </div>}</div>
     </form>

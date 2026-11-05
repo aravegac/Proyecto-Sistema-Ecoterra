@@ -25,6 +25,14 @@ class PrecioEntrada(serializers.Serializer):
     producto = serializers.IntegerField(min_value=1)
     fecha = serializers.DateField()
     cantidad = serializers.IntegerField(min_value=1, max_value=100)
+    moneda = serializers.ChoiceField(choices=["CLP", "USD"], default="CLP")
+    tipo_cambio = serializers.DecimalField(max_digits=12, decimal_places=4, min_value=Decimal("0.0001"), required=False)
+
+    def validate(self, attrs):
+        if attrs["moneda"] == "USD" and "tipo_cambio" not in attrs:
+            raise serializers.ValidationError({"tipo_cambio": "Ingresa cuántos CLP equivale 1 USD."})
+        return attrs
+
     def validate_fecha(self, value):
         if value < timezone.localdate():
             raise serializers.ValidationError("La fecha debe ser hoy o una fecha futura.")
@@ -56,5 +64,17 @@ class Prediccion(APIView):
                      "muestras_prueba": modelo["prueba"],
                      "aviso": "Datos simulados. Estimación de apoyo; no garantiza resultados ni ejecuta compras."}
         if tipo == "precio":
-            resultado.update(moneda="CLP", total=round(valor*entrada.validated_data["cantidad"],2))
+            moneda = entrada.validated_data["moneda"]
+            tasa = entrada.validated_data.get("tipo_cambio", Decimal("1")) if moneda == "USD" else Decimal("1")
+            precision = Decimal("1") if moneda == "CLP" else Decimal("0.01")
+            unitario = (Decimal(str(valor)) / tasa).quantize(precision, rounding=ROUND_HALF_UP)
+            error = (Decimal(str(modelo["mae"])) / tasa).quantize(precision, rounding=ROUND_HALF_UP)
+            resultado.update(estimacion=float(unitario), mae_validacion=float(error), moneda=moneda,
+                             total=float(unitario * entrada.validated_data["cantidad"]))
+            if moneda == "USD":
+                resultado.update(tipo_cambio=float(tasa), origen_tipo_cambio="ingresado_por_usuario")
+            fin = modelo.get("fecha_fin_entrenamiento")
+            if fin and entrada.validated_data["fecha"].isoformat() > fin:
+                resultado["aviso"] += " Fecha fuera del período entrenado; la precisión no está validada para ese horizonte."
+
         return Response(resultado)
