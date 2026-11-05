@@ -1,12 +1,19 @@
 from decimal import Decimal, ROUND_HALF_UP
 import json
+
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.decorators import api_view
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from usuarios.permissions import PermisoModulo
 from inventario.models import Producto
 from .modelos import PUERTOS, NAVIERAS, CARGAS, cargar, variables_precio
+
+from predicciones.services.stock_service import (
+    obtener_predicciones_stock,
+)
 
 class LlegadaEntrada(serializers.Serializer):
     puerto = serializers.ChoiceField(choices=PUERTOS)
@@ -78,3 +85,36 @@ class Prediccion(APIView):
                 resultado["aviso"] += " Fecha fuera del período entrenado; la precisión no está validada para ese horizonte."
 
         return Response(resultado)
+
+@api_view(["GET"])
+def listar_predicciones_stock(request):
+    """
+    Endpoint para consultar las predicciones de reposición
+    de los productos comerciales de Ecoterra.
+    """
+
+    try:
+        resultados = obtener_predicciones_stock()
+
+        return Response(
+            {
+                "exito": True,
+                "total_productos": len(resultados),
+                "resultados": resultados,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as error:
+
+        return Response(
+            {
+                "exito": False,
+                "mensaje": (
+                    "Ocurrió un error al obtener las predicciones "
+                    "de stock."
+                ),
+                "detalle": str(error),
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
