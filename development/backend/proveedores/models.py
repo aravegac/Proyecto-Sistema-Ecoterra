@@ -1,3 +1,4 @@
+# proveedores/models.py
 import sys
 
 from django.db import models
@@ -10,7 +11,7 @@ class Proveedor(models.Model):
     contacto = models.CharField(max_length=150, db_column="contacto_proveedor")
     telefono = models.CharField(max_length=50, db_column="telefono_proveedor")
     email = models.EmailField(max_length=150, db_column="correo_proveedor")
-    direccion = models.CharField(max_length=255, db_column="direccion_proveedor")
+    # direccion = models.CharField(max_length=255, db_column="direccion_proveedor")
 
     class Meta:
         db_table = "proveedor"

@@ -12,7 +12,7 @@ export type Proveedor = {
   contacto: string
   tel: string
   email: string
-  direccion: string
+  // direccion: string
   estado: "Activo" | "Inactivo"
 }
 
@@ -22,7 +22,7 @@ export type ProveedorInput = {
   contacto: string
   tel: string
   email: string
-  direccion: string
+  // direccion: string
   estado: "Activo" | "Inactivo"
 }
 
@@ -41,7 +41,7 @@ const EMPTY_FORM: ProveedorInput = {
   contacto: "",
   tel: "",
   email: "",
-  direccion: "",
+  // direccion: "",
   estado: "Activo",
 }
 
@@ -86,7 +86,7 @@ export default function Proveedores({
       contacto: provider.contacto,
       tel: provider.tel,
       email: provider.email,
-      direccion: provider.direccion,
+      // direccion: provider.direccion,
       estado: provider.estado,
     })
     setFormError("")
@@ -255,6 +255,7 @@ export default function Proveedores({
         <div className="modal-backdrop">
           <div
             className="modal proveedores-modal"
+            style={{ width: 600, padding: 24 }}
             onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
             key={editingProvider?.id ?? "new"}
           >
@@ -330,16 +331,6 @@ export default function Proveedores({
                   type="email"
                   value={form.email}
                   onChange={/* Ejecuta updateField("email", e.target.value) al invocarse este callback. */ (e) => updateField("email", e.target.value)}
-                />
-              </div>
-
-              <div className="field proveedores-field-span-2">
-                <label className="label">Dirección proveedor</label>
-                <input
-                  className="input"
-                  placeholder="Dirección proveedor"
-                  value={form.direccion}
-                  onChange={/* Ejecuta updateField("direccion", e.target.value) al invocarse este callback. */ (e) => updateField("direccion", e.target.value)}
                 />
               </div>
 

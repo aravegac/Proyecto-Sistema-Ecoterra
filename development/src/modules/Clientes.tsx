@@ -346,7 +346,10 @@ export default function Clientes({
             {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
               <tr
                 key={client.id}
-                onClick={/* Ejecuta setSelected(client) al invocarse este callback. */ () => setSelected(client)}
+                onClick={() => {
+                  setSelected(client)
+                  setDeleteError("") // 👈 Limpiamos el error al cambiar de cliente
+                }}
                 className="clientes-row"
               >
                 <td className="clientes-rut">{client.rut}</td>
@@ -370,9 +373,10 @@ export default function Clientes({
                 <td>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={/* Detiene la propagación del evento y selecciona el cliente de la fila. */ (event) => {
+                    onClick={(event) => {
                       event.stopPropagation()
                       setSelected(client)
+                      setDeleteError("") // 👈 Limpiamos el error
                     }}
                   >
                     Detalles <Ico p={I.chevR} size={12} />
@@ -507,58 +511,77 @@ export default function Clientes({
                   ))}
                   {addressError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{addressError}</p>}
                   {showAddressForm && (
-                    <form onSubmit={saveAddress} style={{ marginTop: 12, padding: 12, border: "1px solid #E2E8F0" }}>
-                      <div className="field">
-                        <label className="label">Nombre de dirección</label>
-                        <input className="input" value={addressForm.nombre} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, nombre: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, nombre: event.target.value }). */ (current) => ({ ...current, nombre: event.target.value }))} required />
+                    <form onSubmit={saveAddress} style={{ marginTop: 12, padding: 12, border: "1px solid #E2E8F0", borderRadius: 8 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        
+                        {/* 1. País, Región y Ciudad (usando LocationFields) */}
+                        <div style={{ gridColumn: "span 2" }}>
+                          <LocationFields 
+                            value={addressForm} 
+                            onChange={(location) => setAddressForm((current) => ({ ...current, ...location }))} 
+                          />
+                        </div>
+
+                        {/* 2. Calle */}
+                        <div className="field">
+                          <label className="label">Calle</label>
+                          <input className="input" value={addressForm.calle} onChange={(event) => setAddressForm((current) => ({ ...current, calle: event.target.value }))} required />
+                        </div>
+
+                        {/* 3. Código Postal */}
+                        <div className="field">
+                          <label className="label">Código postal</label>
+                          <input className="input" value={addressForm.codigo_postal ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, codigo_postal: event.target.value }))} />
+                        </div>
+
+                        {/* 4. Nombre de la dirección */}
+                        <div className="field" style={{ gridColumn: "span 2" }}>
+                          <label className="label">Nombre de dirección</label>
+                          <input className="input" value={addressForm.nombre} onChange={(event) => setAddressForm((current) => ({ ...current, nombre: event.target.value }))} required />
+                        </div>
+
+                        {/* 5. Tipo */}
+                        <div className="field">
+                          <label className="label">Tipo</label>
+                          <select className="input" value={addressForm.tipo} onChange={(event) => setAddressForm((current) => ({ ...current, tipo: event.target.value }))}>
+                            <option value="Despacho">Despacho</option>
+                            <option value="Facturación">Facturación</option>
+                            <option value="Otro">Otro</option>
+                          </select>
+                        </div>
+
+                        {/* 6. Contacto de recepción */}
+                        <div className="field">
+                          <label className="label">Contacto de recepción</label>
+                          <input className="input" value={addressForm.contacto_recepcion} onChange={(event) => setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
+                        </div>
+
+                        {/* 7. Teléfono de contacto */}
+                        <div className="field" style={{ gridColumn: "span 2" }}>
+                          <label className="label">Teléfono de contacto</label>
+                          <input className="input" value={addressForm.telefono_contacto} onChange={(event) => setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value }))} required />
+                        </div>
+
+                        {/* 8. Instrucciones de entrega */}
+                        <div className="field" style={{ gridColumn: "span 2" }}>
+                          <label className="label">Instrucciones de entrega</label>
+                          <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value }))} rows={2} />
+                        </div>
+
                       </div>
-                      <div className="field">
-                        <label className="label">Calle</label>
-                        <input className="input" value={addressForm.calle} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, calle: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, calle: event.target.value }). */ (current) => ({ ...current, calle: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">Ciudad</label>
-                        <input className="input" value={addressForm.ciudad} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, ciudad: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, ciudad: event.target.value }). */ (current) => ({ ...current, ciudad: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">Región</label>
-                        <input className="input" value={addressForm.region} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, region: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, region: event.target.value }). */ (current) => ({ ...current, region: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">País</label>
-                        <input className="input" value={addressForm.pais} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, pais: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, pais: event.target.value }). */ (current) => ({ ...current, pais: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">Código postal</label>
-                        <input className="input" value={addressForm.codigo_postal ?? ""} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, codigo_postal: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, codigo_postal: event.target.value }). */ (current) => ({ ...current, codigo_postal: event.target.value }))} />
-                      </div>
-                      <div className="field">
-                        <label className="label">Tipo</label>
-                        <select className="input" value={addressForm.tipo} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, tipo: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, tipo: event.target.value }). */ (current) => ({ ...current, tipo: event.target.value }))}>
-                          <option value="Despacho">Despacho</option>
-                          <option value="Facturación">Facturación</option>
-                          <option value="Otro">Otro</option>
-                        </select>
-                      </div>
-                      <div className="field">
-                        <label className="label">Contacto de recepción</label>
-                        <input className="input" value={addressForm.contacto_recepcion} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, contacto_recepcion: event.target.value }). */ (current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">Teléfono de contacto</label>
-                        <input className="input" value={addressForm.telefono_contacto} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, telefono_contacto: event.target.value }). */ (current) => ({ ...current, telefono_contacto: event.target.value }))} required />
-                      </div>
-                      <div className="field">
-                        <label className="label">Instrucciones de entrega</label>
-                        <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, instrucciones_entrega: event.target.value }). */ (current) => ({ ...current, instrucciones_entrega: event.target.value }))} />
-                      </div>
-                      <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                        <input type="checkbox" checked={addressForm.principal} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, principal: event.target.checked })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, principal: event.target.checked }). */ (current) => ({ ...current, principal: event.target.checked }))} />
+
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+                        <input type="checkbox" checked={addressForm.principal} onChange={(event) => setAddressForm((current) => ({ ...current, principal: event.target.checked }))} />
                         Dirección principal
                       </label>
-                      <div className="clientes-detail-actions">
-                        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}><Ico p={I.check} size={12} /> Guardar dirección</button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Cancela la edición de dirección, restablece sus campos y cierra el formulario. */ () => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>Cancelar</button>
+
+                      <div className="clientes-detail-actions" style={{ marginTop: 12 }}>
+                        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>
+                          <Ico p={I.check} size={12} /> Guardar dirección
+                        </button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>
+                          Cancelar
+                        </button>
                       </div>
                     </form>
                   )}
@@ -581,7 +604,7 @@ export default function Clientes({
         <div className="modal-backdrop">
           <form
             className="modal"
-            style={{ width: 540, padding: 24 }}
+            style={{ width: 800, padding: 24, maxHeight: "90vh", overflowY: "auto" }}
             onSubmit={saveNewClient}
             onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >

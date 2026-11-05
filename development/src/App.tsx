@@ -81,7 +81,7 @@ const mapProveedorFromApi = (item: any): Proveedor => ({
   contacto: item.contacto,
   tel: item.telefono || "-",
   email: item.email || "-",
-  direccion: item.direccion || "",
+  // direccion: item.direccion || "",
   estado:
     item.estado === "Activo" || item.estado === "Inactivo"
       ? item.estado
@@ -493,7 +493,7 @@ export default function App() {
     contacto: input.contacto,
     telefono: input.tel,
     email: input.email,
-    direccion: input.direccion,
+    // direccion: input.direccion,
     estado: input.estado,
   })
 
@@ -622,8 +622,14 @@ export default function App() {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
-    if (!response.ok) throw new Error("No se pudo eliminar el cliente")
-    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.filter((item) => item.id !== client.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== client.id. */ (item) => item.id !== client.id))
+    if (!response.ok) {
+      // 👇 Capturamos el mensaje del backend
+      const errorData = await response.json().catch(() => null)
+      throw new Error(
+        errorData?.error || "No se pudo eliminar el cliente"
+      )
+    }
+    setClientes((current) => current.filter((item) => item.id !== client.id))
   }
 
   // Crea una dirección del cliente mediante la API y actualiza sus direcciones locales.

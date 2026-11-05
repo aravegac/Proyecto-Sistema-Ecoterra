@@ -1,3 +1,4 @@
+// src/modules/Movimientos.tsx
 import React, { useState } from "react"
 import { Badge, fmt, I, Ico, PageTitle, Product } from "../shared"
 import { Lote } from "./Lotes"
@@ -66,6 +67,21 @@ export default function Movimientos({
       setError("Producto, lote y cantidad son obligatorios.")
       return
     }
+
+    // 👇 VALIDACIÓN EXTRA PARA AJUSTES
+    if (type === "Ajuste" && selectedLote) {
+      if (Number(qty) === selectedLote.qty) {
+        setError("El stock no ha cambiado. El ajuste debe ser diferente al stock actual del lote.")
+        return
+      }
+    }
+
+    // 👇 VALIDACIÓN PARA ENTRADAS/SALIDAS (si no la tienes)
+    if (type !== "Ajuste" && Number(qty) <= 0) {
+      setError("La cantidad debe ser mayor a 0.")
+      return
+    }
+
     setSaving(true)
     setError("")
     try {

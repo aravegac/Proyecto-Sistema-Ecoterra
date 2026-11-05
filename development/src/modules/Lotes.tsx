@@ -234,16 +234,22 @@ export default function Lotes({
                   </Badge>
                 </td>
                 <td>
-                  <button className="btn btn-ghost btn-sm" aria-label={`Editar lote ${lot.id}`} onClick={() => {
-                    setEditId(lot.id)
-                    setForm({ prod: lot.prod, qty: lot.qty, envase: lot.envase, fabr: lot.fabr, venc: lot.venc, ubic: lot.ubic, estado: lot.estado })
-                    setFormError("")
-                    setShowModal(true)
-                  }}><Ico p={I.edit} size={13} /></button>
+                  <button 
+                    className="btn btn-ghost btn-sm productos-edit-btn" 
+                    aria-label={`Editar lote ${lot.id}`} 
+                    onClick={() => {
+                      setEditId(lot.id)
+                      setForm({ prod: lot.prod, qty: lot.qty, envase: lot.envase, fabr: lot.fabr, venc: lot.venc, ubic: lot.ubic, estado: lot.estado })
+                      setFormError("")
+                      setShowModal(true)
+                    }}
+                  >
+                    <Ico p={I.edit} size={13} />
+                  </button>
                   <button
                     aria-label={`Eliminar lote ${lot.id}`}
-                    className="btn btn-ghost btn-sm"
-                    onClick={/* Confirma la eliminación del lote, la solicita y muestra el error si falla. */ async () => {
+                    className="btn btn-ghost btn-sm productos-delete-btn"
+                    onClick={async () => {
                       if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
                       try {
                         await onDelete(lot)
