@@ -1648,6 +1648,18 @@ body,
   margin-top: 0;
 }
 
+.ia-info-stock{
+  margin: 16px;
+}
+
+.ia-alert-item:nth-child(even) {
+  background: #f8fafc;
+}
+
+.ia-alert-item:nth-child(odd) {
+  background: #ffffff;
+}
+
 .ia-alerts-header {
   display: flex;
   justify-content: space-between;
@@ -1696,6 +1708,24 @@ body,
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+/* Predicción de stock no disponible: azul */
+.ia-icon-info {
+  color: #2563eb;
+  background: #dbeafe;
+}
+
+/* Requiere reposición: rojo */
+.ia-icon-danger {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+/* Stock dentro del mínimo: verde */
+.ia-icon-success {
+  color: #16a34a;
+  background: #dcfce7;
 }
 
 .ia-alert-content {
@@ -1749,6 +1779,14 @@ body,
 
 .ia-alert-progress-fill.bg-danger {
   background: #dc2626;
+}
+
+.ia-alert-progress-fill.bg-success {
+  background-color: #16a34a;
+}
+
+.ia-alert-progress-fill.bg-info {
+  background-color: #2563eb;
 }
 
 .ia-alert-side {

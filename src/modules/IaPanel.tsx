@@ -47,6 +47,14 @@ type RespuestaPrediccionesStock = {
   detalle?: string
 }
 
+// =============================================
+// MODO DE PRUEBA VISUAL
+// =============================================
+
+// true: utiliza escenarios ficticios.
+// false: consulta los datos reales del backend Django.
+const USAR_DATOS_DE_PRUEBA = false
+
 // ==================================================
 // CONSTANTES Y FUNCIONES AUXILIARES
 // ==================================================
@@ -210,10 +218,12 @@ function Modelo({
   return (
     <div className="panel">
       <div className="panel-header">
-        <span>
+        <div className="ia-alerts-title">
+          
           <Ico p={llegada ? I.ship : I.bar} size={15} />
-          Predicción · {llegada ? "Tiempo de llegada" : "Precio esperado"}
-        </span>
+          <span>Predicción · {llegada ? "Tiempo de llegada" : "Precio esperado"}</span>
+          
+        </div>
 
         <Badge t="info">
           {resultado?.version
@@ -312,6 +322,7 @@ function Modelo({
             </div>
           ) : (
             <>
+            
               <label className="field">
                 <span className="label">Producto</span>
                 <select
@@ -506,20 +517,85 @@ function PrediccionesStock({
       setError("")
 
       try {
-        const respuesta = await apiFetch("/api/predicciones/stock/", {
-          method: "GET",
-          headers: authHeaders(usuario),
-        })
+        let datos: RespuestaPrediccionesStock
 
-        const datos: RespuestaPrediccionesStock = await respuesta.json()
+        // =============================================
+        // MODO DE PRUEBA VISUAL
+        // =============================================
 
-        if (!respuesta.ok) {
-          throw new Error(
-            datos.detalle ||
-            datos.mensaje ||
-            "No se pudieron obtener las predicciones de stock."
-          )
+        if (USAR_DATOS_DE_PRUEBA) {
+          datos = {
+            exito: true,
+            total_productos: 3,
+            resultados: [
+              {
+                id_producto: 7,
+                codigo_producto: "POL-001",
+                nombre_producto: "EcoStab Polímero Estabilizador 500L",
+                stock_actual: 500,
+                stock_minimo: 600,
+                ventas_promedio_90d: 15,
+                dias_historial_disponible: 90,
+                requiere_reposicion: true,
+                prediccion_disponible: true,
+                dias_hasta_agotar_stock: 30,
+                estado_reposicion: "REPOSICION_INMEDIATA",
+                mensaje: "Se recomienda gestionar la reposición del producto.",
+              },
+              {
+                id_producto: 8,
+                codigo_producto: "POL-002",
+                nombre_producto: "EcoDust Control Supresor de Polvo 25L",
+                stock_actual: 1500,
+                stock_minimo: 1000,
+                ventas_promedio_90d: 30.38,
+                dias_historial_disponible: 90,
+                requiere_reposicion: false,
+                prediccion_disponible: true,
+                dias_hasta_agotar_stock: 54.7,
+                estado_reposicion: "STOCK_DENTRO_DEL_MINIMO",
+                mensaje: "El stock se encuentra dentro del nivel establecido.",
+              },
+              {
+                id_producto: 9,
+                codigo_producto: "POL-003",
+                nombre_producto: "EcoMine Heavy Duty 1000L",
+                stock_actual: 1800,
+                stock_minimo: 2000,
+                ventas_promedio_90d: 45.02,
+                dias_historial_disponible: 45,
+                requiere_reposicion: null,
+                prediccion_disponible: false,
+                dias_hasta_agotar_stock: null,
+                estado_reposicion: "PREDICCION_NO_DISPONIBLE",
+                mensaje: "Se requieren al menos 90 días de historial para generar la predicción.",
+              },
+            ],
+          }
+        } else {
+          // =============================================
+          // CONSULTA REAL AL BACKEND
+          // =============================================
+
+          const respuesta = await apiFetch("/api/predicciones/stock/", {
+            method: "GET",
+            headers: authHeaders(usuario),
+          })
+
+          datos = await respuesta.json()
+
+          if (!respuesta.ok) {
+            throw new Error(
+              datos.detalle ||
+              datos.mensaje ||
+              "No se pudieron obtener las predicciones de stock."
+            )
+          }
         }
+
+        // =============================================
+        // VALIDACIÓN Y ACTUALIZACIÓN DE RESULTADOS
+        // =============================================
 
         if (!datos.exito) {
           throw new Error(
@@ -529,7 +605,9 @@ function PrediccionesStock({
         }
 
         if (vigente) {
-          setResultados(Array.isArray(datos.resultados) ? datos.resultados : [])
+          setResultados(
+            Array.isArray(datos.resultados) ? datos.resultados : []
+          )
         }
       } catch (e) {
         if (vigente) {
@@ -593,24 +671,26 @@ function PrediccionesStock({
         </button>
       </div>
 
-      <p
-        className="ia-result-note"
-        style={{ padding: "12px 20px 4px" }}
-      >
-        Estimación de días hasta agotar el stock, calculada mediante el
-        modelo predictivo a partir del inventario disponible y las ventas
-        promedio de los últimos 90 días.
-      </p>
+      <div style={{ backgroundColor: "#f8fafc",}}>
+        <p
+          className="ia-result-note"
+          style={{ padding: "10px 20px", borderBottom: "1px solid #e2e8f0",}}
+        >
+          Estimación de días hasta agotar el stock, calculada mediante el
+          modelo predictivo a partir del inventario disponible y las ventas
+          promedio de los últimos 90 días.
+        </p>
+      </div>
 
       <div className="ia-alerts-list" aria-live="polite">
         {cargando && (
-          <div className="ia-empty-state">
+          <div className="ia-empty-state ia-info-stock">
             Consultando predicciones de stock…
           </div>
         )}
 
         {!cargando && error && (
-          <div className="ia-empty-state">
+          <div className="ia-empty-state ia-info-stock">
             <p role="alert" style={{ color: "#dc2626", marginBottom: 12 }}>
               {error}
             </p>
@@ -627,7 +707,7 @@ function PrediccionesStock({
         )}
 
         {!cargando && !error && resultados.length === 0 && (
-          <div className="ia-empty-state">
+          <div className="ia-empty-state ia-info-stock">
             No hay productos disponibles para generar predicciones de stock.
           </div>
         )}
@@ -676,9 +756,23 @@ function PrediccionesStock({
 
           return (
             <div key={producto.id_producto} className="ia-alert-item">
-              <div className="ia-alert-icon">
+              <div
+                className={`ia-alert-icon ${
+                  prediccionNoDisponible
+                    ? "ia-icon-info"
+                    : requiereReposicion
+                      ? "ia-icon-danger"
+                      : "ia-icon-success"
+                }`}
+              >
                 <Ico
-                  p={prediccionNoDisponible ? I.bar : I.alert}
+                  p={
+                    prediccionNoDisponible
+                      ? I.bar
+                      : requiereReposicion
+                        ? I.alert
+                        : I.check
+                  }
                   size={16}
                 />
               </div>
@@ -714,7 +808,11 @@ function PrediccionesStock({
                   >
                     <div
                       className={`ia-alert-progress-fill ${
-                        requiereReposicion ? "bg-danger" : "bg-warn"
+                        prediccionNoDisponible
+                          ? "bg-info"
+                          : requiereReposicion
+                            ? "bg-danger"
+                            : "bg-success"
                       }`}
                       style={{ width: `${porcentaje}%` }}
                     />
@@ -736,7 +834,7 @@ function PrediccionesStock({
                   <>
                     <div
                       className={`ia-alert-days ${
-                        requiereReposicion ? "text-danger" : "text-warn"
+                        requiereReposicion ? "text-danger" : ""
                       }`}
                     >
                       {dias.toLocaleString("es-CL", {
