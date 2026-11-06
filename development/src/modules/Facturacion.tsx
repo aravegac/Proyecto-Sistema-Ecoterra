@@ -800,7 +800,8 @@ export default function Facturacion({
             </div> : previewDetail && <>
               <dl className="facturacion-detail-grid">
                 {[
-                  ["Cliente", previewDetail.cliente_nombre], ["RUT", previewDetail.cliente_rut],
+                  ["Cliente", previewDetail.cliente_nombre],
+                  ...(previewDetail.cliente_rut ? [["RUT", previewDetail.cliente_rut]] : []),
                   ["Orden de compra", previewDetail.oc_numero], ["Fecha de emisión", previewDetail.fecha_emision],
                   ["Estado", estadoLegible(previewDetail.estado)], ["Tipo de operación", previewDetail.tipo_operacion],
                   ["Moneda", previewDetail.moneda_factura || "CLP"],

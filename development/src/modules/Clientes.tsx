@@ -44,6 +44,8 @@ export type NewClientInput = Omit<Client, "id" | "dirs"> & {
 
 const PHONE_REGEX = /^[\d\s+\-().]*$/
 
+const requiresRut = (pais: string) => ["", "chile"].includes(pais.trim().toLowerCase())
+
 const emptyNewClient: NewClientInput = {
   rut: "",
   razon: "",
@@ -349,7 +351,7 @@ export default function Clientes({
                 onClick={/* Ejecuta setSelected(client) al invocarse este callback. */ () => setSelected(client)}
                 className="clientes-row"
               >
-                <td className="clientes-rut">{client.rut}</td>
+                <td className="clientes-rut">{client.rut || "—"}</td>
                 <td>
                   <div className="clientes-name">{client.razon}</div>
                   <div className="clientes-fantasia">{client.fantasia}</div>
@@ -392,7 +394,7 @@ export default function Clientes({
             <div className="clientes-detail-header">
               <div className="clientes-detail-title-row">
                 <div>
-                  <span className="clientes-detail-rut">{selected.rut}</span>
+                  {selected.rut && <span className="clientes-detail-rut">{selected.rut}</span>}
                   <h2 className="clientes-detail-title">{selected.razon}</h2>
                   <p className="clientes-detail-subtitle">
                     {selected.fantasia} · {[selected.pais, selected.region, selected.ciudad].filter(Boolean).join(" · ")}
@@ -421,7 +423,7 @@ export default function Clientes({
                   ["Representante", "representante"],
                 ]. */ ([label, field]) => (
                   <div className="field" key={label}>
-                    <label className="label">{label}</label>
+                    <label className="label">{field === "rut" && !requiresRut(editClient.pais) ? "RUT (opcional)" : label}</label>
                     <input
                       className="input"
                       value={editClient[field as keyof NewClientInput]}
@@ -429,7 +431,7 @@ export default function Clientes({
                         updateEditClient(field as keyof NewClientInput, event.target.value)
                       }
                       required={
-                        field === "rut" ||
+                        (field === "rut" && requiresRut(editClient.pais)) ||
                         field === "razon_social" ||
                         field === "ciudad" ||
                         field === "telefono" ||
@@ -611,7 +613,7 @@ export default function Clientes({
                 ["Representante", "representante"],
               ]. */ ([label, field]) => (
                 <div className="field" key={label}>
-                  <label className="label">{label}</label>
+                  <label className="label">{field === "rut" && !requiresRut(newClient.pais) ? "RUT (opcional)" : label}</label>
                   <input
                     className="input"
                     placeholder={label}
@@ -619,7 +621,7 @@ export default function Clientes({
                     onChange={/* Ejecuta updateNewClient(field as keyof NewClientInput, event.target.value) al invocarse este callback. */ (event) =>
                       updateNewClient(field as keyof NewClientInput, event.target.value)
                     }
-                    required={field === "rut" || field === "razon_social" || field === "ciudad"}
+                    required={(field === "rut" && requiresRut(newClient.pais)) || field === "razon_social" || field === "ciudad"}
                     type={field === "email" ? "email" : "text"}
                   />
                 </div>
