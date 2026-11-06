@@ -4,23 +4,43 @@ import BrandLogo from "../BrandLogo"
 import { Badge, fmt, I, Ico, Product, Screen } from "../shared"
 
 // Muestra los indicadores del panel y las alertas de productos con stock inferior al mínimo.
+type PrediccionStock = {
+  id_producto: number
+  codigo_producto?: string
+  nombre_producto?: string
+  stock_actual: number | string
+  stock_minimo: number | string | null
+  prediccion_disponible: boolean
+  requiere_reposicion: boolean | null
+  dias_hasta_agotar_stock?: number | string | null
+  mensaje: string
+}
+
 export default function Dashboard({
   productos,
+  predicciones,
+  loadingPredicciones,
+  errorPredicciones,
   onNav,
 }: {
   productos: Product[]
+  predicciones: PrediccionStock[]
+  loadingPredicciones: boolean
+  errorPredicciones: string
   onNav: (screen: Screen) => void
 }) {
-  const stockAlerts = productos.filter(product => {
-  const stock = Number(product.stock)
-  const minimo = Number(product.stockMin)
+  const stockAlerts = predicciones.filter(product => {
+    const stock = Number(product.stock_actual)
+    const minimo = product.stock_minimo == null
+      ? null
+      : Number(product.stock_minimo)
 
-  // Mostrar siempre los productos sin stock.
-  if (stock <= 0) return true
+    // Mostrar siempre los productos sin stock.
+    if (stock <= 0) return true
 
-  // Si tiene stock, mostrarlo cuando alcance o esté bajo el mínimo.
-  return minimo > 0 && stock <= minimo
-})
+    // Mostrar productos con stock igual o inferior al mínimo.
+    return minimo != null && minimo > 0 && stock <= minimo
+  })
   const today = new Date().toLocaleDateString("es-CL", {
     weekday: "long",
     year: "numeric",
@@ -33,11 +53,6 @@ export default function Dashboard({
       time: "09:14",
       desc: "Cotización COT-2024-041 emitida — Minera Los Bronces S.A.",
       type: "quote",
-    },
-    {
-      time: "07:30",
-      desc: "Alerta IA: POL-002 cruzó umbral mínimo de stock. 300 L restantes.",
-      type: "alert",
     },
     {
       time: "Ayer",
@@ -107,48 +122,94 @@ export default function Dashboard({
             Ver panel IA →
           </button>
         </div>
-        {stockAlerts.length === 0 ? (
+        {loadingPredicciones ? (
+          <div className="ia-empty-state ia-info-stock" style={{ padding: 20 }}>
+            Consultando alertas de stock...
+          </div>
+        ) : errorPredicciones ? (
+          <div
+            className="ia-empty-state ia-info-stock"
+            style={{ padding: 20 }}
+            role="alert"
+          >
+            <p style={{ color: "#dc2626" }}>
+              {errorPredicciones}
+            </p>
+            <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+              No fue posible actualizar las alertas de stock.
+            </span>
+          </div>
+        ) : stockAlerts.length === 0 ? (
           <div className="ia-empty-state ia-info-stock" style={{ padding: 20 }}>
             <Ico p={I.check} size={18} />
+
             <p style={{ marginTop: 8 }}>
               No hay productos que requieran reposición.
             </p>
+
             <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
               Todos los productos tienen stock por encima de su mínimo establecido.
             </span>
           </div>
         ) : (
           stockAlerts.map(product => {
-            const stock = Number(product.stock) || 0
-            const minimo = Number(product.stockMin) || 0
+            const stock = Number(product.stock_actual) || 0
+
+            const minimo = product.stock_minimo == null
+              ? null
+              : Number(product.stock_minimo)
+
+            const productoLocal = productos.find(
+              item => item.id === product.id_producto
+            )
+
+            const codigo =
+              product.codigo_producto ||
+              productoLocal?.codigo ||
+              ""
+
+            const nombre =
+              product.nombre_producto ||
+              productoLocal?.nombre ||
+              `Producto ${product.id_producto}`
+
+            const unidad = productoLocal?.unidad || "L"
+
+            const stockTotal = productoLocal?.stockTotal ?? stock
 
             const pct =
-              minimo > 0
+              minimo != null && minimo > 0
                 ? Math.max(0, Math.min((stock / minimo) * 100, 100))
                 : 0
 
             const agotado = stock <= 0
 
             return (
-              <div key={product.id} className="dashboard-alert-item">
+              <div
+                key={product.id_producto}
+                className="dashboard-alert-item"
+              >
                 <div className="dashboard-alert-content">
                   <div className="dashboard-alert-name">
-                    {product.nombre}
+                    {nombre}
                   </div>
 
                   <div className="dashboard-alert-meta">
-                    {product.codigo} · Mínimo: {fmt(minimo)} L
+                    {codigo} · Mínimo:{" "}
+                    {minimo == null ? "No configurado" : `${fmt(minimo)} ${unidad}`}
                   </div>
 
-                  <div className="progress dashboard-stock-progress">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: agotado ? "#DC2626" : "#D97706",
-                      }}
-                    />
-                  </div>
+                  {minimo != null && minimo > 0 && (
+                    <div className="progress dashboard-stock-progress">
+                      <div
+                        className="progress-fill"
+                        style={{
+                          width: `${pct}%`,
+                          background: agotado ? "#DC2626" : "#D97706",
+                        }}
+                      />
+                    </div>
+                  )}
 
                   <div className="dashboard-alert-stock">
                     <span
@@ -158,9 +219,10 @@ export default function Dashboard({
                         fontWeight: 700,
                       }}
                     >
-                      {fmt(stock)} L
+                      {fmt(stock)} {unidad}
                     </span>
-                    {" "}disponibles · {fmt(product.stockTotal)} L total
+
+                    {" "}disponibles · {fmt(stockTotal)} {unidad} total
                   </div>
                 </div>
 
@@ -168,15 +230,6 @@ export default function Dashboard({
                   <Badge t={agotado ? "danger" : "warn"}>
                     {agotado ? "Sin stock" : "Bajo mínimo"}
                   </Badge>
-
-                  <div style={{ marginTop: 8 }}>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => onNav("ia")}
-                    >
-                      Consultar IA
-                    </button>
-                  </div>
                 </div>
               </div>
             )

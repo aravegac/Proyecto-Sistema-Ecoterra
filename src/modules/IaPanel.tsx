@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useState } from "react"
 import { apiFetch } from "../api"
 import { authHeaders, AuthUser, Badge, I, Ico, PageTitle, Product } from "../shared"
 
@@ -45,22 +45,6 @@ type PrediccionStock = {
 
   unidad_producto?: string
 }
-
-type RespuestaPrediccionesStock = {
-  exito: boolean
-  total_productos: number
-  resultados: PrediccionStock[]
-  mensaje?: string
-  detalle?: string
-}
-
-// =============================================
-// MODO DE PRUEBA VISUAL
-// =============================================
-
-// true: utiliza escenarios ficticios.
-// false: consulta los datos reales del backend Django.
-const USAR_DATOS_DE_PRUEBA = false
 
 // ==================================================
 // CONSTANTES Y FUNCIONES AUXILIARES
@@ -518,141 +502,19 @@ function Modelo({
 // ==================================================
 
 function PrediccionesStock({
-  usuario,
+  resultados,
+  cargando,
+  error,
+  onRecargar,
 }: {
-  usuario: AuthUser | null
+  resultados: PrediccionStock[]
+  cargando: boolean
+  error: string
+  onRecargar: () => void
 }) {
-  const [resultados, setResultados] = useState<PrediccionStock[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState("")
-  const [actualizacion, setActualizacion] = useState(0)
-
-
-  useEffect(() => {
-    let vigente = true
-
-    async function consultarPredicciones() {
-      setCargando(true)
-      setError("")
-
-      try {
-        let datos: RespuestaPrediccionesStock
-
-        // =============================================
-        // MODO DE PRUEBA VISUAL
-        // =============================================
-
-        if (USAR_DATOS_DE_PRUEBA) {
-          datos = {
-            exito: true,
-            total_productos: 3,
-            resultados: [
-              {
-                id_producto: 7,
-                codigo_producto: "POL-001",
-                nombre_producto: "EcoStab Polímero Estabilizador 500L",
-                stock_actual: 500,
-                stock_minimo: 600,
-                ventas_promedio_90d: 15,
-                dias_historial_disponible: 90,
-                requiere_reposicion: true,
-                prediccion_disponible: true,
-                dias_hasta_agotar_stock: 30,
-                estado_reposicion: "REPOSICION_INMEDIATA",
-                mensaje: "Se recomienda gestionar la reposición del producto.",
-              },
-              {
-                id_producto: 8,
-                codigo_producto: "POL-002",
-                nombre_producto: "EcoDust Control Supresor de Polvo 25L",
-                stock_actual: 1500,
-                stock_minimo: 1000,
-                ventas_promedio_90d: 30.38,
-                dias_historial_disponible: 90,
-                requiere_reposicion: false,
-                prediccion_disponible: true,
-                dias_hasta_agotar_stock: 54.7,
-                estado_reposicion: "STOCK_DENTRO_DEL_MINIMO",
-                mensaje: "El stock se encuentra dentro del nivel establecido.",
-              },
-              {
-                id_producto: 9,
-                codigo_producto: "POL-003",
-                nombre_producto: "EcoMine Heavy Duty 1000L",
-                stock_actual: 1800,
-                stock_minimo: 2000,
-                ventas_promedio_90d: 45.02,
-                dias_historial_disponible: 45,
-                requiere_reposicion: null,
-                prediccion_disponible: false,
-                dias_hasta_agotar_stock: null,
-                estado_reposicion: "PREDICCION_NO_DISPONIBLE",
-                mensaje: "Se requieren al menos 90 días de historial para generar la predicción.",
-              },
-            ],
-          }
-        } else {
-          // =============================================
-          // CONSULTA REAL AL BACKEND
-          // =============================================
-
-          const respuesta = await apiFetch("/api/predicciones/stock/", {
-            method: "GET",
-            headers: authHeaders(usuario),
-          })
-
-          datos = await respuesta.json()
-
-          if (!respuesta.ok) {
-            throw new Error(
-              datos.detalle ||
-              datos.mensaje ||
-              "No se pudieron obtener las predicciones de stock."
-            )
-          }
-        }
-
-        // =============================================
-        // VALIDACIÓN Y ACTUALIZACIÓN DE RESULTADOS
-        // =============================================
-
-        if (!datos.exito) {
-          throw new Error(
-            datos.mensaje ||
-            "El servidor no pudo generar las predicciones."
-          )
-        }
-
-        if (vigente) {
-          setResultados(
-            Array.isArray(datos.resultados) ? datos.resultados : []
-          )
-        }
-      } catch (e) {
-        if (vigente) {
-          setError(
-            e instanceof Error
-              ? e.message
-              : "Ocurrió un error al consultar las predicciones de stock."
-          )
-        }
-      } finally {
-        if (vigente) {
-          setCargando(false)
-        }
-      }
-    }
-
-
-    consultarPredicciones()
-
-    return () => {
-      vigente = false
-    }
-  }, [usuario?.token, actualizacion])
 
   const recargar = () => {
-    setActualizacion(valor => valor + 1)
+    onRecargar()
   }
 
   const cantidadReposicion = resultados.filter(
@@ -1000,9 +862,17 @@ function PrediccionesStock({
 export default function IaPanel({
   productos,
   usuario,
+  predicciones,
+  loadingPredicciones,
+  errorPredicciones,
+  onRecargarPredicciones,
 }: {
   productos: Product[]
   usuario: AuthUser | null
+  predicciones: PrediccionStock[]
+  loadingPredicciones: boolean
+  errorPredicciones: string
+  onRecargarPredicciones: () => void
 }) {
   return (
     <div>
@@ -1025,7 +895,12 @@ export default function IaPanel({
         />
       </div>
 
-      <PrediccionesStock usuario={usuario} />
+      <PrediccionesStock
+        resultados={predicciones}
+        cargando={loadingPredicciones}
+        error={errorPredicciones}
+        onRecargar={onRecargarPredicciones}
+      />
     </div>
   )
 }

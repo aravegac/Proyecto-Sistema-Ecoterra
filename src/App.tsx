@@ -28,6 +28,41 @@ import {
 import Login from "./modules/Login"
 import { clearSession, readSession, saveSession, sessionExpiresAt } from "./session"
 
+type PrediccionStock = {
+  id_producto: number
+  codigo_producto?: string
+  nombre_producto?: string
+  codigo?: string
+  nombre?: string
+
+  stock_actual: number | string
+  stock_minimo: number | string | null
+  ventas_promedio_90d: number | string | null
+  dias_historial_disponible: number
+
+  requiere_reposicion: boolean | null
+  prediccion_disponible: boolean
+  dias_hasta_agotar_stock?: number | string | null
+  estado_reposicion?: string
+  mensaje: string
+
+  advertencia_modelo?: boolean
+  tipo_advertencia?: string | null
+  variables_fuera_rango?: string[]
+  variables_atipicas?: string[]
+  mensaje_advertencia?: string | null
+
+  unidad_producto?: string
+}
+
+type RespuestaPrediccionesStock = {
+  exito: boolean
+  total_productos: number
+  resultados: PrediccionStock[]
+  mensaje?: string
+  detalle?: string
+}
+
 // ---------- Mappers API -> UI ----------
 // Adapta un cliente de la API y sus direcciones al formato utilizado por la interfaz.
 const mapClientFromApi = (item: any) => ({
@@ -158,6 +193,10 @@ export default function App() {
   const [facturas, setFacturas] = useState<Invoice[]>([])
   const [facturasLoading, setFacturasLoading] = useState(true)
   const [ordenes, setOrdenes] = useState<PurchaseOrder[]>([])
+  const [prediccionesStock, setPrediccionesStock] = useState<PrediccionStock[]>([])
+  const [prediccionesLoading, setPrediccionesLoading] = useState(true)
+  const [prediccionesError, setPrediccionesError] = useState("")
+  const [versionInventario, setVersionInventario] = useState(0)
   // Recarga las órdenes de compra con el token del usuario y actualiza su estado en la aplicación.
   const reloadOrdenes = async () => {
     if (!authUser) return
@@ -256,6 +295,75 @@ export default function App() {
   }, [screen, authUser])
 
   // ---------- Cargas iniciales (solo si hay sesión) ----------
+  // Carga las predicciones de stock para compartirlas entre Dashboard e IA.
+  useEffect(() => {
+    let vigente = true
+
+    const consultarPredicciones = async () => {
+      if (!authUser) {
+        setPrediccionesStock([])
+        setPrediccionesLoading(false)
+        setPrediccionesError("")
+        return
+      }
+
+      setPrediccionesLoading(true)
+      setPrediccionesError("")
+
+      try {
+        const response = await apiFetch("/api/predicciones/stock/", {
+          method: "GET",
+          headers: authHeaders(authUser),
+        })
+
+        const data: RespuestaPrediccionesStock = await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            data.detalle ||
+            data.mensaje ||
+            "No se pudieron obtener las predicciones de stock."
+          )
+        }
+
+        if (!data.exito || !Array.isArray(data.resultados)) {
+          throw new Error(
+            data.mensaje ||
+            "El servidor devolvió una respuesta de predicciones inválida."
+          )
+        }
+
+        if (vigente) {
+          setPrediccionesStock(data.resultados)
+          setPrediccionesError("")
+        }
+      } catch (error) {
+        if (vigente) {
+          setPrediccionesStock([])
+          setPrediccionesError(
+            error instanceof Error
+              ? error.message
+              : "Ocurrió un error al consultar las predicciones de stock."
+          )
+        }
+      } finally {
+        if (vigente) {
+          setPrediccionesLoading(false)
+        }
+      }
+    }
+
+    consultarPredicciones()
+
+    return () => {
+      vigente = false
+    }
+  }, [authUser?.token, versionInventario])
+
+  const recargarPredicciones = () => {
+    setVersionInventario(current => current + 1)
+  }
+
   useEffect(/* Carga los clientes cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
     apiFetch("/api/clientes/", { headers: authHeaders(authUser) })
@@ -796,6 +904,7 @@ export default function App() {
         stockTotal: batches.reduce((sum, lote) => sum + lote.qty, 0),
       }
     }))
+    setVersionInventario(current => current + 1)
   }
 
   // ---------- Handlers Lotes ----------
@@ -883,7 +992,15 @@ export default function App() {
 
   // ---------- Vistas ----------
   const views: Record<Screen, React.ReactNode> = {
-    dashboard: <Dashboard productos={productos} onNav={navigate} />,
+    dashboard: (
+      <Dashboard
+        productos={productos}
+        predicciones={prediccionesStock}
+        loadingPredicciones={prediccionesLoading}
+        errorPredicciones={prediccionesError}
+        onNav={navigate}
+      />
+    ),
     clientes: (
       <Clientes
         clientes={clientes}
@@ -962,7 +1079,16 @@ export default function App() {
       ])
     }} />,
     nc: <NotasCredito facturas={facturas} authUser={authUser} />,
-    ia: <IaPanel productos={productos} usuario={authUser} />,
+    ia: (
+      <IaPanel
+        productos={productos}
+        usuario={authUser}
+        predicciones={prediccionesStock}
+        loadingPredicciones={prediccionesLoading}
+        errorPredicciones={prediccionesError}
+        onRecargarPredicciones={recargarPredicciones}
+      />
+    ),
     usuarios: (
       <Usuarios
         usuarios={usuarios}
