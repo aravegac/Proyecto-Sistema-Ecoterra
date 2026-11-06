@@ -79,10 +79,20 @@ class DireccionSerializer(serializers.ModelSerializer):
 class ClienteSerializer(serializers.ModelSerializer):
     direcciones = DireccionSerializer(many=True, read_only=True)
     estado = EstadoClienteField(required=False, default=True)
+    rut = serializers.CharField(max_length=12, required=False, allow_blank=True)
 
     # Valida y normaliza el RUT del cliente antes de guardarlo.
     def validate_rut(self, value):
-        return normalize_rut(value)
+        return normalize_rut(value) if value else ""
+
+    def validate(self, attrs):
+        pais = attrs.get("pais", self.instance.pais if self.instance else "")
+        rut = attrs.get("rut", self.instance.rut if self.instance else "")
+        if pais.strip().lower() in {"", "chile"} and not rut.strip():
+            raise serializers.ValidationError(
+                {"rut": "Ingresa el RUT del cliente para Chile."}
+            )
+        return attrs
 
     class Meta:
         model = Cliente

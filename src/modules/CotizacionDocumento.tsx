@@ -191,7 +191,7 @@ export const printCotizacion = (detail: QuoteDetail) => {
           <div class="client-info">
             <div class="section-title">Cliente:</div>
             <strong>${detail.cliente_nombre}</strong><br/>
-            RUT: ${detail.cliente_rut}<br/>
+            ${detail.cliente_rut ? `RUT: ${detail.cliente_rut}<br/>` : ""}
             Representante: ${detail.cliente_representante || '—'}<br/>
             ${direccionPrincipal ? `${direccionPrincipal.calle}, ${direccionPrincipal.ciudad}, ${direccionPrincipal.region}, ${direccionPrincipal.pais}` : ''}
           </div>

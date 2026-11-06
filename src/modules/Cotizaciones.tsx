@@ -1065,7 +1065,7 @@ const linkOrder = async () => {
                     <div style={{ flex: 2, padding: "1.5rem", borderRight: "2px solid #000", fontSize: "0.9rem" }}>
                       <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Cliente:</div>
                       <div style={{ fontWeight: "bold", marginBottom: "0.25rem" }}>{detail.cliente_nombre}</div>
-                      <div style={{ marginBottom: "0.25rem" }}>RUT: {detail.cliente_rut}</div>
+                      {detail.cliente_rut && <div style={{ marginBottom: "0.25rem" }}>RUT: {detail.cliente_rut}</div>}
                       <div style={{ marginBottom: "0.25rem" }}>Representante: {detail.cliente_representante || "—"}</div>
                       <div>{[detail.cliente_pais, detail.cliente_region, detail.cliente_ciudad].filter(Boolean).join(" · ")}</div>
                       
