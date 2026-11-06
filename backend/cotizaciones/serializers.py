@@ -2,6 +2,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import transaction
 from rest_framework import serializers
+from clientes.serializers import RutDocumentoField
 from .models import Cotizacion, DetalleCotizacion
 
 
@@ -29,7 +30,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
     detalles = DetalleCotizacionSerializer(many=True, write_only=True)
     
     cliente_nombre = serializers.CharField(source="id_cliente.razon_social", read_only=True)
-    cliente_rut = serializers.CharField(source="id_cliente.rut", read_only=True)
+    cliente_rut = RutDocumentoField(source="id_cliente.rut", read_only=True)
     cliente_telefono = serializers.CharField(source="id_cliente.telefono", read_only=True)
     cliente_email = serializers.CharField(source="id_cliente.email", read_only=True)
     cliente_representante = serializers.CharField(source="id_cliente.representante", read_only=True)
