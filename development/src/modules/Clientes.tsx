@@ -80,7 +80,7 @@ const emptyAddress: AddressInput = {
 // Convierte los datos del cliente seleccionado a los campos del formulario de edición.
 const clientToInput = (client: Client): NewClientInput => ({
   ...emptyNewClient,
-  rut: client.rut,
+  rut: client.rut === "No Posee" ? "" : client.rut,
   razon: client.razon,
   fantasia: client.fantasia,
   pais: client.pais,

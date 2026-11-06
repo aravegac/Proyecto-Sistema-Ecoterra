@@ -5,6 +5,13 @@ from rest_framework import serializers
 
 from .models import Cliente, Direccion
 
+RUT_NO_POSEE = "No Posee"
+
+
+class RutDocumentoField(serializers.CharField):
+    def to_representation(self, value):
+        return "" if value == RUT_NO_POSEE else super().to_representation(value)
+
 
 # Limpia el RUT, comprueba su dígito verificador y devuelve el formato cuerpo-guion-verificador.
 def normalize_rut(value):
@@ -83,15 +90,18 @@ class ClienteSerializer(serializers.ModelSerializer):
 
     # Valida y normaliza el RUT del cliente antes de guardarlo.
     def validate_rut(self, value):
-        return normalize_rut(value) if value else ""
+        return normalize_rut(value) if value and value != RUT_NO_POSEE else RUT_NO_POSEE
 
     def validate(self, attrs):
         pais = attrs.get("pais", self.instance.pais if self.instance else "")
         rut = attrs.get("rut", self.instance.rut if self.instance else "")
-        if pais.strip().lower() in {"", "chile"} and not rut.strip():
-            raise serializers.ValidationError(
-                {"rut": "Ingresa el RUT del cliente para Chile."}
-            )
+        if not rut.strip() or rut == RUT_NO_POSEE:
+            if pais.strip().lower() in {"", "chile"}:
+                raise serializers.ValidationError(
+                    {"rut": "Ingresa el RUT del cliente para Chile."}
+                )
+            if self.instance is None:
+                attrs["rut"] = RUT_NO_POSEE
         return attrs
 
     class Meta:

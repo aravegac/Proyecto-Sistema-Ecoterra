@@ -8,7 +8,7 @@ from .models import Factura, DetalleFactura
 from ventas.models import OrdenCompra
 from ventas.serializers import OrdenCompraFacturacionSerializer as OrdenCompraSerializer
 from clientes.models import Cliente
-from clientes.serializers import DireccionSerializer
+from clientes.serializers import DireccionSerializer, RutDocumentoField
 from inventario.models import Producto
 
 
@@ -58,7 +58,7 @@ class DetalleFacturaSerializer(serializers.ModelSerializer):
 
 class FacturaSerializer(serializers.ModelSerializer):
     tipo_operacion = serializers.CharField(read_only=True)
-    cliente_rut = serializers.CharField(source="id_cliente.rut", read_only=True)
+    cliente_rut = RutDocumentoField(source="id_cliente.rut", read_only=True)
     cliente_telefono = serializers.CharField(source="id_cliente.telefono", read_only=True)
     cliente_email = serializers.CharField(source="id_cliente.email", read_only=True)
     cliente_representante = serializers.CharField(source="id_cliente.representante", read_only=True)
