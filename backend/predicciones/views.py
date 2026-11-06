@@ -86,35 +86,42 @@ class Prediccion(APIView):
 
         return Response(resultado)
 
-@api_view(["GET"])
-def listar_predicciones_stock(request):
-    """
-    Endpoint para consultar las predicciones de reposición
-    de los productos comerciales de Ecoterra.
-    """
 
-    try:
-        resultados = obtener_predicciones_stock()
 
-        return Response(
-            {
-                "exito": True,
-                "total_productos": len(resultados),
-                "resultados": resultados,
-            },
-            status=status.HTTP_200_OK,
-        )
+class ListarPrediccionesStock(APIView):
+    permission_classes = [PermisoModulo]
 
-    except Exception as error:
+    permisos_por_metodo = {
+        "GET": ("ia", "Predicción de reposición de stock"),
+    }
 
-        return Response(
-            {
-                "exito": False,
-                "mensaje": (
-                    "Ocurrió un error al obtener las predicciones "
-                    "de stock."
-                ),
-                "detalle": str(error),
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    def get(self, request):
+        """
+        Consulta las predicciones de reposición
+        de los productos de Ecoterra.
+        """
+        try:
+            resultados = obtener_predicciones_stock()
+
+            return Response(
+                {
+                    "exito": True,
+                    "total_productos": len(resultados),
+                    "resultados": resultados,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            return Response(
+                {
+                    "exito": False,
+                    "mensaje": (
+                        "Ocurrió un error al obtener las predicciones "
+                        "de stock."
+                    ),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
