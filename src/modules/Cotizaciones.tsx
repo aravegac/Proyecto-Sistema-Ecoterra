@@ -16,6 +16,7 @@ export type Quote = {
   total: number
   observacion: string
   estado: string
+  moneda: string 
   fechaAnulacion?: string | null
   motivoAnulacion?: string | null
   usuarioAnulacion?: number | null
@@ -85,6 +86,7 @@ type QuoteDetail = {
     principal: boolean
   }>
   fecha_cotizacion: string
+  moneda: string
   vigencia_cotizacion: string
   condicion_pago_cotizacion: string
   subtotal_cotizacion: number
@@ -162,6 +164,12 @@ export default function Cotizaciones({
     { productId: "", quantity: "", unitPrice: "" },
   ])
 
+  const formatMoney = (value: number, currency: string) => {
+    const formatted = fmtCLP(value)
+    const suffix = currency === "USD" ? "USD" : "CLP"
+    return `${formatted}${suffix}`
+  }
+
   const [editQuoteId, setEditQuoteId] = useState<number | null>(null)
   const [clientes, setClientes] = useState<Client[]>(clientesProp || [])
 
@@ -214,6 +222,7 @@ const reloadCotizaciones = async () => {
       total: Number(item.total_cotizacion),
       observacion: item.observacion_cotizacion || "",
       estado: item.estado_cotizacion === "Convertida" ? "Aceptada" : item.estado_cotizacion,
+      moneda: item.moneda || "CLP",
       fechaAnulacion: item.fecha_anulacion,
       motivoAnulacion: item.motivo_anulacion,
       usuarioAnulacion: item.id_usuario_anulacion,
@@ -262,6 +271,7 @@ const reloadCotizaciones = async () => {
       setQuoteValidity(String(data.dias_vigencia_cotizacion || 30))
       setPaymentTerm(data.condicion_pago_cotizacion)
       setQuoteStatus(data.estado_cotizacion)
+      setCurrency(data.moneda || "CLP") 
       setOperationType(data.tipo_operacion_cotizacion || "Nacional")
       setQuoteObservation(data.observacion_cotizacion || "")
       
@@ -284,6 +294,8 @@ const reloadCotizaciones = async () => {
   const activeQuotes = quotes.filter((quote) => quote.estado === "Vigente")
   const acceptedQuotes = quotes.filter((quote) => quote.estado === "Aceptada")
   const expiredQuotes = quotes.filter((quote) => quote.estado === "Vencida")
+  const rejectedQuotes = quotes.filter((quote) => quote.estado === "Rechazada") 
+
   const filteredQuotes = quotes.filter((quote) =>
     (!clientFilter || quote.cliente === clientFilter) &&
     (statusFilter === "sin-anuladas" ? quote.estado !== "Anulada" : !statusFilter || quote.estado === statusFilter),
@@ -458,6 +470,7 @@ const linkOrder = async () => {
       observacion_cotizacion: quoteObservation || "",
       estado_cotizacion: status,
       ruta_pdf_cotizacion: "",
+      moneda: currency,
       detalles: quoteLines
         .filter((line) => line.productId && line.quantity)
         .map((line) => {
@@ -551,9 +564,6 @@ const linkOrder = async () => {
         <div className="kpi">
           <div className="kpi-label">Vigentes</div>
           <div className="kpi-value tabular">{activeQuotes.length}</div>
-          <div className="cotizaciones-kpi-note">
-            {fmtCLP(activeQuotes.reduce((sum, quote) => sum + quote.total, 0))} CLP
-          </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Aceptadas</div>
@@ -568,9 +578,10 @@ const linkOrder = async () => {
           </div>
         </div>
         <div className="kpi">
-          <div className="kpi-label">Valor total</div>
-          <div className="kpi-value tabular">{fmtCLP(totalQuoted)}</div>
-          <div className="cotizaciones-kpi-note">CLP</div>
+          <div className="kpi-label">Rechazadas</div>
+          <div className="kpi-value tabular">
+            {rejectedQuotes.length}
+          </div>
         </div>
       </div>
       <div className="cotizaciones-filters">
@@ -619,7 +630,7 @@ const linkOrder = async () => {
               <th>Vigencia</th>
               <th>Subtotal</th>
               <th>IVA</th>
-              <th>Total (CLP)</th>
+              <th>Total</th>
               <th>OC</th>
               <th>Factura</th>
               <th>Estado</th>
@@ -628,9 +639,17 @@ const linkOrder = async () => {
           </thead>
           <tbody>
             {isLoadingQuotes ? (
-              <tr><td colSpan={11} role="status">Cargando Cotizaciones...</td></tr>
+              <tr>
+                <td colSpan={11} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                  Cargando Cotizaciones...
+                </td>
+              </tr>
             ) : filteredQuotes.length === 0 ? (
-              <tr><td colSpan={11}>{quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}</td></tr>
+              <tr>
+                <td colSpan={11} style={{ textAlign: "center", padding: "24px" }}>
+                  {quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}
+                </td>
+              </tr>
             ) : filteredQuotes.map((quote) => (
               <tr key={quote.id}>
                 {(() => {
@@ -643,9 +662,9 @@ const linkOrder = async () => {
                       <td>{quote.cliente}</td>
                       <td>{quote.fecha}</td>
                       <td>{quote.vigencia}</td>
-                      <td>{fmtCLP(quote.subtotal)}</td>
-                      <td>{fmtCLP(quote.iva)}</td>
-                      <td>{fmtCLP(quote.total)}</td>
+                      <td>{formatMoney(quote.subtotal, quote.moneda || "CLP")}</td>
+                      <td>{formatMoney(quote.iva, quote.moneda || "CLP")}</td>
+                      <td>{formatMoney(quote.total, quote.moneda || "CLP")}</td>
                       <td>{order?.id ?? "—"}</td>
                       <td>{invoice?.id ?? "—"}</td>
                       <td>
@@ -1091,8 +1110,8 @@ const linkOrder = async () => {
                           <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{line.codigo_producto}</td>
                           <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.nombre_producto}{line.descripcion_dc && line.descripcion_dc !== line.nombre_producto && <div>{line.descripcion_dc}</div>}</td>
                           <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad_dc).toLocaleString('es-CL')} {line.unidad_producto}</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{fmtCLP(Number(line.precio_unitario_dc))}</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(line.subtotal_dc))}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{formatMoney(Number(line.precio_unitario_dc), detail.moneda || "CLP")}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>{formatMoney(Number(line.subtotal_dc), detail.moneda || "CLP")}</td>
                         </tr>
                       ))}
                       {Array.from({ length: Math.max(0, 5 - detail.detalles.length) }).map((_, i) => (
@@ -1113,16 +1132,28 @@ const linkOrder = async () => {
                     <table style={{ width: "300px", borderCollapse: "collapse", fontSize: "0.9rem" }}>
                       <tbody>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>SUBTOTAL NETO</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.subtotal_cotizacion))}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>
+                            SUBTOTAL NETO
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                            {formatMoney(Number(detail.subtotal_cotizacion), detail.moneda || "CLP")}
+                          </td>
                         </tr>
                         <tr style={{ borderBottom: "1px solid #000" }}>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>IVA ({detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right" }}>{fmtCLP(Number(detail.iva_cotizacion))}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>
+                            IVA ({detail.tipo_operacion_cotizacion === "Internacional" ? 0 : 19}%)
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                            {formatMoney(Number(detail.iva_cotizacion), detail.moneda || "CLP")}
+                          </td>
                         </tr>
                         <tr>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem", borderRight: "2px solid #000" }}>TOTAL</td>
-                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem" }}>{fmtCLP(Number(detail.total_cotizacion))}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem", borderRight: "2px solid #000" }}>
+                            TOTAL
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem" }}>
+                            {formatMoney(Number(detail.total_cotizacion), detail.moneda || "CLP")}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
