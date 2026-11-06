@@ -844,6 +844,7 @@ export default function App() {
     }
     const created = mapProductFromApi(await response.json())
     setProductos(/* Calcula el nuevo valor de Productos devolviendo [...current, created]. */ (current) => [...current, created])
+    setVersionInventario(current => current + 1)
     return created
   }
 
@@ -869,6 +870,7 @@ export default function App() {
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
       current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
+    setVersionInventario(current => current + 1)
     if (product.codigo !== updated.codigo) {
       setLotes((current) => current.map((lote) => lote.prod === product.codigo ? { ...lote, prod: updated.codigo } : lote))
     }
@@ -892,6 +894,7 @@ export default function App() {
       )
     }
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.filter((item) => item.id !== product.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== product.id. */ (item) => item.id !== product.id))
+    setVersionInventario(current => current + 1)
   }
 
   // Los saldos de los lotes confirmados por la API alimentan también Productos y Dashboard.
@@ -1077,6 +1080,7 @@ export default function App() {
         { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha },
         ...current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== invoice.id. */ (item) => item.id !== invoice.id),
       ])
+      setVersionInventario(current => current + 1)
     }} />,
     nc: <NotasCredito facturas={facturas} authUser={authUser} />,
     ia: (
@@ -1131,6 +1135,9 @@ export default function App() {
       onNav={navigate}
       user={authUser}
       onLogout={handleLogout}
+      predicciones={prediccionesStock}
+      loadingPredicciones={prediccionesLoading}
+      errorPredicciones={prediccionesError}
     >
       {views[screen]}
     </AppLayout>
