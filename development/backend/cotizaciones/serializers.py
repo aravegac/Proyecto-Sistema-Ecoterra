@@ -62,6 +62,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
             "subtotal_cotizacion",
             "iva_cotizacion",
             "total_cotizacion",
+            "moneda",
             "observacion_cotizacion",
             "estado_cotizacion",
             "ruta_pdf_cotizacion",

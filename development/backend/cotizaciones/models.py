@@ -21,6 +21,12 @@ class Cotizacion(models.Model):
         max_length=20, choices=[("Nacional", "Nacional"), ("Internacional", "Internacional")],
         default="Nacional", db_column="tipo_operacion_cotizacion",
     )
+    moneda = models.CharField(
+        max_length=10,
+        default="CLP",
+        db_column="moneda_cotizacion",
+        choices=[("CLP", "CLP"), ("USD", "USD")],
+    )
     subtotal_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="subtotal_cotizacion")
     iva_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="iva_cotizacion")
     total_cotizacion = models.DecimalField(max_digits=12, decimal_places=2, db_column="total_cotizacion")
