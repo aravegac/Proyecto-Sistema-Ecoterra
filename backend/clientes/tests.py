@@ -215,6 +215,32 @@ class ClienteModelTests(SalesTablesMixin, TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["rut"], "11111111-1")
 
+    def test_cliente_extranjero_guarda_no_posee_y_requiere_rut_al_cambiar_a_chile(self):
+        api = self.authenticated_api()
+        datos = {
+            "razon_social": "Cliente extranjero",
+            "pais": "Perú",
+            "ciudad": "Lima",
+            "telefono": "+51 123456789",
+            "email": "cliente@example.com",
+        }
+        for rut_payload in ({}, {"rut": ""}):
+            with self.subTest(rut_payload=rut_payload):
+                response = api.post("/api/clientes/", {**datos, **rut_payload}, format="json")
+                self.assertEqual(response.status_code, 201, response.data)
+                cliente = Cliente.objects.get(pk=response.data["id"])
+                self.assertEqual(cliente.rut, "No Posee")
+                url = f"/api/clientes/{cliente.pk}/"
+
+                response = api.patch(url, {"pais": "Chile"}, format="json")
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("rut", response.data)
+
+                response = api.patch(url, {"pais": "Chile", "rut": "11.111.111-1"}, format="json")
+                self.assertEqual(response.status_code, 200, response.data)
+                cliente.refresh_from_db()
+                self.assertEqual(cliente.rut, "11111111-1")
+
     # Comprueba que la API rechaza un RUT con dígito verificador incorrecto.
     def test_endpoint_api_rechaza_rut_invalido(self):
         response = self.authenticated_api().post(
