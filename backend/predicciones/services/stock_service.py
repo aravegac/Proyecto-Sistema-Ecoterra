@@ -1,7 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
+import math
 
-from django.db.models import Sum, Min
+from django.db.models import Sum
 from django.utils import timezone
 
 from inventario.models import Producto, Inventario
@@ -18,6 +19,11 @@ DIAS_ANALISIS = 90
 
 # Fecha desde la que asumimos que el historial de ventas
 # es completo para nuestro escenario de pruebas.
+
+# VALOR DE PRUEBA
+# FECHA_INICIO_HISTORIAL = date(2026, 10, 1)
+
+# VALOR REAL
 FECHA_INICIO_HISTORIAL = date(2026, 8, 1)
 
 ESTADOS_FACTURA_VALIDOS = [
@@ -25,23 +31,50 @@ ESTADOS_FACTURA_VALIDOS = [
     "EMITIDA",
 ]
 
-"""
-QUITAR COMENTARIO SOLAMENTE CUANDO SE QUIERA USAR PRODUCTOS CERCANOS A
-LOS REALES
-
-CODIGOS_PRODUCTOS_COMERCIALES = [
-    "POL-001",
-    "POL-002",
-    "POL-003",
-    "POL-004",
-    "POL-005",
-    "POL-008",
-    "POL-009",
-]
-"""
-productos = Producto.objects.filter(estado=True).order_by("id")
-
 ESTADO_INVENTARIO_DISPONIBLE = "Disponible"
+
+
+# ==========================================================
+# RESPUESTA ESTÁNDAR DE ADVERTENCIAS
+# ==========================================================
+
+def obtener_campos_advertencia():
+    """
+    Retorna los campos de advertencia predeterminados.
+
+    Se utilizan cuando no se ejecuta el modelo o cuando
+    el predictor no entrega información de advertencias.
+    """
+
+    return {
+        "advertencia_modelo": False,
+        "tipo_advertencia": None,
+        "variables_fuera_rango": [],
+        "variables_atipicas": [],
+        "mensaje_advertencia": None,
+    }
+
+
+def normalizar_resultado_predictor(resultado):
+    """
+    Garantiza que el resultado del predictor tenga una
+    estructura uniforme.
+
+    También reemplaza el antiguo estado de reposición
+    por el nombre actualizado.
+    """
+
+    resultado = resultado.copy()
+
+    # Completar campos de advertencia faltantes.
+    for campo, valor in obtener_campos_advertencia().items():
+        resultado.setdefault(campo, valor)
+
+    # Compatibilidad con el nombre anterior del estado.
+    if resultado.get("estado_reposicion") == "STOCK_DENTRO_DEL_MINIMO":
+        resultado["estado_reposicion"] = "STOCK_SOBRE_MINIMO"
+
+    return resultado
 
 
 # ==========================================================
@@ -52,10 +85,6 @@ def obtener_dias_historial_disponible(fecha_actual):
     """
     Calcula los días de historial confiable disponibles
     dentro de la ventana de análisis de 90 días.
-
-    Para el escenario de pruebas, se considera que el
-    registro de ventas es completo desde la fecha
-    FECHA_INICIO_HISTORIAL.
     """
 
     fecha_inicio_ventana = fecha_actual - timedelta(
@@ -71,7 +100,10 @@ def obtener_dias_historial_disponible(fecha_actual):
         fecha_actual - fecha_inicio_confiable
     ).days + 1
 
-    return max(0, min(DIAS_ANALISIS, dias_disponibles))
+    return max(
+        0,
+        min(DIAS_ANALISIS, dias_disponibles),
+    )
 
 
 # ==========================================================
@@ -98,32 +130,192 @@ def obtener_stock_actual(producto, fecha_actual):
 
 
 # ==========================================================
-# OBTENER VENTAS DE LOS ÚLTIMOS 90 DÍAS
+# OBTENER VENTAS DIARIAS DE LOS ÚLTIMOS 90 DÍAS
 # ==========================================================
 
-def obtener_ventas_promedio_90d(producto, fecha_inicio, fecha_actual):
+def obtener_ventas_diarias_90d(
+    producto,
+    fecha_inicio,
+    fecha_actual,
+):
     """
-    Obtiene las unidades vendidas de un producto durante
-    los últimos 90 días.
+    Obtiene las ventas diarias de un producto durante
+    el período analizado.
 
     Solo considera facturas PAGADA y EMITIDA.
-    Los días sin ventas se consideran días con demanda cero.
+
+    Los días sin ventas se completan con cero.
     """
 
-    resultado = DetalleFactura.objects.filter(
+    resultados = DetalleFactura.objects.filter(
         id_producto=producto,
         id_factura__estado__in=ESTADOS_FACTURA_VALIDOS,
         id_factura__fecha_emision__range=(
             fecha_inicio,
             fecha_actual,
         ),
-    ).aggregate(
-        ventas_totales=Sum("cantidad")
+    ).values(
+        "id_factura__fecha_emision"
+    ).annotate(
+        ventas_dia=Sum("cantidad")
     )
 
-    ventas_totales = resultado["ventas_totales"] or Decimal("0")
+    # Diccionario con las ventas agrupadas por fecha.
+    ventas_por_fecha = {}
 
-    return float(ventas_totales) / DIAS_ANALISIS
+    for registro in resultados:
+        fecha = registro["id_factura__fecha_emision"]
+        cantidad = registro["ventas_dia"] or Decimal("0")
+
+        ventas_por_fecha[fecha] = float(cantidad)
+
+    # Completar todos los días del período.
+    # Los días sin ventas tienen demanda cero.
+    ventas_diarias = []
+
+    fecha = fecha_inicio
+
+    while fecha <= fecha_actual:
+        ventas_diarias.append(
+            ventas_por_fecha.get(fecha, 0.0)
+        )
+
+        fecha += timedelta(days=1)
+
+    return ventas_diarias
+
+
+# ==========================================================
+# CALCULAR VARIABLES HISTÓRICAS DE VENTAS
+# ==========================================================
+
+def calcular_variables_demanda(ventas_diarias):
+    """
+    Calcula las variables históricas utilizadas durante
+    el entrenamiento del Random Forest ampliado.
+
+    El orden de las ventas diarias es cronológico:
+    desde el día más antiguo hasta el más reciente.
+    """
+
+    if len(ventas_diarias) != DIAS_ANALISIS:
+        raise ValueError(
+            "Se requieren exactamente 90 días de ventas "
+            "para calcular las variables del modelo."
+        )
+
+    historial_90 = ventas_diarias
+
+    historial_60 = historial_90[-60:]
+    historial_30 = historial_90[-30:]
+    historial_15 = historial_90[-15:]
+
+    historial_anterior_60 = historial_90[:60]
+    historial_anterior_15 = historial_90[-30:-15]
+
+    # ------------------------------------------------------
+    # PROMEDIOS
+    # ------------------------------------------------------
+
+    promedio_90 = sum(historial_90) / 90
+    promedio_60 = sum(historial_60) / 60
+    promedio_30 = sum(historial_30) / 30
+    promedio_15 = sum(historial_15) / 15
+
+    promedio_15_anterior = (
+        sum(historial_anterior_15) / 15
+    )
+
+    promedio_60_anterior = (
+        sum(historial_anterior_60) / 60
+    )
+
+    # ------------------------------------------------------
+    # DESVIACIÓN ESTÁNDAR POBLACIONAL
+    # ------------------------------------------------------
+
+    desviacion_90 = math.sqrt(
+        sum(
+            (venta - promedio_90) ** 2
+            for venta in historial_90
+        ) / 90
+    )
+
+    # ------------------------------------------------------
+    # TENDENCIAS Y VARIACIONES
+    # ------------------------------------------------------
+
+    tendencia_90 = (
+        promedio_30 / promedio_60_anterior - 1
+        if promedio_60_anterior > 0
+        else 0.0
+    )
+
+    tendencia_30 = (
+        promedio_15 / promedio_15_anterior - 1
+        if promedio_15_anterior > 0
+        else 0.0
+    )
+
+    variacion_30_90 = (
+        promedio_30 / promedio_90 - 1
+        if promedio_90 > 0
+        else 0.0
+    )
+
+    # Mantener los mismos límites del generador.
+    tendencia_90 = max(
+        -5.0,
+        min(5.0, tendencia_90),
+    )
+
+    tendencia_30 = max(
+        -5.0,
+        min(5.0, tendencia_30),
+    )
+
+    variacion_30_90 = max(
+        -5.0,
+        min(5.0, variacion_30_90),
+    )
+
+    # ------------------------------------------------------
+    # COMPORTAMIENTO DE VENTAS
+    # ------------------------------------------------------
+
+    ventas_maximas = max(historial_90)
+
+    dias_con_ventas = sum(
+        1 for venta in historial_90 if venta > 0
+    )
+
+    posiciones_ventas = [
+        indice
+        for indice, venta in enumerate(historial_90)
+        if venta > 0
+    ]
+
+    if posiciones_ventas:
+        dias_desde_ultima_venta = (
+            len(historial_90)
+            - 1
+            - posiciones_ventas[-1]
+        )
+    else:
+        dias_desde_ultima_venta = 90
+
+    return {
+        "ventas_promedio_90d": promedio_90,
+        "ventas_promedio_60d": promedio_60,
+        "ventas_promedio_30d": promedio_30,
+        "desviacion_ventas_90d": desviacion_90,
+        "tendencia_ventas_90d_pct": tendencia_90,
+        "tendencia_ventas_30d_pct": tendencia_30,
+        "variacion_30d_90d": variacion_30_90,
+        "ventas_maximas_90d": ventas_maximas,
+        "dias_con_ventas_90d": dias_con_ventas,
+        "dias_desde_ultima_venta": dias_desde_ultima_venta,
+    }
 
 
 # ==========================================================
@@ -132,11 +324,11 @@ def obtener_ventas_promedio_90d(producto, fecha_inicio, fecha_actual):
 
 def obtener_predicciones_stock():
     """
-    Consulta los productos activos, calcula su stock y demanda,
-    y ejecuta el modelo de predicción para cada producto.
+    Consulta los productos activos, calcula su stock,
+    obtiene el historial de ventas y ejecuta el modelo.
 
-    Retorna una lista con los datos del producto y el resultado
-    de su predicción.
+    Retorna una lista con los datos del producto y
+    el resultado de su predicción.
     """
 
     fecha_actual = timezone.localdate()
@@ -157,61 +349,189 @@ def obtener_predicciones_stock():
 
     for producto in productos:
 
+        # --------------------------------------------------
+        # 1. OBTENER STOCK ACTUAL
+        # --------------------------------------------------
+
         stock_actual = obtener_stock_actual(
             producto,
             fecha_actual,
         )
 
         # --------------------------------------------------
-        # Validar stock mínimo
+        # 2. VALIDAR STOCK MÍNIMO
         # --------------------------------------------------
 
         if producto.stock_minimo is None:
 
-            resultado = {
+            resultados.append({
+                "id_producto": producto.id,
+                "codigo_producto": producto.codigo,
+                "nombre_producto": producto.nombre,
+                "stock_actual": float(stock_actual),
+                "stock_minimo": None,
+                "ventas_promedio_90d": None,
+                "dias_historial_disponible": dias_historial,
+                "requiere_reposicion": None,
                 "prediccion_disponible": False,
+                **obtener_campos_advertencia(),
                 "mensaje": (
                     "El producto no tiene un stock mínimo "
                     "configurado."
                 ),
-            }
+            })
 
-            stock_minimo = None
+            continue
 
-            ventas_promedio = obtener_ventas_promedio_90d(
-                producto,
-                fecha_inicio,
-                fecha_actual,
-            )
+        stock_minimo = float(producto.stock_minimo)
 
-        else:
+        # --------------------------------------------------
+        # 3. VALIDAR STOCK AGOTADO
+        # --------------------------------------------------
 
-            stock_minimo = float(producto.stock_minimo)
+        # El stock cero se valida antes del historial.
+        # No se necesita ejecutar el modelo para determinar
+        # que un producto sin stock requiere reposición.
 
-            ventas_promedio = obtener_ventas_promedio_90d(
-                producto,
-                fecha_inicio,
-                fecha_actual,
-            )
-
-            # ----------------------------------------------
-            # Ejecutar predictor
-            # ----------------------------------------------
+        if stock_actual <= 0:
 
             resultado = predecir_stock(
-                stock_actual=float(stock_actual),
+                stock_actual=0,
                 stock_minimo=stock_minimo,
-                ventas_promedio_90d=ventas_promedio,
+                ventas_promedio_90d=0,
+                cobertura_stock_dias=0,
+                desviacion_ventas_90d=0,
+                tendencia_ventas_90d_pct=0,
+                ventas_maximas_90d=0,
+                dias_con_ventas_90d=0,
+                ventas_promedio_30d=0,
+                ventas_promedio_60d=0,
+                variacion_30d_90d=0,
+                dias_desde_ultima_venta=90,
+                tendencia_ventas_30d_pct=0,
                 dias_historial_disponible=dias_historial,
             )
 
+            resultado = normalizar_resultado_predictor(
+                resultado
+            )
+
+            resultados.append({
+                "id_producto": producto.id,
+                "codigo_producto": producto.codigo,
+                "nombre_producto": producto.nombre,
+                "stock_actual": 0,
+                "stock_minimo": stock_minimo,
+                "ventas_promedio_90d": None,
+                "dias_historial_disponible": dias_historial,
+                **resultado,
+                "requiere_reposicion": True,
+            })
+
+            continue
+
         # --------------------------------------------------
-        # Determinar si el producto requiere reposición
+        # 4. VALIDAR HISTORIAL DISPONIBLE
+        # --------------------------------------------------
+
+        if dias_historial < DIAS_ANALISIS:
+
+            resultados.append({
+                "id_producto": producto.id,
+                "codigo_producto": producto.codigo,
+                "nombre_producto": producto.nombre,
+                "stock_actual": float(stock_actual),
+                "stock_minimo": stock_minimo,
+                "ventas_promedio_90d": None,
+                "dias_historial_disponible": dias_historial,
+                "requiere_reposicion": None,
+                "prediccion_disponible": False,
+                **obtener_campos_advertencia(),
+                "mensaje": (
+                    "No existe suficiente historial de ventas "
+                    "confiable. Se requieren 90 días completos."
+                ),
+            })
+
+            continue
+
+        # --------------------------------------------------
+        # 5. OBTENER HISTORIAL DE VENTAS
+        # --------------------------------------------------
+
+        ventas_diarias = obtener_ventas_diarias_90d(
+            producto,
+            fecha_inicio,
+            fecha_actual,
+        )
+
+        variables_demanda = calcular_variables_demanda(
+            ventas_diarias
+        )
+
+        # --------------------------------------------------
+        # 6. CALCULAR COBERTURA DE STOCK
+        # --------------------------------------------------
+
+        ventas_promedio_90d = (
+            variables_demanda["ventas_promedio_90d"]
+        )
+
+        cobertura_stock_dias = (
+            float(stock_actual) / ventas_promedio_90d
+            if ventas_promedio_90d > 0
+            else 0.0
+        )
+
+        # --------------------------------------------------
+        # 7. EJECUTAR PREDICTOR
+        # --------------------------------------------------
+
+        resultado = predecir_stock(
+            stock_actual=float(stock_actual),
+            stock_minimo=stock_minimo,
+            ventas_promedio_90d=ventas_promedio_90d,
+            cobertura_stock_dias=cobertura_stock_dias,
+            desviacion_ventas_90d=(
+                variables_demanda["desviacion_ventas_90d"]
+            ),
+            tendencia_ventas_90d_pct=(
+                variables_demanda["tendencia_ventas_90d_pct"]
+            ),
+            ventas_maximas_90d=(
+                variables_demanda["ventas_maximas_90d"]
+            ),
+            dias_con_ventas_90d=(
+                variables_demanda["dias_con_ventas_90d"]
+            ),
+            ventas_promedio_30d=(
+                variables_demanda["ventas_promedio_30d"]
+            ),
+            ventas_promedio_60d=(
+                variables_demanda["ventas_promedio_60d"]
+            ),
+            variacion_30d_90d=(
+                variables_demanda["variacion_30d_90d"]
+            ),
+            dias_desde_ultima_venta=(
+                variables_demanda["dias_desde_ultima_venta"]
+            ),
+            tendencia_ventas_30d_pct=(
+                variables_demanda["tendencia_ventas_30d_pct"]
+            ),
+            dias_historial_disponible=dias_historial,
+        )
+
+        resultado = normalizar_resultado_predictor(
+            resultado
+        )
+
+        # --------------------------------------------------
+        # 8. DETERMINAR SI REQUIERE REPOSICIÓN
         # --------------------------------------------------
 
         if not resultado.get("prediccion_disponible", False):
             requiere_reposicion = None
-
         else:
             requiere_reposicion = (
                 resultado.get("estado_reposicion")
@@ -219,7 +539,7 @@ def obtener_predicciones_stock():
             )
 
         # --------------------------------------------------
-        # Construir resultado del producto
+        # 9. CONSTRUIR RESULTADO DEL PRODUCTO
         # --------------------------------------------------
 
         resultados.append({
@@ -228,10 +548,25 @@ def obtener_predicciones_stock():
             "nombre_producto": producto.nombre,
             "stock_actual": float(stock_actual),
             "stock_minimo": stock_minimo,
-            "ventas_promedio_90d": round(ventas_promedio, 2),
+            "ventas_promedio_90d": round(
+                ventas_promedio_90d,
+                2,
+            ),
+            "ventas_promedio_60d": round(
+                variables_demanda["ventas_promedio_60d"],
+                2,
+            ),
+            "ventas_promedio_30d": round(
+                variables_demanda["ventas_promedio_30d"],
+                2,
+            ),
+            "cobertura_stock_dias": round(
+                cobertura_stock_dias,
+                2,
+            ),
             "dias_historial_disponible": dias_historial,
-            "requiere_reposicion": requiere_reposicion,
             **resultado,
+            "requiere_reposicion": requiere_reposicion,
         })
 
     return resultados

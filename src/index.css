@@ -1704,7 +1704,7 @@ body,
 
 .ia-alert-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 14px 18px;
   border-bottom: 1px solid #f1f5f9;
@@ -1808,6 +1808,7 @@ body,
 .ia-alert-side {
   text-align: right;
   flex-shrink: 0;
+  margin-top: 35px;
 }
 
 .ia-alert-days {
@@ -1830,6 +1831,84 @@ body,
   color: #94a3b8;
   margin-top: 2px;
 }
+
+
+/* ── Advertencias del modelo predictivo ───────── */
+
+.ia-model-warning {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background-color: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  color: #92400e;
+}
+
+.ia-model-warning-header strong {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.ia-model-warning-header p {
+  margin-top: 5px;
+  margin-bottom: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+/* Botón para expandir los detalles */
+
+.ia-warning-details {
+  padding: 8px;
+}
+
+.ia-warning-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.ia-warning-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.ia-warning-details summary::after {
+  display: none;
+}
+
+.ia-warning-details[open] summary::after {
+  transform: rotate(180deg);
+}
+
+/* Contenido desplegado */
+
+.ia-warning-details-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: rgba(255, 123, 0, 0.068);
+  border-radius: 5px;
+  font-size: 0.75rem;
+}
+
+.ia-warning-details-content ul {
+  margin: 5px 0 0;
+  color: #92400e;
+
+}
+
+.ia-warning-details-content li {
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+
 
 /* Responsive */
 @media (max-width: 900px) {
