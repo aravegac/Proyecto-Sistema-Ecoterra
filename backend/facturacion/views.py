@@ -126,6 +126,37 @@ def generar_pdf_factura(factura):
     un único marco exterior con logo, encabezado, cliente, tabla de ítems
     con columnas verticales, totales y recuadro de observaciones.
     """
+    operacion = factura.tipo_operacion
+    moneda = getattr(factura, "moneda_factura", "CLP")
+    items = [
+        (
+            getattr(d.id_producto, "codigo", ""),
+            getattr(d, "descripcion_df", "") or getattr(d.id_producto, "nombre", ""),
+            d.cantidad, d.precio_unitario, d.subtotal_df,
+        )
+        for d in factura.detalles.select_related("id_producto").all()
+    ]
+    return generar_pdf_documento(
+        titulo="Factura",
+        numero=factura.numero_factura,
+        fecha=factura.fecha_emision,
+        cliente=factura.id_cliente,
+        linea_intro=f"OC: {factura.id_orden_compra.numero_oc} - Tipo de operación: {operacion} - Moneda: {moneda}",
+        items=items,
+        subtotal=factura.subtotal,
+        iva=factura.iva,
+        total=factura.total,
+        porcentaje_iva=0 if operacion == "Internacional" else 19,
+        moneda=moneda,
+        observaciones=factura.observacion_factura,
+    )
+
+
+# Dibuja la plantilla Ecoterra (logo, encabezado, cliente, ítems, totales, observaciones).
+# La usan la factura y la nota de crédito para que ambos documentos se vean iguales.
+# items: lista de (codigo, descripcion, cantidad, precio_unitario, importe).
+def generar_pdf_documento(*, titulo, numero, fecha, cliente, linea_intro, items, subtotal, iva, total,
+                          porcentaje_iva, moneda, observaciones, titulo_observaciones="Observaciones:"):
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -154,6 +185,8 @@ def generar_pdf_factura(factura):
     s_invoice = est("invoice", fontName="Times-Bold", fontSize=12, leading=14)
     s_inv_num = est("invnum", fontName="Times-Roman", fontSize=12, leading=14)
     s_fecha_lbl = est("fechalbl", fontName="Times-Bold", fontSize=6.5)
+    s_invoice_r = est("invoicer", fontName="Times-Bold", fontSize=12, leading=14, alignment=TA_RIGHT)
+    s_fecha_lbl_r = est("fechalblr", fontName="Times-Bold", fontSize=6.5, alignment=TA_RIGHT)
     s_cli_lbl = est("clilbl", fontName="Times-Bold", fontSize=6.5)
     s_cli = est("cli", fontName="Times-Roman", fontSize=8, leading=9.5)
     s_cli_dir = est("clidir", fontName="Times-Roman", fontSize=5.5, leading=7)
@@ -161,10 +194,6 @@ def generar_pdf_factura(factura):
     s_valor = est("valor", fontSize=7, leading=10)
 
     # ---------------- DATOS ----------------
-    cliente = factura.id_cliente
-    operacion = factura.tipo_operacion
-    porcentaje_iva = 0 if operacion == "Internacional" else 19
-    moneda = getattr(factura, "moneda_factura", "CLP")
     razon_social = escape(str(getattr(cliente, "razon_social", "") or "Cliente"))
     partes_dir = [
         getattr(cliente, "direccion", ""),
@@ -175,7 +204,7 @@ def generar_pdf_factura(factura):
     telefono = escape(str(getattr(cliente, "telefono", "") or ""))
     email = escape(str(getattr(cliente, "email", "") or ""))
 
-    f = factura.fecha_emision
+    f = fecha
     fecha_txt = f"{f.month}/{f.day}/{f.year}"  # 5/24/2024 como en la plantilla
 
     # Rejilla de 7 columnas (suman 190 mm).
@@ -211,23 +240,26 @@ def generar_pdf_factura(factura):
     ]
 
     # ---------------- 1-2. EMPRESA / INVOICE / FECHA ----------------
+    # El título ocupa las columnas 3 y 4 alineado a la derecha, para que quepa "Nota de crédito".
     r = fila(
-        [Paragraph("Ecoterra LLC.", s_empresa), "", "", "",
-         Paragraph("Factura", s_invoice), Paragraph(escape(str(factura.numero_factura)), s_inv_num), ""],
+        [Paragraph("Ecoterra LLC.", s_empresa), "", "",
+         Paragraph(escape(titulo), s_invoice_r), "", Paragraph(escape(str(numero)), s_inv_num), ""],
         9,
     )
     cmds += [
-        ("SPAN", (0, r), (3, r)),
+        ("SPAN", (0, r), (2, r)),
+        ("SPAN", (3, r), (4, r)),
         ("SPAN", (5, r), (6, r)),
         ("VALIGN", (0, r), (ULT, r), "BOTTOM"),
     ]
     r = fila(
-        [Paragraph("600 CLEVELAND STREET STE 393 OFC 665", s_txt), "", "", "",
-         Paragraph("Fecha:", s_fecha_lbl), Paragraph(fecha_txt, s_txt), ""],
+        [Paragraph("600 CLEVELAND STREET STE 393 OFC 665", s_txt), "", "",
+         Paragraph("Fecha:", s_fecha_lbl_r), "", Paragraph(fecha_txt, s_txt), ""],
         8,
     )
     cmds += [
-        ("SPAN", (0, r), (3, r)),
+        ("SPAN", (0, r), (2, r)),
+        ("SPAN", (3, r), (4, r)),
         ("SPAN", (5, r), (6, r)),
         ("VALIGN", (0, r), (ULT, r), "MIDDLE"),
         ("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black),
@@ -258,10 +290,7 @@ def generar_pdf_factura(factura):
 
     # ---------------- 5. TEXTO INTRODUCTORIO ----------------
     r = fila(
-        [Paragraph(
-            f"OC: {escape(str(factura.id_orden_compra.numero_oc))} - Tipo de operación: {operacion} - Moneda: {moneda}",
-            s_bold,
-        )],
+        [Paragraph(escape(linea_intro), s_bold)],
         4.2,
     )
     cmds += [
@@ -285,22 +314,19 @@ def generar_pdf_factura(factura):
     ]
 
     # ---------------- 7. CUERPO (ítems + filas numeradas vacías) ----------------
-    detalles = list(factura.detalles.select_related("id_producto").all())
+    detalles = list(items)
     total_filas = max(5, len(detalles))
     r_body_ini = len(rows)
 
     for i in range(1, total_filas + 1):
         if i <= len(detalles):
-            d = detalles[i - 1]
-            producto = d.id_producto
-            codigo = escape(str(getattr(producto, "codigo", "") or ""))
-            desc = escape(str(getattr(d, "descripcion_df", "") or getattr(producto, "nombre", "") or ""))
+            codigo, desc, cantidad, precio_unitario, importe = detalles[i - 1]
             celdas = [
-                Paragraph(str(i), s_center), Paragraph(codigo, s_txt),
-                Paragraph(desc, s_txt), "",
-                Paragraph(_num(d.cantidad), s_center),
-                Paragraph(_num(d.precio_unitario), s_center),
-                Paragraph(_num(d.subtotal_df), s_right),
+                Paragraph(str(i), s_center), Paragraph(escape(str(codigo or "")), s_txt),
+                Paragraph(escape(str(desc or "")), s_txt), "",
+                Paragraph(_num(cantidad), s_center),
+                Paragraph(_num(precio_unitario), s_center),
+                Paragraph(_num(importe), s_right),
             ]
         else:
             celdas = [Paragraph(str(i), s_center), "", "", "", "", "", ""]
@@ -335,15 +361,15 @@ def generar_pdf_factura(factura):
 
     # ---------------- 8. TOTALES ----------------
     r_t1 = fila(
-        ["", "", "", "", Paragraph("NET VALUE", s_center), "", Paragraph(_num(factura.subtotal), s_right)],
+        ["", "", "", "", Paragraph("NET VALUE", s_center), "", Paragraph(_num(subtotal), s_right)],
         7.5,
     )
     r_t2 = fila(
-        ["", "", "", "", Paragraph(f"IVA ({porcentaje_iva}%)", s_center), "", Paragraph(_num(factura.iva), s_right)],
+        ["", "", "", "", Paragraph(f"IVA ({porcentaje_iva}%)", s_center), "", Paragraph(_num(iva), s_right)],
         7.5,
     )
     r_t3 = fila(
-        ["", "", "", "", Paragraph(f"TOTAL {moneda}", s_center), "", Paragraph(_num(factura.total), s_right)],
+        ["", "", "", "", Paragraph(f"TOTAL {moneda}", s_center), "", Paragraph(_num(total), s_right)],
         7.5,
     )
     for rr in (r_t1, r_t2, r_t3):
@@ -377,8 +403,8 @@ def generar_pdf_factura(factura):
     ] + cmds))
 
     observaciones = Table([
-        [Paragraph("Observaciones:", s_bold)],
-        [Paragraph(escape(factura.observacion_factura).replace("\n", "<br/>"), s_txt)],
+        [Paragraph(escape(titulo_observaciones), s_bold)],
+        [Paragraph(escape(observaciones or "").replace("\n", "<br/>"), s_txt)],
     ], colWidths=[sum(col_w)], rowHeights=[8*mm, None],
         minRowHeights=[0, max(0, alto_obs - 8*mm)], repeatRows=1, splitInRow=1)
     observaciones.setStyle(TableStyle([
@@ -392,7 +418,7 @@ def generar_pdf_factura(factura):
 
     def pie_pagina(canvas, document):
         canvas.setFont("Helvetica", 7)
-        canvas.drawString(10*mm, 5*mm, f"Factura {factura.numero_factura}")
+        canvas.drawString(10*mm, 5*mm, f"{titulo} {numero}")
         canvas.drawRightString(200*mm, 5*mm, f"Página {document.page}")
 
     doc.build([tabla, observaciones], onFirstPage=pie_pagina, onLaterPages=pie_pagina)

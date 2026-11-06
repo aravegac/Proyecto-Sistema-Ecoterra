@@ -9,3 +9,4 @@ supabase>=2.0,<3.0
 pandas
 scikit-learn
 joblib
+pypdf>=5.0,<7.0

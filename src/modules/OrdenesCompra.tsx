@@ -40,19 +40,19 @@ const emptyForm = {
 }
 
 export default function OrdenesCompra({
-  ordenes, facturas, clientes, authUser, onOrdenesChange, onFacturar,
+  ordenes, facturas, clientes, authUser, onOrdenesChange,
 }: {
   ordenes: PurchaseOrder[]
   facturas: Invoice[]
   clientes: { id: number; razon: string }[]
   authUser: AuthUser | null
   onOrdenesChange: () => Promise<void>
-  onFacturar: () => void
 }) {
   const [orders, setOrders] = useState(ordenes)
   const [clientFilter, setClientFilter] = useState("")
   const [invoiceFilter, setInvoiceFilter] = useState("")
   const [pageError, setPageError] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null)
   const [form, setForm] = useState(emptyForm)
@@ -64,10 +64,17 @@ export default function OrdenesCompra({
   const [documentUrl, setDocumentUrl] = useState("")
   const [documentError, setDocumentError] = useState("")
   const [documentLoading, setDocumentLoading] = useState(false)
+  const [detectNote, setDetectNote] = useState("")
   const fileInput = useRef<HTMLInputElement>(null)
+  const pdfField = useRef<HTMLInputElement>(null)
   const documentRequest = useRef(0)
+  const detectRequest = useRef(0)
 
-  useEffect(() => setOrders(ordenes), [ordenes])
+  useEffect(() => {
+    setIsLoading(true)
+    setOrders(ordenes)
+    setIsLoading(false)
+  }, [ordenes])
   useEffect(() => {
     if (!file) { setFileUrl(""); return }
     const url = URL.createObjectURL(file)
@@ -104,7 +111,33 @@ export default function OrdenesCompra({
     }
   }
 
-  const selectFile = (selected: File) => {
+  // Lee el PDF en el backend y completa los campos que sigan vacíos.
+  const detectFields = async (selected: File) => {
+    const requestId = ++detectRequest.current
+    setDetectNote("Leyendo el PDF…")
+    const body = new FormData()
+    body.set("archivo", selected)
+    const headers = new Headers(authHeaders(authUser))
+    headers.delete("Content-Type")
+    try {
+      const response = await apiFetch("/api/ordenes-compra/detectar/", { method: "POST", headers, body })
+      if (!response.ok) throw new Error()
+      const data = await response.json()
+      if (requestId !== detectRequest.current) return
+      setForm((current) => ({
+        ...current,
+        numero: current.numero || data.numero_oc || "",
+        clienteId: current.clienteId || (data.id_cliente ? String(data.id_cliente) : ""),
+        tipoOperacion: data.tipo_operacion_oc || current.tipoOperacion,
+      }))
+      const missing = [!data.numero_oc && "N° de orden", !data.id_cliente && "cliente", !data.tipo_operacion_oc && "tipo de operación"].filter(Boolean)
+      setDetectNote(missing.length ? `Revisa los datos. No se detectó: ${missing.join(", ")}.` : "Datos detectados del PDF. Revísalos antes de guardar.")
+    } catch {
+      if (requestId === detectRequest.current) setDetectNote("No se pudieron leer los datos del PDF. Complétalos a mano.")
+    }
+  }
+
+  const selectFile = (selected: File, detect = false) => {
     if (selected.size > 25 * 1024 * 1024 || !selected.name.toLowerCase().endsWith(".pdf")) {
       setFormError("Selecciona un PDF de hasta 25 MB.")
       setFile(null)
@@ -112,6 +145,7 @@ export default function OrdenesCompra({
     }
     setFormError("")
     setFile(selected)
+    if (detect) void detectFields(selected)
   }
 
   const openNewFile = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,8 +158,9 @@ export default function OrdenesCompra({
     setDocumentError("")
     documentRequest.current++
     setDocumentLoading(false)
+    setDetectNote("")
     setShowForm(true)
-    selectFile(selected)
+    selectFile(selected, true)
     event.target.value = ""
   }
 
@@ -134,6 +169,8 @@ export default function OrdenesCompra({
     setForm({ numero: order.id, clienteId: String(order.clienteId), fecha: order.fecha, tipoOperacion: order.tipoOperacion })
     setFile(null)
     setFormError("")
+    setDetectNote("")
+    detectRequest.current++
     setShowForm(true)
     void loadDocument(order)
   }
@@ -143,6 +180,7 @@ export default function OrdenesCompra({
     setShowForm(false)
     setFile(null)
     documentRequest.current++
+    detectRequest.current++
   }
 
   const saveOrder = async (event: React.FormEvent) => {
@@ -219,23 +257,34 @@ export default function OrdenesCompra({
         <Ico p={I.upload} size={14} /> Subir OC en PDF
       </button>
       <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="oc-hidden-input" onChange={openNewFile} />
-      <button className="btn btn-primary" onClick={onFacturar} disabled={!can(authUser, "facturacion", "Crear")}>
-        <Ico p={I.invoice} size={14} /> Ir a facturación
-      </button>
     </PageTitle>
     {pageError && <p role="alert">{pageError}</p>}
     <div className="oc-filters">
-      <div className="field">
-        <label className="label" htmlFor="oc-client-filter">Cliente</label>
-        <select id="oc-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
+      <div className="field oc-filter-cliente">
+        <label className="label" htmlFor="oc-filter-cliente">Cliente</label>
+        <select 
+          id="oc-filter-cliente" 
+          className="select" 
+          value={clientFilter} 
+          onChange={(e) => setClientFilter(e.target.value)}
+        >
           <option value="">Todos los clientes</option>
-          {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.razon}</option>)}
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>{c.razon}</option>
+          ))}
         </select>
       </div>
-      <div className="field">
-        <label className="label" htmlFor="oc-invoice-filter">Factura</label>
-        <select id="oc-invoice-filter" className="select" value={invoiceFilter} onChange={(event) => setInvoiceFilter(event.target.value)}>
-          <option value="">Todas las órdenes</option><option value="con">Con factura</option><option value="sin">Sin factura</option>
+      <div className="field oc-filter-estado">
+        <label className="label" htmlFor="oc-filter-factura">Factura</label>
+        <select 
+          id="oc-filter-factura" 
+          className="select" 
+          value={invoiceFilter} 
+          onChange={(e) => setInvoiceFilter(e.target.value)}
+        >
+          <option value="">Todas</option>
+          <option value="con">Con factura</option>
+          <option value="sin">Sin factura</option>
         </select>
       </div>
     </div>
@@ -243,16 +292,57 @@ export default function OrdenesCompra({
       <table className="dt w-full">
         <thead><tr><th>N° OC</th><th>Cotización</th><th>Cliente</th><th>Fecha</th><th>Tipo de operación</th><th>Factura</th><th>Archivo OC</th><th>Acciones</th></tr></thead>
         <tbody>
-          {filtered.map((order) => <tr key={order.idOc}>
-            <td className="oc-id">{order.id}</td><td>{order.cot || "—"}</td><td>{order.cliente}</td><td>{order.fecha}</td>
-            <td>{order.tipoOperacion}</td><td>{invoiceNumber(order) ? <Badge t="ok">{invoiceNumber(order)}</Badge> : "Sin factura"}</td>
-            <td><button className="btn btn-ghost btn-sm" onClick={() => { setPreviewOrder(order); void loadDocument(order) }}><Ico p={I.pdf} size={13} /> Vista previa</button></td>
-            <td><div className="oc-row-actions">
-              <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}><Ico p={I.edit} size={13} /></button>
-              {order.cotizacionId != null && <button className="btn btn-ghost btn-sm" disabled={!can(authUser, "ordenes_compra", "Eliminar")} onClick={() => void unlinkQuote(order)}>Desasociar cotización</button>}
-            </div></td>
-          </tr>)}
-          {!filtered.length && <tr><td colSpan={8}>No hay órdenes para los filtros seleccionados.</td></tr>}
+          {isLoading ? (
+            <tr>
+              <td colSpan={8} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                Cargando Órdenes de Compra...
+              </td>
+            </tr>
+          ) : filtered.length === 0 ? (
+            <tr>
+              <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
+                No hay órdenes para los filtros seleccionados.
+              </td>
+            </tr>
+          ) : (
+            filtered.map((order) => (
+              <tr key={order.idOc}>
+                <td className="oc-id">{order.id}</td>
+                <td>{order.cot || "—"}</td>
+                <td>{order.cliente}</td>
+                <td>{order.fecha}</td>
+                <td>{order.tipoOperacion}</td>
+                <td>
+                  {invoiceNumber(order) ? (
+                    <Badge t="ok">{invoiceNumber(order)}</Badge>
+                  ) : "Sin factura"}
+                </td>
+                <td>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setPreviewOrder(order); void loadDocument(order) }}>
+                    <Ico p={I.pdf} size={13} /> Vista previa
+                  </button>
+                </td>
+                <td>
+                  <div className="oc-row-actions">
+                    <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} title="Editar orden" disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}>
+                      <Ico p={I.edit} size={13} />
+                    </button>
+                    {order.cotizacionId != null && (
+                      <button 
+                        className="btn btn-ghost btn-sm productos-delete-btn" 
+                        title="Desasociar cotización"
+                        aria-label={`Desasociar cotización de ${order.id}`}
+                        disabled={!can(authUser, "ordenes_compra", "Eliminar")} 
+                        onClick={() => void unlinkQuote(order)}
+                      >
+                        <Ico p={I.unlink} size={13} />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
@@ -299,7 +389,12 @@ export default function OrdenesCompra({
                 {editingOrder && invoiceNumber(editingOrder) && <span className="label">Cliente y tipo de operación quedan fijados al facturar.</span>}
               </div>
               <div className="field"><label className="label" htmlFor="oc-pdf">Documento PDF {editingOrder ? "(opcional para reemplazar)" : "*"}</label>
-                <input id="oc-pdf" className="input" type="file" accept="application/pdf,.pdf" disabled={saving} onChange={(event) => { const selected = event.target.files?.[0]; if (selected) selectFile(selected) }} /></div>
+                <button id="oc-pdf" type="button" className="input oc-file-input" disabled={saving} title="Cambiar archivo" onClick={() => pdfField.current?.click()}>
+                  {file?.name || editingOrder?.documento.split("/").pop() || "Ningún archivo seleccionado"}
+                </button>
+                <input ref={pdfField} type="file" accept="application/pdf,.pdf" className="oc-hidden-input" tabIndex={-1}
+                  onChange={(event) => { const selected = event.target.files?.[0]; if (selected) selectFile(selected, !editingOrder); event.target.value = "" }} /></div>
+              {detectNote && <p className="oc-detect-note" role="status">{detectNote}</p>}
             </div>
             {formError && <p role="alert">{formError}</p>}
             <div className="oc-edit-actions">

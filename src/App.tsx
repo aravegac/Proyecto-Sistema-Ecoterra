@@ -156,6 +156,7 @@ export default function App() {
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
   const [movimientosError, setMovimientosError] = useState("")
   const [facturas, setFacturas] = useState<Invoice[]>([])
+  const [facturasLoading, setFacturasLoading] = useState(true)
   const [ordenes, setOrdenes] = useState<PurchaseOrder[]>([])
   // Recarga las órdenes de compra con el token del usuario y actualiza su estado en la aplicación.
   const reloadOrdenes = async () => {
@@ -384,6 +385,7 @@ export default function App() {
   // Cargar facturas desde el backend
   useEffect(/* Carga las facturas de la sesión actual y vacía el listado si falla la consulta. */ () => {
     if (!authUser) return
+    setFacturasLoading(true)
     apiFetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar facturas")
@@ -397,6 +399,7 @@ export default function App() {
         console.error("Error cargando facturas:", error)
         setFacturas([])
       })
+      .finally(() => setFacturasLoading(false))
   }, [authUser])
 
   // Cargar órdenes de compra desde el backend
@@ -948,12 +951,11 @@ export default function App() {
         ordenes={ordenes}
         facturas={facturas}
         clientes={clientes}
-        onFacturar={() => navigate("facturacion")}
         authUser={authUser}
         onOrdenesChange={reloadOrdenes}
       />
     ),
-    facturacion: <Facturacion facturas={facturas} authUser={authUser} onCreated={/* Incorpora la factura creada al listado local calculando el total y evitando duplicados. */ (invoice) => {
+    facturacion: <Facturacion facturas={facturas} loading={facturasLoading} authUser={authUser} onCreated={/* Incorpora la factura creada al listado local calculando el total y evitando duplicados. */ (invoice) => {
       setFacturas(/* Calcula el nuevo valor de Facturas devolviendo [ { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha }, ...current.filter((item) => item.id !== invoice.id), ]. */ (current) => [
         { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha },
         ...current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== invoice.id. */ (item) => item.id !== invoice.id),

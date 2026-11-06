@@ -1,3 +1,4 @@
+import BrandLogo from "../BrandLogo"
 import { apiFetch } from "../api"
 // src/modules/Facturacion.tsx
 import React, { useEffect, useState } from "react"
@@ -125,6 +126,7 @@ type DetalleForm = {
 
 type FacturacionProps = {
   facturas: Invoice[]
+  loading: boolean
   authUser: AuthUser | null
   onCreated: (invoice: Invoice) => void
 }
@@ -210,6 +212,7 @@ const obtenerNombreCliente = (
 
 export default function Facturacion({
   facturas,
+  loading,
   authUser,
   onCreated,
 }: FacturacionProps) {
@@ -486,12 +489,7 @@ export default function Facturacion({
   const ivaCalculado = redondearImporte(subtotalCalculado * ivaRate / 100)
   const totalCalculado = subtotalCalculado + ivaCalculado
 
-  const facturadoPorMoneda = new Map<Currency, number>()
-  invoices.filter((invoice) => ["EMITIDA", "PAGADA"].includes(invoice.estado.toUpperCase())).forEach((invoice) => {
-    const currency = invoice.moneda || "CLP"
-    facturadoPorMoneda.set(currency, (facturadoPorMoneda.get(currency) || 0) + invoice.total)
-  })
-  if (facturadoPorMoneda.size === 0) facturadoPorMoneda.set("CLP", 0)
+  const emitidas = invoices.filter((invoice) => invoice.estado.toUpperCase() === "EMITIDA").length
 
   const pagadas = invoices.filter(
     (invoice) =>
@@ -656,10 +654,8 @@ export default function Facturacion({
 
       <div className="facturacion-kpi-grid">
         <div className="kpi">
-          <div className="kpi-label">Total facturado</div>
-          <div className="kpi-value tabular">
-            {[...facturadoPorMoneda].map(([currency, total]) => <div key={currency}>{formatMoney(total, currency)}</div>)}
-          </div>
+          <div className="kpi-label">Emitidas</div>
+          <div className="kpi-value tabular">{emitidas}</div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Pagadas</div>
@@ -679,15 +675,15 @@ export default function Facturacion({
         </div>
       </div>
 
-      <div className="facturacion-filters">
-        <div className="field">
+      <div className="cotizaciones-filters">
+        <div className="field cotizaciones-filter-client">
           <label className="label" htmlFor="invoice-client-filter">Cliente</label>
           <select id="invoice-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
             <option value="">Todos los clientes</option>
             {clientOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
         </div>
-        <div className="field">
+        <div className="field cotizaciones-filter-status">
           <label className="label" htmlFor="invoice-status-filter">Estado</label>
           <select id="invoice-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="">Todos los estados</option>
@@ -697,12 +693,7 @@ export default function Facturacion({
       </div>
       {listError && <p role="alert">{listError}</p>}
       {editingLoading && <p role="status">Cargando factura para editar…</p>}
-      <div className="panel facturacion-table-panel">
-        {filteredInvoices.length === 0 ? (
-          <p style={{ padding: 20 }}>
-            No hay facturas para los filtros seleccionados.
-          </p>
-        ) : (
+      <div className="panel facturacion-table-panel" aria-busy={loading}>
           <table className="dt w-full">
             <thead>
               <tr>
@@ -712,12 +703,19 @@ export default function Facturacion({
                 <th>Emisión</th>
                 <th>Subtotal</th>
                 <th>IVA</th>
+                <th>Total</th>
                 <th>Estado</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {filteredInvoices.map((invoice) => (
+              {loading || filteredInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={9} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                    {loading ? "Cargando Facturas..." : "No hay facturas para los filtros seleccionados."}
+                  </td>
+                </tr>
+              ) : filteredInvoices.map((invoice) => (
                 <tr key={invoice.id}>
                   <td className="facturacion-id-cell">
                     {invoice.id}
@@ -729,6 +727,7 @@ export default function Facturacion({
                   <td>{invoice.fecha}</td>
                   <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
                   <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
+                  <td>{formatMoney(invoice.total, invoice.moneda)}</td>
                   <td>
                     <Badge
                       t={
@@ -771,10 +770,12 @@ export default function Facturacion({
                       {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
                         const state = invoice.estado.toUpperCase()
                         const allowed = action === "emitir" ? state === "PENDIENTE" : action === "pagar" ? state === "EMITIDA" : ["PENDIENTE", "EMITIDA"].includes(state)
+                        const label = action === "emitir" ? "Emitir" : action === "pagar" ? "Marcar pagada" : "Anular"
                         return <button key={action} className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
+                          title={label} aria-label={`${label} ${invoice.id}`}
                           disabled={!allowed || !can(authUser, "facturacion", action === "anular" ? "Eliminar" : "Editar")}
                           onClick={() => { setInvoiceAction({ invoice, action }); setActionReason(""); setActionError("") }}>
-                          {action === "emitir" ? "Emitir" : action === "pagar" ? "Marcar pagada" : "Anular"}
+                          <Ico p={action === "emitir" ? I.send : action === "pagar" ? I.check : I.trash} size={13} />
                         </button>
                       })}
                     </div>
@@ -783,71 +784,188 @@ export default function Facturacion({
               ))}
             </tbody>
           </table>
-        )}
       </div>
 
       {preview && (
         <div className="modal-backdrop" onClick={() => setPreview(null)}>
-          <div className="modal facturacion-modal facturacion-modal-wide" role="dialog" aria-modal="true"
-            aria-labelledby="invoice-preview-title" onClick={(event) => event.stopPropagation()}>
-            <div className="facturacion-modal-header">
-              <h2 id="invoice-preview-title" className="facturacion-modal-title">Factura {preview.id}</h2>
-              <button aria-label="Cerrar vista previa de factura" className="facturacion-icon-button" onClick={() => setPreview(null)}><Ico p={I.x} size={18} /></button>
+          <div
+            className="modal cotizaciones-modal cotizaciones-preview-modal"
+            role="dialog" aria-modal="true" aria-labelledby="invoice-preview-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="cotizaciones-preview-head">
+              <div>
+                <h2 id="invoice-preview-title" style={{ fontSize: "1.1rem", fontWeight: "bold", margin: 0 }}>
+                  Factura {preview.id}
+                </h2>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button className="btn btn-ghost btn-sm"
+                  disabled={!previewDetail || previewDetail.estado === "PENDIENTE" || (!previewDetail.ruta_pdf_factura && (previewDetail.estado === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
+                  onClick={() => { if (previewDetail) void downloadInvoicePdf(mapFacturaFromApi(previewDetail)) }}>
+                  <Ico p={I.download} size={14} /> Imprimir / PDF
+                </button>
+                <button aria-label="Cerrar vista previa de factura" onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
+                  <Ico p={I.x} size={18} />
+                </button>
+              </div>
             </div>
-            {previewLoading ? <p role="status">Cargando detalle de factura…</p> : previewError ? <div role="alert">
-              <p>{previewError}</p>
-              <button className="btn btn-ghost btn-sm" onClick={() => setPreviewRetry((value) => value + 1)}>Reintentar</button>
-            </div> : previewDetail && <>
-              <dl className="facturacion-detail-grid">
-                {[
-                  ["Cliente", previewDetail.cliente_nombre], ["RUT", previewDetail.cliente_rut],
-                  ["Orden de compra", previewDetail.oc_numero], ["Fecha de emisión", previewDetail.fecha_emision],
-                  ["Estado", estadoLegible(previewDetail.estado)], ["Tipo de operación", previewDetail.tipo_operacion],
-                  ["Moneda", previewDetail.moneda_factura || "CLP"],
-                  ["Teléfono", previewDetail.cliente_telefono], ["Email", previewDetail.cliente_email],
-                  ["Representante", previewDetail.cliente_representante],
-                  ["Ubicación", [previewDetail.cliente_pais, previewDetail.cliente_region, previewDetail.cliente_ciudad].filter(Boolean).join(" · ")],
-                ].map(([label, value]) => <div key={label}><dt className="label">{label}</dt><dd>{value || "—"}</dd></div>)}
-              </dl>
-              {previewDetail.cliente_direcciones.length > 0 && <section className="facturacion-detail-section">
-                <h3>Direcciones del cliente</h3>
-                {previewDetail.cliente_direcciones.map((address) => <p key={address.id}>{address.nombre}: {[address.calle, address.ciudad, address.region, address.pais].filter(Boolean).join(", ")}</p>)}
-              </section>}
-              <section className="facturacion-detail-section">
-                <h3>Productos / Servicios</h3>
-                <div className="facturacion-table-panel"><table className="dt w-full">
-                  <thead><tr><th>Código</th><th>Descripción</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
-                  <tbody>{previewDetail.detalles_factura.map((line) => <tr key={line.id}>
-                    <td>{line.producto_codigo}</td><td>{line.descripcion_df || line.producto_nombre}</td>
-                    <td>{Number(line.cantidad).toLocaleString("es-CL")} {line.producto_unidad}</td>
-                    <td>{formatMoney(Number(line.precio_unitario), previewDetail.moneda_factura)}</td><td>{formatMoney(Number(line.subtotal_df), previewDetail.moneda_factura)}</td>
-                  </tr>)}</tbody>
-                </table></div>
-              </section>
-              <div className="facturacion-summary">
-                <div className="facturacion-preview-totals"><span>Subtotal neto</span><span>{formatMoney(Number(previewDetail.subtotal), previewDetail.moneda_factura)}</span></div>
-                <div className="facturacion-preview-totals"><span>IVA ({previewDetail.tipo_operacion === "Internacional" ? 0 : 19}%)</span><span>{formatMoney(Number(previewDetail.iva), previewDetail.moneda_factura)}</span></div>
-                <div className="facturacion-preview-totals"><strong>Total {previewDetail.moneda_factura || "CLP"}</strong><strong>{formatMoney(Number(previewDetail.total), previewDetail.moneda_factura)}</strong></div>
-              </div>
-              <section className="facturacion-detail-section">
-                <h3>Observación</h3><p style={{ whiteSpace: "pre-wrap" }}>{previewDetail.observacion_factura || "Sin observaciones"}</p>
-              </section>
-              {previewDetail.estado === "PAGADA" && <section className="facturacion-detail-section">
-                <h3>Registro de pago</h3>
-                <p>Fecha: {previewDetail.fecha_pago_factura ? new Date(previewDetail.fecha_pago_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
-                <p>Usuario responsable: {previewDetail.id_usuario_pago_factura ?? "Sin registrar"}</p>
-              </section>}
-              {previewDetail.estado === "ANULADA" && <section className="facturacion-detail-section">
-                <h3>Anulación</h3><p>Motivo: {previewDetail.motivo_anulacion_factura || "Sin registrar"}</p>
-                <p>Fecha: {previewDetail.fecha_anulacion_factura ? new Date(previewDetail.fecha_anulacion_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
-                <p>Usuario responsable: {previewDetail.id_usuario_anulacion_factura ?? "Sin registrar"}</p>
-              </section>}
-              <div className="facturacion-form-actions">
-                <button className="btn btn-ghost" disabled={previewDetail.estado === "PENDIENTE" || (!previewDetail.ruta_pdf_factura && (previewDetail.estado === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
-                  onClick={() => void downloadInvoicePdf(mapFacturaFromApi(previewDetail))}><Ico p={I.download} size={14} /> Consultar PDF</button>
-                <button className="btn btn-ghost" onClick={() => setPreview(null)}>Cerrar</button>
-              </div>
-            </>}
+
+            <div className="cotizaciones-preview-body">
+              {previewLoading ? (
+                <p role="status" style={{ textAlign: "center", padding: "2rem" }}>Cargando documento...</p>
+              ) : previewError ? (
+                <div role="alert">
+                  <p>{previewError}</p>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setPreviewRetry((value) => value + 1)}>Reintentar</button>
+                </div>
+              ) : previewDetail && (
+                <div className="cotizaciones-document">
+
+                  {/* HEADER DEL DOCUMENTO */}
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "1.5rem", borderBottom: "2px solid #000" }}>
+                    <div>
+                      <div className="cotizaciones-document-logo">
+                        <BrandLogo />
+                      </div>
+                      <div style={{ fontWeight: "bold", fontSize: "1.1rem" }}>Ecoterra LLC.</div>
+                      <div style={{ fontSize: "0.85rem" }}>600 CLEVELAND STREET STE 393 OFC 665</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "1.8rem", fontWeight: "bold", marginBottom: "0.5rem" }}>FACTURA</div>
+                      <div style={{ fontSize: "1rem", fontWeight: "bold" }}>{preview.id}</div>
+                      <div style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
+                        <strong>EMISIÓN:</strong> {previewDetail.fecha_emision}
+                      </div>
+                      <div style={{ fontSize: "0.85rem" }}>
+                        <strong>OC:</strong> {previewDetail.oc_numero || "—"}
+                      </div>
+                      <div>Estado: {estadoLegible(previewDetail.estado)}</div>
+                    </div>
+                  </div>
+
+                  {/* BLOQUE CLIENTE */}
+                  <div style={{ display: "flex", borderBottom: "2px solid #000" }}>
+                    <div style={{ flex: 2, padding: "1.5rem", borderRight: "2px solid #000", fontSize: "0.9rem" }}>
+                      <div style={{ fontWeight: "bold", marginBottom: "0.5rem", fontSize: "0.8rem", textTransform: "uppercase" }}>Cliente:</div>
+                      <div style={{ fontWeight: "bold", marginBottom: "0.25rem" }}>{previewDetail.cliente_nombre}</div>
+                      <div style={{ marginBottom: "0.25rem" }}>RUT: {previewDetail.cliente_rut}</div>
+                      <div style={{ marginBottom: "0.25rem" }}>Representante: {previewDetail.cliente_representante || "—"}</div>
+                      <div>{[previewDetail.cliente_pais, previewDetail.cliente_region, previewDetail.cliente_ciudad].filter(Boolean).join(" · ")}</div>
+
+                      {previewDetail.cliente_direcciones.length > 0 && (
+                        <div style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+                          {previewDetail.cliente_direcciones.map((dir) => (
+                            <div key={dir.id}>
+                              {[dir.calle, dir.ciudad, dir.region, dir.pais].filter(Boolean).join(", ")}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, padding: "1.5rem", fontSize: "0.9rem" }}>
+                      <div style={{ display: "flex", marginBottom: "0.5rem" }}>
+                        <span style={{ width: "60px", fontWeight: "bold" }}>FONO:</span>
+                        <span>{previewDetail.cliente_telefono || "—"}</span>
+                      </div>
+                      <div style={{ display: "flex" }}>
+                        <span style={{ width: "60px", fontWeight: "bold" }}>MAIL:</span>
+                        <span>{previewDetail.cliente_email || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TABLA DE PRODUCTOS */}
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+                    <thead>
+                      <tr style={{ backgroundColor: "#f8fafc", borderBottom: "2px solid #000" }}>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "52px" }}>ÍTEM</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "80px" }}>CÓDIGO</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", textAlign: "left" }}>DESCRIPCIÓN</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>CANTIDAD</th>
+                        <th style={{ padding: "0.5rem", borderRight: "1px solid #000", width: "100px" }}>PRECIO UNITARIO</th>
+                        <th style={{ padding: "0.5rem", width: "120px" }}>IMPORTE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewDetail.detalles_factura.map((line, idx) => (
+                        <tr key={line.id} style={{ borderBottom: "1px solid #000" }}>
+                          <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{idx + 1}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "center", borderRight: "1px solid #000" }}>{line.producto_codigo}</td>
+                          <td style={{ padding: "0.5rem", borderRight: "1px solid #000" }}>{line.producto_nombre}{line.descripcion_df && line.descripcion_df !== line.producto_nombre && <div>{line.descripcion_df}</div>}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{Number(line.cantidad).toLocaleString("es-CL")} {line.producto_unidad}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", borderRight: "1px solid #000" }}>{formatMoney(Number(line.precio_unitario), previewDetail.moneda_factura || "CLP")}</td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>{formatMoney(Number(line.subtotal_df), previewDetail.moneda_factura || "CLP")}</td>
+                        </tr>
+                      ))}
+                      {Array.from({ length: Math.max(0, 5 - previewDetail.detalles_factura.length) }).map((_, i) => (
+                        <tr key={`empty-${i}`} style={{ borderBottom: "1px solid #000" }}>
+                          <td style={{ padding: "1rem", borderRight: "1px solid #000" }}>&nbsp;</td>
+                          <td style={{ borderRight: "1px solid #000" }}></td>
+                          <td style={{ borderRight: "1px solid #000" }}></td>
+                          <td style={{ borderRight: "1px solid #000" }}></td>
+                          <td style={{ borderRight: "1px solid #000" }}></td>
+                          <td></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* TOTALES */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", borderBottom: "2px solid #000" }}>
+                    <table style={{ width: "300px", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+                      <tbody>
+                        <tr style={{ borderBottom: "1px solid #000" }}>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>
+                            SUBTOTAL NETO
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                            {formatMoney(Number(previewDetail.subtotal), previewDetail.moneda_factura || "CLP")}
+                          </td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid #000" }}>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", borderRight: "2px solid #000" }}>
+                            IVA ({previewDetail.tipo_operacion === "Internacional" ? 0 : 19}%)
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right" }}>
+                            {formatMoney(Number(previewDetail.iva), previewDetail.moneda_factura || "CLP")}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem", borderRight: "2px solid #000" }}>
+                            TOTAL
+                          </td>
+                          <td style={{ padding: "0.5rem", textAlign: "right", fontWeight: "bold", fontSize: "1.1rem" }}>
+                            {formatMoney(Number(previewDetail.total), previewDetail.moneda_factura || "CLP")}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* OBSERVACIONES / NOTAS */}
+                  <div style={{ padding: "1.5rem", minHeight: "120px", fontSize: "0.85rem" }}>
+                    <div style={{ fontWeight: "bold", marginBottom: "0.5rem", textTransform: "uppercase" }}>OBSERVACIONES:</div>
+                    <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                      {previewDetail.observacion_factura || "Sin observaciones adicionales."}
+                    </p>
+                    <br />
+                    <p style={{ margin: 0 }}>Tipo de operación: {previewDetail.tipo_operacion || "Nacional"}</p>
+                    <p style={{ margin: 0 }}>Moneda: {previewDetail.moneda_factura || "CLP"}</p>
+                    {previewDetail.estado === "PAGADA" && <div>
+                      <p>Fecha de pago: {previewDetail.fecha_pago_factura ? new Date(previewDetail.fecha_pago_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
+                      <p>Usuario responsable: {previewDetail.id_usuario_pago_factura ?? "Sin registrar"}</p>
+                    </div>}
+                    {previewDetail.estado === "ANULADA" && <div>
+                      <p>Motivo de anulación: {previewDetail.motivo_anulacion_factura || "Sin registrar"}</p>
+                      <p>Fecha de anulación: {previewDetail.fecha_anulacion_factura ? new Date(previewDetail.fecha_anulacion_factura).toLocaleString("es-CL") : "Sin registrar"}</p>
+                      <p>Usuario responsable: {previewDetail.id_usuario_anulacion_factura ?? "Sin registrar"}</p>
+                    </div>}
+                  </div>
+
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
