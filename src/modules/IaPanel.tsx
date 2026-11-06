@@ -227,8 +227,8 @@ function Modelo({
 
         <Badge t="info">
           {resultado?.version
-            ? `Modelo ${resultado.version}`
-            : "Modelo predictivo"}
+            ? `Modelo predictivo Random Forest · ${resultado.version}`
+            : "Modelo predictivo Random Forest"}
         </Badge>
       </div>
 
@@ -300,7 +300,7 @@ function Modelo({
                 />
               </label>
 
-              <label className="field">
+              <label className="field ia-field-full">
                 <span className="label">Mes de embarque</span>
                 <select
                   name="mes"
@@ -321,9 +321,8 @@ function Modelo({
               </label>
             </div>
           ) : (
-            <>
-            
-              <label className="field">
+            <div className="ia-form-grid">
+              <label className="field ia-field-full">
                 <span className="label">Producto</span>
                 <select
                   required
@@ -345,69 +344,67 @@ function Modelo({
                 </select>
               </label>
 
-              <div className="ia-form-grid">
-                <label className="field">
-                  <span className="label">Fecha estimada</span>
-                  <input
-                    required
-                    type="date"
-                    name="fecha"
-                    min={hoy}
-                    defaultValue={hoy}
-                    className="input"
-                  />
-                </label>
+              <label className="field">
+                <span className="label">Fecha estimada</span>
+                <input
+                  required
+                  type="date"
+                  name="fecha"
+                  min={hoy}
+                  defaultValue={hoy}
+                  className="input"
+                />
+              </label>
 
+              <label className="field">
+                <span className="label">
+                  Cantidad (unidades del producto)
+                </span>
+                <input
+                  required
+                  type="number"
+                  name="cantidad"
+                  min="1"
+                  max="100"
+                  step="1"
+                  defaultValue="10"
+                  className="input"
+                />
+              </label>
+
+              <label className={moneda === "CLP" ? "field ia-field-full" : "field"}>
+                <span className="label">Moneda</span>
+                <select
+                  name="moneda"
+                  value={moneda}
+                  onChange={e =>
+                    setMoneda(e.target.value as "CLP" | "USD")
+                  }
+                  className="select"
+                >
+                  <option value="CLP">CLP</option>
+                  <option value="USD">USD</option>
+                </select>
+              </label>
+
+              {moneda === "USD" && (
                 <label className="field">
                   <span className="label">
-                    Cantidad (unidades del producto)
+                    Tipo de cambio (CLP por 1 USD)
                   </span>
                   <input
                     required
                     type="number"
-                    name="cantidad"
-                    min="1"
-                    max="100"
-                    step="1"
-                    defaultValue="10"
+                    name="tipo_cambio"
+                    min="0.0001"
+                    max="99999999.9999"
+                    step="0.0001"
+                    placeholder="Ingresa la tasa a utilizar"
                     className="input"
                   />
                 </label>
-
-                <label className="field">
-                  <span className="label">Moneda</span>
-                  <select
-                    name="moneda"
-                    value={moneda}
-                    onChange={e =>
-                      setMoneda(e.target.value as "CLP" | "USD")
-                    }
-                    className="select"
-                  >
-                    <option value="CLP">CLP</option>
-                    <option value="USD">USD</option>
-                  </select>
-                </label>
-
-                {moneda === "USD" && (
-                  <label className="field">
-                    <span className="label">
-                      Tipo de cambio (CLP por 1 USD)
-                    </span>
-                    <input
-                      required
-                      type="number"
-                      name="tipo_cambio"
-                      min="0.0001"
-                      max="99999999.9999"
-                      step="0.0001"
-                      placeholder="Ingresa la tasa a utilizar"
-                      className="input"
-                    />
-                  </label>
-                )}
-              </div>
-            </>
+              )}
+            </div>
           )}
 
           <button
@@ -482,10 +479,6 @@ function Modelo({
               )}
 
               <p className="ia-result-note">{resultado.aviso}</p>
-            </div>
-          ) : !llegada ? (
-            <div className="ia-empty-state">
-              Selecciona producto y fecha para ver la predicción.
             </div>
           ) : null}
         </div>

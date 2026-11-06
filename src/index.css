@@ -1611,6 +1611,7 @@ body,
 .ia-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  align-items: start;
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -1624,6 +1625,10 @@ body,
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.ia-field-full {
+  grid-column: 1 / -1;
 }
 
 .ia-button {
