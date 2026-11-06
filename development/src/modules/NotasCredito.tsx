@@ -580,13 +580,13 @@ export default function NotasCredito({
           <tbody>
             {cargando ? (
               <tr>
-                <td colSpan={10} role="status">
-                  Cargando notas de crédito…
+                <td colSpan={10} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                  Cargando Notas de Crédito...
                 </td>
               </tr>
             ) : errorCarga ? (
               <tr>
-                <td colSpan={10}>
+                <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>
                   <div role="alert">
                     <p>{errorCarga}</p>
                     <button
@@ -600,7 +600,7 @@ export default function NotasCredito({
               </tr>
             ) : notes.length === 0 ? (
               <tr>
-                <td colSpan={10}>No hay notas de crédito registradas.</td>
+                <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>No hay notas de crédito registradas.</td>
               </tr>
             ) : (
               notes.map((note) => (
@@ -634,13 +634,24 @@ export default function NotasCredito({
                         className="btn btn-ghost btn-sm"
                         aria-label={`Ver ${note.numero_nc}`}
                         disabled={busy}
+                        title="Detalles"
                         onClick={() => setViewNote(note)}
                       >
-                        Detalles
+                        <Ico p={I.pdf} size={13} />
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        aria-label={`PDF ${note.numero_nc}`}
+                        title="Ver PDF"
+                        disabled={busy || !canViewPdf(note)}
+                        onClick={() => void downloadPdf(note)}
+                      >
+                        <Ico p={I.download} size={13} />
                       </button>
                       <button
                         className="btn btn-ghost btn-sm productos-edit-btn"
                         aria-label={`Editar ${note.numero_nc}`}
+                        title="Editar"
                         disabled={
                           busy ||
                           note.estado !== "PENDIENTE" ||
@@ -653,6 +664,7 @@ export default function NotasCredito({
                       <button
                         className="btn btn-ghost btn-sm"
                         aria-label={`Emitir ${note.numero_nc}`}
+                        title="Emitir PDF"
                         disabled={
                           busy ||
                           note.estado !== "PENDIENTE" ||
@@ -664,19 +676,12 @@ export default function NotasCredito({
                           setActionReason("")
                         }}
                       >
-                        Emitir PDF
-                      </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        aria-label={`PDF ${note.numero_nc}`}
-                        disabled={busy || !canViewPdf(note)}
-                        onClick={() => void downloadPdf(note)}
-                      >
-                        <Ico p={I.pdf} size={13} />
+                        <Ico p={I.send} size={13} />
                       </button>
                       <button
                         className="btn btn-ghost btn-sm productos-delete-btn"
                         aria-label={`Anular ${note.numero_nc}`}
+                        title="Anular"
                         disabled={
                           busy ||
                           !["PENDIENTE", "EMITIDA"].includes(note.estado) ||
@@ -688,7 +693,7 @@ export default function NotasCredito({
                           setActionReason("")
                         }}
                       >
-                        Anular
+                        <Ico p={I.trash} size={13} />
                       </button>
                     </div>
                   </td>

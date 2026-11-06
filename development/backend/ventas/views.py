@@ -2,10 +2,7 @@
 import os
 import logging
 from uuid import uuid4
-from io import BytesIO
 from decimal import Decimal
-from xml.sax.saxutils import escape
-from PIL import Image as PillowImage
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -16,19 +13,16 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
-from reportlab.lib.utils import ImageReader
-from reportlab.platypus import Image, SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import mm
 
 from supabase import create_client
+
+from clientes.models import Cliente
 
 from usuarios.permissions import PermisoModulo
 from .models import OrdenCompra, NotaCredito
 from facturacion.models import Factura
 from .serializers import OrdenCompraSerializer, NotaCreditoSerializer
+from .deteccion_oc import detectar_datos_oc
 
 logger = logging.getLogger(__name__)
 
@@ -59,102 +53,27 @@ def obtener_nombre_bucket():
 # UTILIDADES PDF
 # ============================================================
 
-def _logo_proporcional(ruta, ancho_max, alto_max):
-    with PillowImage.open(ruta) as original:
-        imagen = original.convert("RGBA")
-        bounds = imagen.getchannel("A").getbbox()
-        imagen = imagen.crop(bounds) if bounds else imagen
-        ruta = BytesIO()
-        imagen.save(ruta, format="PNG")
-        ruta.seek(0)
-    ancho, alto = ImageReader(ruta).getSize()
-    escala = min(ancho_max / ancho, alto_max / alto)
-    return Image(ruta, width=ancho * escala, height=alto * escala, hAlign="LEFT")
-
-
 def generar_pdf_nota_credito(nota):
-    buffer = BytesIO()
-    styles = getSampleStyleSheet()
-    normal = styles["Normal"]
-    normal.fontSize = 9
-    normal.leading = 13
-    moneda = nota.moneda
-    operacion = nota.tipo_operacion
-    porcentaje_iva = 0 if operacion == "Internacional" else 19
+    # Import local: facturacion.views importa este módulo al cargarse.
+    from facturacion.views import generar_pdf_documento
 
-    def paragraph(value):
-        return Paragraph(escape(str(value if value is not None else "")).replace("\n", "<br/>"), normal)
-
-    def money(value):
-        numero = f"{Decimal(str(value)):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
-        return f"{moneda} {numero}"
-
-    doc = SimpleDocTemplate(
-        buffer, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm,
-        topMargin=14*mm, bottomMargin=18*mm,
-        title=f"Nota de crédito {nota.numero_nc}", author="Sistema Ecoterra",
-    )
     factura = nota.id_factura
-    cliente = factura.id_cliente
-    logo = _logo_proporcional(os.path.join(settings.BASE_DIR, "static", "logo.png"), 82*mm, 20*mm)
-    header = Table([[
-        [logo, Spacer(1, 3*mm), paragraph("Ecoterra LLC."),
-         paragraph("600 CLEVELAND STREET STE 393 OFC 665")],
-        [Paragraph("NOTA DE CRÉDITO", styles["Heading2"]), paragraph(nota.numero_nc),
-         paragraph(f"Fecha: {nota.fecha_emision:%d-%m-%Y}"),
-         paragraph(f"Factura de origen: {factura.numero_factura}"), paragraph(f"Estado: {nota.estado}")],
-    ]], colWidths=[110*mm, 72*mm])
-    section_style = [
-        ("BOX", (0, 0), (-1, -1), .7, colors.black),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]
-    header.setStyle(TableStyle(section_style))
-    customer = Table([[
-        [paragraph("CLIENTE"), paragraph(cliente.razon_social),
-         paragraph(f"RUT: {cliente.rut}"),
-         paragraph(" · ".join(filter(None, [cliente.pais, cliente.region, cliente.ciudad])))],
-        [paragraph(f"Teléfono: {cliente.telefono or '-'}"), paragraph(f"Email: {cliente.email or '-'}"),
-         paragraph(f"Moneda: {moneda}"), paragraph(f"Tipo de operación: {operacion}")],
-    ]], colWidths=[110*mm, 72*mm], splitInRow=1)
-    customer.setStyle(TableStyle(section_style + [("LINEAFTER", (0, 0), (0, 0), .7, colors.black)]))
-    rows = [[paragraph(value) for value in ("Concepto", "Cantidad", "Subtotal neto")], [
-        paragraph(f"Ajuste asociado a factura {factura.numero_factura}"), paragraph(1), paragraph(money(nota.subtotal)),
-    ]]
-    detail = Table(rows, colWidths=[110*mm, 24*mm, 48*mm], repeatRows=1)
-    detail.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), .5, colors.black),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    totals = Table([
-        [paragraph("Subtotal neto"), paragraph(money(nota.subtotal))],
-        [paragraph(f"IVA ({porcentaje_iva}%)"), paragraph(money(nota.iva))],
-        [paragraph(f"TOTAL {moneda}"), paragraph(money(nota.total))],
-    ], colWidths=[40*mm, 48*mm], hAlign="RIGHT")
-    totals.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), .5, colors.black),
-        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#DBEADD")),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-    ]))
-    elements = [
-        header, customer, Spacer(1, 5*mm), detail, Spacer(1, 4*mm), totals,
-        Spacer(1, 5*mm), Paragraph("Motivo de la nota de crédito", styles["Heading3"]), paragraph(nota.motivo),
-    ]
-
-    def footer(canvas, document):
-        canvas.setFont("Helvetica", 8)
-        canvas.drawString(14*mm, 10*mm, f"Ecoterra - {nota.numero_nc}")
-        canvas.drawRightString(196*mm, 10*mm, f"Página {document.page}")
-
-    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
-    return buffer.getvalue()
+    operacion = nota.tipo_operacion
+    return generar_pdf_documento(
+        titulo="Nota de crédito",
+        numero=nota.numero_nc,
+        fecha=nota.fecha_emision,
+        cliente=factura.id_cliente,
+        linea_intro=f"Factura de origen: {factura.numero_factura} - Tipo de operación: {operacion} - Moneda: {nota.moneda} - Estado: {nota.estado}",
+        items=[("", f"Ajuste asociado a factura {factura.numero_factura}", 1, nota.subtotal, nota.subtotal)],
+        subtotal=nota.subtotal,
+        iva=nota.iva,
+        total=nota.total,
+        porcentaje_iva=0 if operacion == "Internacional" else 19,
+        moneda=nota.moneda,
+        observaciones=nota.motivo,
+        titulo_observaciones="Motivo de la nota de crédito:",
+    )
 
 
 # ============================================================
@@ -203,6 +122,25 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         self.guardar_documento(serializer)
 
+    @action(detail=False, methods=["post"], url_path="detectar")
+    def detectar(self, request):
+        archivo = request.FILES.get("archivo")
+        if archivo is None or archivo.size > 25 * 1024 * 1024 or archivo.read(5) != b"%PDF-":
+            return Response({"detail": "Selecciona un PDF válido de hasta 25 MB."}, status=400)
+        archivo.seek(0)
+        try:
+            from pypdf import PdfReader  # import local: si falta pypdf, solo falla la detección
+        except ImportError:
+            logger.error("Falta instalar pypdf: pip install pypdf")
+            return Response({"detail": "La lectura automática de PDF no está disponible."}, status=503)
+        try:
+            texto = "\n".join(pagina.extract_text() or "" for pagina in PdfReader(archivo).pages[:5])
+        except Exception:
+            logger.exception("No se pudo leer el texto del PDF de la orden de compra")
+            return Response({"detail": "No se pudo leer el PDF."}, status=422)
+        clientes = Cliente.objects.values_list("id", "rut", "razon_social", "pais")
+        return Response(detectar_datos_oc(texto, clientes))
+
     @action(detail=True, methods=["get"], url_path="documento")
     def documento(self, request, pk=None):
         orden = self.get_object()
@@ -217,6 +155,9 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
                 url = result.get("signedURL") or result.get("signedUrl")
                 if not url:
                     raise ValueError("Storage no devolvió un enlace")
+                if url.startswith("/"):
+                    base_url = os.getenv("SUPABASE_URL") or getattr(settings, "SUPABASE_URL", "")
+                    url = base_url.rstrip("/") + url
                 response = Response({"url": url, "expira_en_segundos": 300})
             except Exception:
                 logger.exception("Error al consultar documento de orden de compra")

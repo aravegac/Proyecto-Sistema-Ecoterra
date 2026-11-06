@@ -337,17 +337,17 @@ export default function Usuarios({
                 <td><Badge t="ok">{user.estado}</Badge></td>
                 {isAdmin && (
                   <td><div className="usuarios-row-actions">
-                    <button className="btn btn-ghost btn-sm" onClick={() => openEditUser(user)}>
-                      <Ico p={I.edit} size={13} /> Editar
+                    <button className="btn btn-ghost btn-sm productos-edit-btn" title="Editar" aria-label={`Editar ${user.nombre}`} onClick={() => openEditUser(user)}>
+                      <Ico p={I.edit} size={13} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => openEditPermissions(user)}>
-                      <Ico p={I.lock} size={13} /> Permisos
+                    <button className="btn btn-ghost btn-sm" title="Permisos" aria-label={`Permisos de ${user.nombre}`} disabled={saving} onClick={() => openEditPermissions(user)}>
+                      <Ico p={I.lock} size={13} />
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={async () => {
+                    <button className="btn btn-ghost btn-sm productos-delete-btn" title="Eliminar" aria-label={`Eliminar ${user.nombre}`} onClick={async () => {
                       if (!window.confirm(`¿Eliminar a ${user.nombre}?`)) return
                       await onDelete(user)
                     }}>
-                      <Ico p={I.trash} size={13} /> Eliminar
+                      <Ico p={I.trash} size={13} />
                     </button>
                   </div></td>
                 )}

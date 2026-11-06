@@ -1,8 +1,2 @@
-Django>=5.2,<6.0
-djangorestframework>=3.16,<4.0
-django-cors-headers>=4.7,<5.0
-psycopg[binary]>=3.2,<4.0
-python-dotenv>=1.1,<2.0
-pandas
-scikit-learn
-joblib
+# Única fuente de dependencias: backend/requirements.txt (también la usa backend/Dockerfile).
+-r backend/requirements.txt
