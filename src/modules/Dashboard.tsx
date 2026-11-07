@@ -199,7 +199,11 @@ export default function Dashboard({
 
       {/* ============ ALERTAS IA · STOCKOUT ============ */}
       {canReadAlerts && (
-        <div className="panel dashboard-scroll-panel dashboard-alert-panel">
+        <div
+          className={`panel dashboard-scroll-panel dashboard-alert-panel ${
+            loadingPredicciones ? "is-loading" : ""
+          }`}
+        >
           <div className="panel-header">
             <div className="dashboard-section-title-row">
               <span className="dashboard-alert-icon">

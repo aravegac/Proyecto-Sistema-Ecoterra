@@ -1086,6 +1086,28 @@ body,
 }
 
 
+/* ── Dashboard: Alertas IA · Stockout ───────── */
+
+/* Durante la carga, el panel se adapta al contenido */
+.dashboard-alert-panel.is-loading {
+  height: auto;
+  min-height: 0;
+}
+
+/* Una vez cargadas las alertas, conserva la altura original */
+.dashboard-alert-panel:not(.is-loading) {
+  height: 300px;
+}
+
+/* Mantener el comportamiento responsive */
+@media (max-width: 768px) {
+  .dashboard-alert-panel:not(.is-loading) {
+    height: 340px;
+  }
+}
+
+
+
 /* ── Cotizaciones ───────────────────────── */
 .cotizaciones-kpi-grid {
   display: grid;
