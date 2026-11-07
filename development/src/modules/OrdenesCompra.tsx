@@ -352,9 +352,21 @@ export default function OrdenesCompra({
         <div className="oc-modal-header"><h2 className="oc-modal-title" id="oc-preview-title">Orden de Compra {previewOrder.id}</h2>
           <button className="oc-modal-close" aria-label="Cerrar vista previa" onClick={() => setPreviewOrder(null)}><Ico p={I.x} size={18} /></button>
         </div>
-        <p>{previewOrder.cliente} · {previewOrder.fecha} · {previewOrder.tipoOperacion}</p>
-        <p>Cotización: {previewOrder.cot || "Sin cotización"} · Factura: {invoiceNumber(previewOrder) || "Sin factura"}</p>
-        {previewOrder.cotizacionId != null && <p>Total de cotización asociada: {fmtCLP(previewOrder.total)}</p>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "14px 18px", margin: "4px 0 14px" }}>
+          {[
+            ["Cliente", previewOrder.cliente],
+            ["Fecha", previewOrder.fecha],
+            ["Tipo de operación", previewOrder.tipoOperacion],
+            ["Cotización", previewOrder.cot || "Sin cotización"],
+            ["Factura", invoiceNumber(previewOrder) || "Sin factura"],
+            ...(previewOrder.cotizacionId != null ? [["Total de cotización asociada", fmtCLP(previewOrder.total)]] : []),
+          ].map(([label, value], i) => (
+            <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+              <label className="label" htmlFor={`oc-prev-${i}`} style={{ fontWeight: 700 }}>{label}</label>
+              <input id={`oc-prev-${i}`} className="input" value={String(value ?? "")} readOnly style={{ width: "100%", boxSizing: "border-box", background: "#f3f4f6", cursor: "default" }} />
+            </div>
+          ))}
+        </div>
         {renderDocument(previewOrder)}
       </div>
     </div>}
