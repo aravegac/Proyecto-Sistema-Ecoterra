@@ -59,12 +59,12 @@ export default function Dashboard({
             </div>
             <div className="dashboard-hero-title">Panel de Control</div>
             <div className="dashboard-hero-date">
-              Actualizado hace 4 min · {today}
+              {today}
             </div>
           </div>
         </div>
         <div className="dashboard-hero-kpis">
-          {stockAlerts.length > 0 && (
+          {canReadAlerts && !loadingPredicciones && !errorPredicciones && stockAlerts.length > 0 && (
             <button
               className="dashboard-hero-kpi dashboard-hero-kpi-alert"
               onClick={/* Ejecuta onNav("ia") al invocarse este callback. */ () => onNav("ia")}
@@ -173,7 +173,12 @@ export default function Dashboard({
             Ver catálogo →
           </button>
         </div>
-        {productos.map(/* Renderiza el indicador de stock del producto evitando dividir por un mínimo igual a cero. */ (product) => {
+        {productosLoading && <div className="dashboard-stock-item" role="status">Consultando stock…</div>}
+        {!productosLoading && productosError && <div className="dashboard-stock-item" role="alert">{productosError}</div>}
+        {!productosLoading && !productosError && productos.length === 0 && (
+          <div className="dashboard-stock-item">No hay productos registrados.</div>
+        )}
+        {!productosLoading && !productosError && productos.map(/* Renderiza el indicador de stock del producto evitando dividir por un mínimo igual a cero. */ (product) => {
           const pct =
             product.stockMin === 0
               ? 100
@@ -200,25 +205,30 @@ export default function Dashboard({
                     color,
                   }}
                 >
-                  {fmt(product.stock)} L
+                  {fmt(product.stock)} {product.unidad}
                 </div>
                 <div className="dashboard-stock-meta">
-                  mín. {fmt(product.stockMin)} L · {fmt(product.stockTotal)} L total
+                  mín. {fmt(product.stockMin)} {product.unidad} · {fmt(product.stockTotal)} {product.unidad} total
                 </div>
               </div>
             </div>
           )
         })}
-      </div>
+      </div>}
 
       {/* ============ ACTIVIDAD RECIENTE ============ */}
-      <div className="panel">
+      {(canReadQuotes || canReadInvoices || canReadMovements) && <div className="panel">
         <div className="panel-header">
           <span className="dashboard-activity-title">Actividad reciente</span>
         </div>
-        {activity.map(/* Renderiza el contenido de cada elemento de activity. */ (item, index) => (
+        {activityLoading && <p className="dashboard-activity-item" role="status">Consultando actividad…</p>}
+        {activityError && <p className="dashboard-activity-item" role="alert">No se pudieron cargar todos los registros de actividad.</p>}
+        {!activityLoading && !activityError && activity.length === 0 && (
+          <p className="dashboard-activity-item">No hay actividad registrada.</p>
+        )}
+        {activity.map((item, index) => (
           <div
-            key={index}
+            key={item.id}
             className="dashboard-activity-item"
             style={{
               borderBottom:
@@ -227,33 +237,15 @@ export default function Dashboard({
           >
             <div
               className="dashboard-activity-icon"
-              style={{
-                background:
-                  item.type === "alert"
-                    ? "#FEE2E2"
-                    : item.type === "invoice"
-                      ? "#DCFCE7"
-                      : "#F1F5F9",
-              }}
+              style={{ background: item.background }}
             >
-              <Ico
-                p={
-                  item.type === "alert"
-                    ? I.alert
-                    : item.type === "invoice"
-                      ? I.invoice
-                      : item.type === "quote"
-                        ? I.quotes
-                        : I.lots
-                }
-                size={13}
-              />
+              <Ico p={item.icon} size={13} />
             </div>
             <p className="dashboard-activity-desc">{item.desc}</p>
-            <span className="dashboard-activity-time">{item.time}</span>
+            <span className="dashboard-activity-time">{activityDate.format(item.timestamp)}</span>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   )
 }

@@ -143,6 +143,7 @@ export default function App() {
   })
   const [productos, setProductos] = useState<Product[]>([])
   const [productosError, setProductosError] = useState("")
+  const [productosLoading, setProductosLoading] = useState(true)
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
   >([])
@@ -324,6 +325,7 @@ export default function App() {
   // Cargar productos + lotes (en cadena porque lotes dependen de productos)
   useEffect(/* Carga productos y después sus lotes de inventario para la sesión actual. */ () => {
     if (!authUser) return
+    setProductosLoading(true)
     apiFetch("/api/productos/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar productos")
@@ -334,6 +336,7 @@ export default function App() {
         const mappedProductos = productosData.map(mapProductFromApi)
         setProductosError("")
         setProductos(mappedProductos)
+        setProductosLoading(false)
 
         return apiFetch("/api/inventario/", { headers: authHeaders(authUser) })
           .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
@@ -345,9 +348,14 @@ export default function App() {
             setLotes(lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, mappedProductos). */ (l: any) => mapLoteFromApi(l, mappedProductos)))
             setLotesError("")
           })
+          .catch((error) => {
+            setLotes([])
+            setLotesError(error instanceof Error ? error.message : "No se pudieron cargar los lotes.")
+          })
       })
       .catch(/* Gestiona el error actualizando setProductos, setLotes, setLotesError. */ (error) => {
         setProductosError("No se pudieron actualizar los datos de stock. Vuelve a cargar la página.")
+        setProductosLoading(false)
         setLotes([])
         setLotesError(
           error instanceof Error
@@ -360,18 +368,22 @@ export default function App() {
   // Cargar movimientos (depende de lotes y usuarios para enriquecer)
   useEffect(/* Carga los movimientos y resuelve sus lotes y usuarios cuando cambian las dependencias del efecto. */ () => {
     if (!authUser) return
+    const controller = new AbortController()
+    setMovimientosLoading(true)
 
-    apiFetch("/api/movimientos/", { headers: authHeaders(authUser) })
+    apiFetch("/api/movimientos/", { headers: authHeaders(authUser), signal: controller.signal })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar movimientos")
         return r.json()
       })
       .then(/* Procesa la respuesta actualizando setMovimientos, setMovimientosError. */ (data) => {
+        if (controller.signal.aborted) return
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setMovimientos(data.map(/* Transforma cada elemento de la lista devolviendo mapMovimientoFromApi(m, lotes, usuarios). */ (m: any) => mapMovimientoFromApi(m, lotes, usuarios)))
         setMovimientosError("")
       })
       .catch(/* Gestiona el error actualizando setMovimientos, setMovimientosError. */ (error) => {
+        if (controller.signal.aborted) return
         setMovimientos([])
         setMovimientosError(
           error instanceof Error
