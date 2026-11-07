@@ -984,6 +984,71 @@ body,
   font-family: "JetBrains Mono", monospace;
 }
 
+
+/* ── Dashboard: distribución de paneles ───────── */
+
+/* Dos columnas para stock y actividad reciente */
+.dashboard-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Altura uniforme para las ventanas del dashboard */
+.dashboard-scroll-panel {
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* El encabezado permanece visible */
+.dashboard-scroll-panel > .panel-header {
+  flex-shrink: 0;
+}
+
+/* Contenido con scrollbar vertical independiente */
+.dashboard-scroll-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Scrollbar para navegadores basados en Chromium */
+.dashboard-scroll-content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ajustes para pantallas pequeñas */
+@media (max-width: 768px) {
+  .dashboard-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-scroll-panel {
+    height: 340px;
+  }
+}
+
+
 /* ── Cotizaciones ───────────────────────── */
 .cotizaciones-kpi-grid {
   display: grid;

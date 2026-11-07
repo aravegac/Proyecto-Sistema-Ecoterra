@@ -104,7 +104,7 @@ export default function Productos({
         </button>
       </PageTitle>
       {loadError && <p className="panel" role="alert" style={{ padding: 16, color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>}
-      {!can(authUser, "productos", "Consultar") ? (
+      {can(authUser, "productos", "Consultar") ? (
         <div className="panel">
           <div className="panel-header">
             <div className="productos-filter-row">

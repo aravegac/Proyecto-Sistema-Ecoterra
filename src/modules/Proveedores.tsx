@@ -180,7 +180,7 @@ export default function Proveedores({
         </div>
       )}
 
-      {!can(authUser, "proveedores", "Consultar") ? (
+      {can(authUser, "proveedores", "Consultar") ? (
         <div className="panel">
           <div className="panel-header">
             <div className="proveedores-search-wrap">

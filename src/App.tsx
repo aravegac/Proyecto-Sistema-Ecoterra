@@ -1056,6 +1056,7 @@ export default function App() {
       <Clientes
         clientes={clientes}
         loadError={clientesError}
+        authUser={authUser}
         onCreate={createClient}
         onDelete={deleteClient}
         onUpdate={updateClient}
@@ -1068,6 +1069,7 @@ export default function App() {
       <Proveedores
         proveedores={proveedores}
         loadError={proveedoresError}
+        authUser={authUser}
         onCreate={createProveedor}
         onUpdate={updateProveedor}
         onDelete={deleteProveedor}
@@ -1077,6 +1079,7 @@ export default function App() {
       <Productos
         productos={productos}
         loadError={productosError}
+        authUser={authUser}
         onCreate={createProduct}
         onUpdate={updateProduct}
         onDelete={deleteProduct}
@@ -1087,6 +1090,7 @@ export default function App() {
         lotes={lotes}
         productos={productos}
         loadError={lotesError}
+        authUser={authUser}
         onCreate={createLote}
         onDelete={deleteLote}
       />
@@ -1098,6 +1102,7 @@ export default function App() {
         movimientos={movimientos}
         usuarioId={authUser?.id ?? 0}
         loadError={movimientosError}
+        authUser={authUser}
         onCreate={createMovimiento}
       />
     ),

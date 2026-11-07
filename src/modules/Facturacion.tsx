@@ -344,6 +344,11 @@ export default function Facturacion({
       setOcDocumentLoading(false)
       return
     }
+    if (!can(authUser, "ordenes_compra", "Descargar PDF")) {
+      setOcDocumentError("No tienes permisos para consultar el documento de la orden.")
+      setOcDocumentLoading(false)
+      return
+    }
     const controller = new AbortController()
     let active = true
     setOcDocumentLoading(true)
@@ -408,6 +413,9 @@ export default function Facturacion({
   }
 
   const fetchInvoiceDetail = async (invoice: Invoice): Promise<InvoiceDetail> => {
+    if (!can(authUser, "facturacion", "Consultar")) {
+      throw new Error("No tienes permisos para consultar las facturas.")
+    }
     const id = await invoiceId(invoice)
     const response = await apiFetch(`/api/facturas/${id}/`, { headers: authHeaders(authUser) })
     const data = await response.json()
@@ -423,6 +431,7 @@ export default function Facturacion({
   }
 
   const openEditInvoice = async (invoice: Invoice) => {
+    if (!can(authUser, "facturacion", "Editar")) return
     setEditingLoading(true)
     setListError("")
     try {
@@ -447,6 +456,13 @@ export default function Facturacion({
   const confirmAction = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!invoiceAction || actionLoading) return
+    if (
+      invoiceAction.action === "anular"
+        ? !can(authUser, "facturacion", "Eliminar")
+        : !can(authUser, "facturacion", "Editar")
+    ) {
+      return
+    }
     setActionLoading(true)
     setActionError("")
     try {
@@ -505,6 +521,12 @@ export default function Facturacion({
 
 
   const openNewInvoice = () => {
+    if (
+      !can(authUser, "facturacion", "Crear") ||
+      !can(authUser, "ordenes_compra", "Generar factura")
+    ) {
+      return
+    }
     setEditingInvoiceId(null)
     setOrdenSeleccionada("")
     setObservacion("")
@@ -522,7 +544,12 @@ export default function Facturacion({
   }
 
   const downloadInvoicePdf = async (invoice: Invoice) => {
-    if (invoice.estado.toUpperCase() === "PENDIENTE") return
+    if (
+      invoice.estado.toUpperCase() === "PENDIENTE" ||
+      !can(authUser, "facturacion", "Descargar PDF")
+    ) {
+      return
+    }
     const tab = window.open("about:blank", "_blank")
     if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
     tab.opener = null
@@ -539,6 +566,17 @@ export default function Facturacion({
   const guardarFactura = async () => {
     if (guardando) return
     setErrorGuardado("")
+
+    if (
+      editingInvoiceId
+        ? !can(authUser, "facturacion", "Editar")
+        : (
+            !can(authUser, "facturacion", "Crear") ||
+            !can(authUser, "ordenes_compra", "Generar factura")
+          )
+    ) {
+      return
+    }
 
     if (!authUser) {
       setErrorGuardado(
@@ -645,55 +683,82 @@ export default function Facturacion({
       >
         <button
           className="btn btn-primary"
-          disabled={!can(authUser, "facturacion", "Crear")}
+          disabled={
+            !can(authUser, "facturacion", "Crear") ||
+            !can(authUser, "ordenes_compra", "Generar factura")
+          }
           onClick={openNewInvoice}
         >
           <Ico p={I.plus} size={14} /> Nueva factura
         </button>
       </PageTitle>
 
-      <div className="facturacion-kpi-grid">
-        <div className="kpi">
-          <div className="kpi-label">Emitidas</div>
-          <div className="kpi-value tabular">{emitidas}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Pagadas</div>
-          <div className="kpi-value tabular">{pagadas}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Pendientes</div>
-          <div className="kpi-value tabular facturacion-warning-value">
-            {pendientes}
+      
+    {can(authUser, "facturacion", "Consultar") ? (
+      <>
+        <div className="facturacion-kpi-grid">
+          <div className="kpi">
+            <div className="kpi-label">Emitidas</div>
+            <div className="kpi-value tabular">{emitidas}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Pagadas</div>
+            <div className="kpi-value tabular">{pagadas}</div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Pendientes</div>
+            <div className="kpi-value tabular facturacion-warning-value">
+              {pendientes}
+            </div>
+          </div>
+          <div className="kpi">
+            <div className="kpi-label">Anuladas</div>
+            <div className="kpi-value tabular facturacion-danger-value">
+              {anuladas}
+            </div>
           </div>
         </div>
-        <div className="kpi">
-          <div className="kpi-label">Anuladas</div>
-          <div className="kpi-value tabular facturacion-danger-value">
-            {anuladas}
-          </div>
-        </div>
-      </div>
 
-      <div className="cotizaciones-filters">
-        <div className="field cotizaciones-filter-client">
-          <label className="label" htmlFor="invoice-client-filter">Cliente</label>
-          <select id="invoice-client-filter" className="select" value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
-            <option value="">Todos los clientes</option>
-            {clientOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
+        <div className="cotizaciones-filters">
+          <div className="field cotizaciones-filter-client">
+            <label className="label" htmlFor="invoice-client-filter">
+              Cliente
+            </label>
+            <select
+              id="invoice-client-filter"
+              className="select"
+              value={clientFilter}
+              onChange={(event) => setClientFilter(event.target.value)}
+            >
+              <option value="">Todos los clientes</option>
+              {clientOptions.map(([id, name]) => (
+                <option key={id} value={id}>{name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field cotizaciones-filter-status">
+            <label className="label" htmlFor="invoice-status-filter">
+              Estado
+            </label>
+            <select
+              id="invoice-status-filter"
+              className="select"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="">Todos los estados</option>
+              {["PENDIENTE", "EMITIDA", "PAGADA", "ANULADA"].map((state) => (
+                <option key={state} value={state}>{estadoLegible(state)}</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="field cotizaciones-filter-status">
-          <label className="label" htmlFor="invoice-status-filter">Estado</label>
-          <select id="invoice-status-filter" className="select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="">Todos los estados</option>
-            {["PENDIENTE", "EMITIDA", "PAGADA", "ANULADA"].map((state) => <option key={state} value={state}>{estadoLegible(state)}</option>)}
-          </select>
-        </div>
-      </div>
-      {listError && <p role="alert">{listError}</p>}
-      {editingLoading && <p role="status">Cargando factura para editar…</p>}
-      <div className="panel facturacion-table-panel" aria-busy={loading}>
+
+        {listError && <p role="alert">{listError}</p>}
+        {editingLoading && <p role="status">Cargando factura para editar…</p>}
+
+        <div className="panel facturacion-table-panel" aria-busy={loading}>
           <table className="dt w-full">
             <thead>
               <tr>
@@ -711,82 +776,148 @@ export default function Facturacion({
             <tbody>
               {loading || filteredInvoices.length === 0 ? (
                 <tr>
-                  <td colSpan={9} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                    {loading ? "Cargando Facturas..." : "No hay facturas para los filtros seleccionados."}
+                  <td
+                    colSpan={9}
+                    role="status"
+                    style={{ textAlign: "center", padding: "24px" }}
+                  >
+                    {loading
+                      ? "Cargando Facturas..."
+                      : "No hay facturas para los filtros seleccionados."}
                   </td>
                 </tr>
-              ) : filteredInvoices.map((invoice) => (
-                <tr key={invoice.id}>
-                  <td className="facturacion-id-cell">
-                    {invoice.id}
-                  </td>
-                  <td>{invoice.oc}</td>
-                  <td className="facturacion-client-cell">
-                    {invoice.cliente}
-                  </td>
-                  <td>{invoice.fecha}</td>
-                  <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
-                  <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
-                  <td>{formatMoney(invoice.total, invoice.moneda)}</td>
-                  <td>
-                    <Badge
-                      t={
-                        ["Pagada", "PAGADA"].includes(invoice.estado)
-                          ? "ok"
-                          : [
+              ) : (
+                filteredInvoices.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td className="facturacion-id-cell">{invoice.id}</td>
+                    <td>{invoice.oc}</td>
+                    <td className="facturacion-client-cell">{invoice.cliente}</td>
+                    <td>{invoice.fecha}</td>
+                    <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
+                    <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
+                    <td>{formatMoney(invoice.total, invoice.moneda)}</td>
+                    <td>
+                      <Badge
+                        t={
+                          ["Pagada", "PAGADA"].includes(invoice.estado)
+                            ? "ok"
+                            : [
                                 "Anulada",
                                 "ANULADA",
                                 "Vencida",
                                 "VENCIDA",
                               ].includes(invoice.estado)
-                            ? "danger"
-                            : "warn"
-                      }
-                    >
-                      {estadoLegible(invoice.estado)}
-                    </Badge>
-                  </td>
-                  <td>
-                    <div className="facturacion-action-group">
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        title="Ver factura"
-                        onClick={() => setPreview(invoice)}
+                              ? "danger"
+                              : "warn"
+                        }
                       >
-                        <Ico p={I.pdf} size={13} />
-                      </button>
-                      {/* BOTÓN DE CORREO ELIMINADO */}
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        title="Imprimir o guardar como PDF"
-                        disabled={invoice.estado.toUpperCase() === "PENDIENTE" || (!invoice.rutaPDF && (invoice.estado.toUpperCase() === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
-                        onClick={() => downloadInvoicePdf(invoice)}
-                      >
-                        <Ico p={I.download} size={13} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${invoice.id}`}
-                        disabled={editingLoading || invoice.estado.toUpperCase() !== "PENDIENTE" || !can(authUser, "facturacion", "Editar")}
-                        onClick={() => void openEditInvoice(invoice)}><Ico p={I.edit} size={13} /></button>
-                      {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
-                        const state = invoice.estado.toUpperCase()
-                        const allowed = action === "emitir" ? state === "PENDIENTE" : action === "pagar" ? state === "EMITIDA" : ["PENDIENTE", "EMITIDA"].includes(state)
-                        const label = action === "emitir" ? "Emitir" : action === "pagar" ? "Marcar pagada" : "Anular"
-                        return <button key={action} className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
-                          title={label} aria-label={`${label} ${invoice.id}`}
-                          disabled={!allowed || !can(authUser, "facturacion", action === "anular" ? "Eliminar" : "Editar")}
-                          onClick={() => { setInvoiceAction({ invoice, action }); setActionReason(""); setActionError("") }}>
-                          <Ico p={action === "emitir" ? I.send : action === "pagar" ? I.check : I.trash} size={13} />
+                        {estadoLegible(invoice.estado)}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="facturacion-action-group">
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Ver factura"
+                          onClick={() => setPreview(invoice)}
+                          disabled={!can(authUser, "facturacion", "Consultar")}
+                        >
+                          <Ico p={I.pdf} size={13} />
                         </button>
-                      })}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+
+                        {/* BOTÓN DE CORREO ELIMINADO */}
+
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          title="Imprimir o guardar como PDF"
+                          disabled={
+                            invoice.estado.toUpperCase() === "PENDIENTE" ||
+                            !can(authUser, "facturacion", "Descargar PDF")
+                          }
+                          onClick={() => downloadInvoicePdf(invoice)}
+                        >
+                          <Ico p={I.download} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          aria-label={`Editar ${invoice.id}`}
+                          disabled={
+                            editingLoading ||
+                            invoice.estado.toUpperCase() !== "PENDIENTE" ||
+                            !can(authUser, "facturacion", "Editar")
+                          }
+                          onClick={() => void openEditInvoice(invoice)}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
+                          const state = invoice.estado.toUpperCase();
+                          const allowed =
+                            action === "emitir"
+                              ? state === "PENDIENTE"
+                              : action === "pagar"
+                                ? state === "EMITIDA"
+                                : ["PENDIENTE", "EMITIDA"].includes(state);
+
+                          const label =
+                            action === "emitir"
+                              ? "Emitir"
+                              : action === "pagar"
+                                ? "Marcar pagada"
+                                : "Anular";
+
+                          return (
+                            <button
+                              key={action}
+                              className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
+                              title={label}
+                              aria-label={`${label} ${invoice.id}`}
+                              disabled={
+                                !allowed ||
+                                !can(
+                                  authUser,
+                                  "facturacion",
+                                  action === "anular" ? "Eliminar" : "Editar"
+                                )
+                              }
+                              onClick={() => {
+                                setInvoiceAction({ invoice, action });
+                                setActionReason("");
+                                setActionError("");
+                              }}
+                            >
+                              <Ico
+                                p={
+                                  action === "emitir"
+                                    ? I.send
+                                    : action === "pagar"
+                                      ? I.check
+                                      : I.trash
+                                }
+                                size={13}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
+        </div>
+      </>
+    ) : (
+      <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+        No tienes permisos para consultar las facturas.
       </div>
+    )}
 
-      {preview && (
+
+      {preview && can(authUser, "facturacion", "Consultar") && (
         <div className="modal-backdrop" onClick={() => setPreview(null)}>
           <div
             className="modal cotizaciones-modal cotizaciones-preview-modal"
@@ -801,7 +932,11 @@ export default function Facturacion({
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button className="btn btn-ghost btn-sm"
-                  disabled={!previewDetail || previewDetail.estado === "PENDIENTE" || (!previewDetail.ruta_pdf_factura && (previewDetail.estado === "ANULADA" || !can(authUser, "facturacion", "Editar")))}
+                  disabled={
+                    !previewDetail ||
+                    previewDetail.estado === "PENDIENTE" ||
+                    !can(authUser, "facturacion", "Descargar PDF")
+                  }
                   onClick={() => { if (previewDetail) void downloadInvoicePdf(mapFacturaFromApi(previewDetail)) }}>
                   <Ico p={I.download} size={14} /> Imprimir / PDF
                 </button>
@@ -989,7 +1124,14 @@ export default function Facturacion({
           <div className="facturacion-form-actions">
             <button className="btn btn-ghost" type="button" disabled={actionLoading} onClick={() => setInvoiceAction(null)}>Cancelar</button>
             <button className={`btn ${invoiceAction.action === "anular" ? "btn-danger" : "btn-primary"}`} type="submit"
-              disabled={actionLoading || (invoiceAction.action === "anular" && !actionReason.trim())}>
+              disabled={
+                actionLoading ||
+                (invoiceAction.action === "anular" && !actionReason.trim()) ||
+                (invoiceAction.action === "anular"
+                  ? !can(authUser, "facturacion", "Eliminar")
+                  : !can(authUser, "facturacion", "Editar"))
+              }
+            >
               {actionLoading ? "Procesando…" : invoiceAction.action === "emitir" ? "Confirmar emisión" : invoiceAction.action === "pagar" ? "Confirmar pago" : "Confirmar anulación"}
             </button>
           </div>
@@ -1286,11 +1428,25 @@ export default function Facturacion({
               <button
                 className="btn btn-primary"
                 type="submit"
-                disabled={guardando || cargandoDatos || Boolean(errorCarga) || !ordenActual}
+                disabled={
+                  guardando ||
+                  cargandoDatos ||
+                  Boolean(errorCarga) ||
+                  !ordenActual ||
+                  (
+                    editingInvoiceId
+                      ? !can(authUser, "facturacion", "Editar")
+                      : (
+                          !can(authUser, "facturacion", "Crear") ||
+                          !can(authUser, "ordenes_compra", "Generar factura")
+                        )
+                  )
+                }
               >
                 <Ico p={I.check} size={14} />
                 {guardando ? "Guardando..." : "Guardar factura"}
               </button>
+
               <button
                 className="btn btn-ghost"
                 type="button"

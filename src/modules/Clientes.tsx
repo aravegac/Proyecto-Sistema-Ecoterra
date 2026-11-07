@@ -322,7 +322,7 @@ export default function Clientes({
           {loadError}
         </div>
       )}
-      {!can(authUser, "clientes", "Consultar") ? (
+      {can(authUser, "clientes", "Consultar") ? (
         <div className="panel">
           <div className="panel-header">
             <div className="clientes-search-wrap">
@@ -725,7 +725,7 @@ export default function Clientes({
               <button
                 className="btn btn-primary"
                 type="submit"
-                disabled={saving || !can(authUser, "clientes", "Editar")}
+                disabled={saving || !can(authUser, "clientes", "Crear")}
               >
                 <Ico p={I.check} size={14} /> Guardar cambios
               </button>

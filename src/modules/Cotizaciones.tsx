@@ -556,184 +556,198 @@ const linkOrder = async () => {
   return (
     <div>
       <PageTitle title="Cotizaciones" sub="Ciclo de vida comercial">
-        <button className="btn btn-primary" onClick={() => setShow(true)}>
+        <button
+          className="btn btn-primary"
+          onClick={() => setShow(true)}
+          disabled={!can(authUser, "cotizaciones", "Crear")}
+        >
           <Ico p={I.plus} size={14} /> Nueva cotización
         </button>
       </PageTitle>
-      <div className="cotizaciones-kpi-grid">
-        <div className="kpi">
-          <div className="kpi-label">Vigentes</div>
-          <div className="kpi-value tabular">{activeQuotes.length}</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Aceptadas</div>
-          <div className="kpi-value tabular cotizaciones-kpi-positive">
-            {acceptedQuotes.length}
+      {can(authUser, "cotizaciones", "Consultar") ? (
+        <>
+          <div className="cotizaciones-kpi-grid">
+            <div className="kpi">
+              <div className="kpi-label">Vigentes</div>
+              <div className="kpi-value tabular">{activeQuotes.length}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Aceptadas</div>
+              <div className="kpi-value tabular cotizaciones-kpi-positive">
+                {acceptedQuotes.length}
+              </div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Vencidas</div>
+              <div className="kpi-value tabular cotizaciones-kpi-negative">
+                {expiredQuotes.length}
+              </div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-label">Rechazadas</div>
+              <div className="kpi-value tabular">
+                {rejectedQuotes.length}
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Vencidas</div>
-          <div className="kpi-value tabular cotizaciones-kpi-negative">
-            {expiredQuotes.length}
+          <div className="cotizaciones-filters">
+            <div className="field cotizaciones-filter-client">
+              <label className="label" htmlFor="quote-client-filter">Cliente</label>
+              <select 
+                id="quote-client-filter" 
+                className="select" 
+                value={clientFilter} 
+                onChange={(event) => setClientFilter(event.target.value)}
+              >
+                <option value="">Todos los clientes</option>
+                {clientOptions.map((name) => (
+                  <option key={name} value={name}>{name || "Sin cliente"}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field cotizaciones-filter-status">
+              <label className="label" htmlFor="quote-status-filter">Estado</label>
+              <select 
+                id="quote-status-filter" 
+                className="select" 
+                value={statusFilter} 
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="sin-anuladas">Sin anuladas</option>
+                <option value="">Todos los estados</option>
+                {statusOptions.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Rechazadas</div>
-          <div className="kpi-value tabular">
-            {rejectedQuotes.length}
-          </div>
-        </div>
-      </div>
-      <div className="cotizaciones-filters">
-        <div className="field cotizaciones-filter-client">
-          <label className="label" htmlFor="quote-client-filter">Cliente</label>
-          <select 
-            id="quote-client-filter" 
-            className="select" 
-            value={clientFilter} 
-            onChange={(event) => setClientFilter(event.target.value)}
-          >
-            <option value="">Todos los clientes</option>
-            {clientOptions.map((name) => (
-              <option key={name} value={name}>{name || "Sin cliente"}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field cotizaciones-filter-status">
-          <label className="label" htmlFor="quote-status-filter">Estado</label>
-          <select 
-            id="quote-status-filter" 
-            className="select" 
-            value={statusFilter} 
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="sin-anuladas">Sin anuladas</option>
-            <option value="">Todos los estados</option>
-            {statusOptions.map((status) => (
-              <option key={status} value={status}>{status}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-      {editingQuote !== null && <p role="status">Cargando cotización para editar…</p>}
-      {quotesError && <div role="alert">
-        <p>{quotesError}</p>
-        <button className="btn btn-ghost btn-sm" onClick={() => void reloadCotizaciones()} disabled={isLoadingQuotes}>Reintentar</button>
-      </div>}
-      <div className="panel cotizaciones-table-panel" aria-busy={isLoadingQuotes}>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>N° Cotización</th>
-              <th>Cliente</th>
-              <th>Fecha</th>
-              <th>Vigencia</th>
-              <th>Subtotal</th>
-              <th>IVA</th>
-              <th>Total</th>
-              <th>OC</th>
-              <th>Factura</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoadingQuotes ? (
-              <tr>
-                <td colSpan={11} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                  Cargando Cotizaciones...
-                </td>
-              </tr>
-            ) : filteredQuotes.length === 0 ? (
-              <tr>
-                <td colSpan={11} style={{ textAlign: "center", padding: "24px" }}>
-                  {quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}
-                </td>
-              </tr>
-            ) : filteredQuotes.map((quote) => (
-              <tr key={quote.id}>
-                {(() => {
-                  const order = getPurchaseOrder(quote)
-                  const invoice = getInvoice(quote)
+          {editingQuote !== null && <p role="status">Cargando cotización para editar…</p>}
+          {quotesError && <div role="alert">
+            <p>{quotesError}</p>
+            <button className="btn btn-ghost btn-sm" onClick={() => void reloadCotizaciones()} disabled={isLoadingQuotes}>Reintentar</button>
+          </div>}
+          <div className="panel cotizaciones-table-panel" aria-busy={isLoadingQuotes}>
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>N° Cotización</th>
+                  <th>Cliente</th>
+                  <th>Fecha</th>
+                  <th>Vigencia</th>
+                  <th>Subtotal</th>
+                  <th>IVA</th>
+                  <th>Total</th>
+                  <th>OC</th>
+                  <th>Factura</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoadingQuotes ? (
+                  <tr>
+                    <td colSpan={11} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                      Cargando Cotizaciones...
+                    </td>
+                  </tr>
+                ) : filteredQuotes.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} style={{ textAlign: "center", padding: "24px" }}>
+                      {quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}
+                    </td>
+                  </tr>
+                ) : filteredQuotes.map((quote) => (
+                  <tr key={quote.id}>
+                    {(() => {
+                      const order = getPurchaseOrder(quote)
+                      const invoice = getInvoice(quote)
 
-                  return (
-                    <>
-                      <td className="cotizaciones-table-id">{quote.id}</td>
-                      <td>{quote.cliente}</td>
-                      <td>{quote.fecha}</td>
-                      <td>{quote.vigencia}</td>
-                      <td>{formatMoney(quote.subtotal, quote.moneda || "CLP")}</td>
-                      <td>{formatMoney(quote.iva, quote.moneda || "CLP")}</td>
-                      <td>{formatMoney(quote.total, quote.moneda || "CLP")}</td>
-                      <td>{order?.id ?? "—"}</td>
-                      <td>{invoice?.id ?? "—"}</td>
-                      <td>
-                        <span className={`badge cotizaciones-status cotizaciones-status-${quote.estado.toLowerCase()}`}>
-                          {quote.estado}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="cotizaciones-row-actions">
-                          <button
-                            className="btn btn-ghost btn-sm cotizaciones-action-edit"
-                            title="Editar productos"
-                            aria-label={`Editar ${quote.id}`}
-                            disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
-                            onClick={() => openEdit(quote)}
-                          >
-                            <Ico p={I.edit} size={13} />
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm cotizaciones-action-preview"
-                            title="Vista previa"
-                            aria-label={`Vista previa ${quote.id}`}
-                            onClick={() => openPreview(quote)}
-                          >
-                            <Ico p={I.pdf} size={13} />
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm cotizaciones-action-download"
-                            title="Descargar PDF"
-                            aria-label={`Descargar PDF ${quote.id}`}
-                            onClick={() => downloadQuotePdf(quote)}
-                          >
-                            <Ico p={I.download} size={13} />
-                          </button>
-                          {/* BOTÓN DE CORREO ELIMINADO */}
-                          <button
-                            className="btn btn-ghost btn-sm cotizaciones-action-link"
-                            title="Asociar a orden de compra"
-                            aria-label={`Asociar ${quote.id} a una orden de compra`}
-                            disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
-                            onClick={() => setQuoteToLink(quote)}
-                          >
-                            <Ico p={I.link} size={13} />
-                          </button>
-                          <button
-                            className="btn btn-ghost btn-sm productos-delete-btn"
-                            title="Anular cotización"
-                            aria-label={`Anular ${quote.id}`}
-                            disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
-                              !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
-                                (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
-                            onClick={() => {
-                              setQuoteToCancel(quote)
-                              setCancelReason("")
-                              setCancelError("")
-                            }}
-                          >
-                            <Ico p={I.trash} size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </>
-                  )
-                })()}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                      return (
+                        <>
+                          <td className="cotizaciones-table-id">{quote.id}</td>
+                          <td>{quote.cliente}</td>
+                          <td>{quote.fecha}</td>
+                          <td>{quote.vigencia}</td>
+                          <td>{formatMoney(quote.subtotal, quote.moneda || "CLP")}</td>
+                          <td>{formatMoney(quote.iva, quote.moneda || "CLP")}</td>
+                          <td>{formatMoney(quote.total, quote.moneda || "CLP")}</td>
+                          <td>{order?.id ?? "—"}</td>
+                          <td>{invoice?.id ?? "—"}</td>
+                          <td>
+                            <span className={`badge cotizaciones-status cotizaciones-status-${quote.estado.toLowerCase()}`}>
+                              {quote.estado}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="cotizaciones-row-actions">
+                              <button
+                                className="btn btn-ghost btn-sm cotizaciones-action-edit"
+                                title="Editar productos"
+                                aria-label={`Editar ${quote.id}`}
+                                disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
+                                onClick={() => openEdit(quote)}
+                              >
+                                <Ico p={I.edit} size={13} />
+                              </button>
+                              <button
+                                className="btn btn-ghost btn-sm cotizaciones-action-preview"
+                                title="Vista previa"
+                                aria-label={`Vista previa ${quote.id}`}
+                                onClick={() => openPreview(quote)}
+                                disabled={!can(authUser, "cotizaciones", "Consultar")}
+                              >
+                                <Ico p={I.pdf} size={13} />
+                              </button>
+                              <button
+                                className="btn btn-ghost btn-sm cotizaciones-action-download"
+                                title="Descargar PDF"
+                                aria-label={`Descargar PDF ${quote.id}`}
+                                onClick={() => downloadQuotePdf(quote)}
+                                disabled={!can(authUser, "cotizaciones", "Descargar PDF")}
+                              >
+                                <Ico p={I.download} size={13} />
+                              </button>
+                              {/* BOTÓN DE CORREO ELIMINADO */}
+                              <button
+                                className="btn btn-ghost btn-sm cotizaciones-action-link"
+                                title="Asociar a orden de compra"
+                                aria-label={`Asociar ${quote.id} a una orden de compra`}
+                                disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
+                                onClick={() => setQuoteToLink(quote)}
+                              >
+                                <Ico p={I.link} size={13} />
+                              </button>
+                              <button
+                                className="btn btn-ghost btn-sm productos-delete-btn"
+                                title="Anular cotización"
+                                aria-label={`Anular ${quote.id}`}
+                                disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
+                                  !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
+                                    (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
+                                onClick={() => {
+                                  setQuoteToCancel(quote)
+                                  setCancelReason("")
+                                  setCancelError("")
+                                }}
+                              >
+                                <Ico p={I.trash} size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        </>
+                      )
+                    })()}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+          No tienes permisos para consultar las cotizaciones.
+        </div>
+      )}
       {show && (
         <div className="modal-backdrop" onClick={closeQuoteForm}>
           <div
@@ -969,9 +983,13 @@ const linkOrder = async () => {
               <button
                 className="btn btn-primary"
                 disabled={
-                  savingQuote || !quoteClient ||
+                  savingQuote ||
+                  !quoteClient ||
                   !quoteAddress ||
-                  !quoteLines.some((line) => line.productId && line.quantity)
+                  !quoteLines.some(line => line.productId && line.quantity) ||
+                  (editQuoteId
+                    ? !can(authUser, "cotizaciones", "Editar")
+                    : !can(authUser, "cotizaciones", "Crear"))
                 }
                 onClick={() => saveQuote(quoteStatus === "Borrador" ? "Vigente" : quoteStatus)}
               >
@@ -980,9 +998,13 @@ const linkOrder = async () => {
               <button
                 className="btn cotizaciones-save-draft"
                 disabled={
-                  savingQuote || !quoteClient ||
+                  savingQuote ||
+                  !quoteClient ||
                   !quoteAddress ||
-                  !quoteLines.some((line) => line.productId && line.quantity)
+                  !quoteLines.some(line => line.productId && line.quantity) ||
+                  (editQuoteId
+                    ? !can(authUser, "cotizaciones", "Editar")
+                    : !can(authUser, "cotizaciones", "Crear"))
                 }
                 onClick={() => saveQuote(editQuoteId ? quoteStatus : "Borrador")}
               >
@@ -1023,7 +1045,7 @@ const linkOrder = async () => {
                 </h2>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => downloadQuotePdf(preview)}>
+                <button className="btn btn-ghost btn-sm" onClick={() => downloadQuotePdf(preview)} disabled={!can(authUser, "cotizaciones", "Descargar PDF")}>
                   <Ico p={I.download} size={14} /> Imprimir / PDF
                 </button>
                 <button aria-label="Cerrar vista previa" onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>
@@ -1242,6 +1264,9 @@ const linkOrder = async () => {
                 className="btn btn-primary"
                 disabled={!selectedOrder}
                 onClick={linkOrder}
+                disabled={
+                  !can(authUser, "cotizaciones", "Asociar a Orden de Compra")
+                }
               >
                 <Ico p={I.link} size={14} /> Asociar OC
               </button>
