@@ -35,6 +35,11 @@ type Props = {
   onCreate: (input: MovimientoInput) => Promise<Movimiento>
 }
 
+const CAPACIDAD_ENVASE: Record<string, number> = {
+  "Tambor 200 L": 200,
+  "IBC 1000 L": 1000,
+}
+
 export default function Movimientos({
   productos,
   lotes,
@@ -68,34 +73,96 @@ export default function Movimientos({
       return
     }
 
-    // 👇 VALIDACIÓN EXTRA PARA AJUSTES
-    if (type === "Ajuste" && selectedLote) {
-      if (Number(qty) === selectedLote.qty) {
-        setError("El stock no ha cambiado. El ajuste debe ser diferente al stock actual del lote.")
-        return
-      }
-    }
-
-    // 👇 VALIDACIÓN PARA ENTRADAS/SALIDAS (si no la tienes)
-    if (type !== "Ajuste" && Number(qty) <= 0) {
-      setError("La cantidad debe ser mayor a 0.")
+    // Verificar que el lote seleccionado exista.
+    if (!selectedLote) {
+      setError("No se encontró el lote seleccionado.")
       return
     }
 
+    const cantidad = Number(qty)
+    const stockActual = selectedLote.qty
+
+    // Validar que la cantidad sea numérica.
+    if (!Number.isFinite(cantidad)) {
+      setError("La cantidad debe ser un número válido.")
+      return
+    }
+
+    let stockPosterior = stockActual
+
+    // Validaciones según el tipo de movimiento.
+    if (type === "Entrada") {
+      if (cantidad <= 0) {
+        setError("La cantidad de entrada debe ser mayor a 0.")
+        return
+      }
+
+      stockPosterior = stockActual + cantidad
+
+    } else if (type === "Salida") {
+      if (cantidad <= 0) {
+        setError("La cantidad de salida debe ser mayor a 0.")
+        return
+      }
+
+      if (cantidad > stockActual) {
+        setError(
+          `Stock insuficiente. Solo hay ${fmt(stockActual)} L disponibles en el lote seleccionado.`
+        )
+        return
+      }
+
+      stockPosterior = stockActual - cantidad
+
+    } else if (type === "Ajuste") {
+      if (cantidad < 0) {
+        setError("El stock final debe ser mayor o igual a 0.")
+        return
+      }
+
+      if (cantidad === stockActual) {
+        setError(
+          "El stock no ha cambiado. El ajuste debe ser diferente al stock actual del lote."
+        )
+        return
+      }
+
+      // En un ajuste, la cantidad representa el stock final.
+      stockPosterior = cantidad
+    }
+
+    // Validar capacidad máxima del envase.
+    const capacidad = CAPACIDAD_ENVASE[selectedLote.envase]
+
+    if (capacidad !== undefined && stockPosterior > capacidad) {
+      setError(
+        `El movimiento supera la capacidad del envase (${capacidad} L). Stock resultante: ${fmt(stockPosterior)} L.`
+      )
+      return
+    }
+
+    // Registrar movimiento si todas las validaciones son correctas.
     setSaving(true)
     setError("")
+
     try {
       await onCreate({
         tipo: type,
         id_inventario: Number(loteId),
-        cantidad_movimiento: Number(qty),
+        cantidad_movimiento: cantidad,
         referencia: reference || undefined,
         observacion: observation || undefined,
         id_usuario: usuarioId,
       })
+
       setDone(true)
+
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error al registrar movimiento")
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Error al registrar movimiento"
+      )
     } finally {
       setSaving(false)
     }
