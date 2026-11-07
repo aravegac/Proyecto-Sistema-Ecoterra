@@ -174,7 +174,12 @@ def evaluar_rangos_entrenamiento(valores):
             validar_rangos(rangos)
             _rangos_validados = True
 
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (
+        FileNotFoundError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+    ):
         return {
             "advertencia_modelo": True,
             "tipo_advertencia": "METADATOS_NO_DISPONIBLES",
