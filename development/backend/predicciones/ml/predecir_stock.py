@@ -4,6 +4,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import json
+import threading
 
 
 # ==========================================================
@@ -69,17 +70,27 @@ VARIABLES_NO_NEGATIVAS = [
 # ==========================================================
 
 _modelo_cache = None
+_modelo_lock = threading.Lock()
 
 def cargar_modelo():
+    """
+    Carga el modelo una sola vez por proceso.
+
+    El archivo pesa ~40 MB y tarda varios segundos en leerse,
+    por eso se guarda en memoria. El lock evita que dos
+    peticiones simultáneas lo carguen dos veces.
+    """
     global _modelo_cache
 
     if _modelo_cache is None:
-        if not RUTA_MODELO.exists():
-            raise FileNotFoundError(
-                f"No se encontró el modelo entrenado: {RUTA_MODELO}"
-            )
+        with _modelo_lock:
+            if _modelo_cache is None:
+                if not RUTA_MODELO.exists():
+                    raise FileNotFoundError(
+                        f"No se encontró el modelo entrenado: {RUTA_MODELO}"
+                    )
 
-        _modelo_cache = joblib.load(RUTA_MODELO)
+                _modelo_cache = joblib.load(RUTA_MODELO)
 
     return _modelo_cache
 
@@ -254,56 +265,24 @@ def evaluar_rangos_entrenamiento(valores):
 # PREDICCIÓN DE REPOSICIÓN
 # ==========================================================
 
-def predecir_stock(
-    stock_actual,
-    stock_minimo,
-    ventas_promedio_90d,
-    cobertura_stock_dias,
-    desviacion_ventas_90d,
-    tendencia_ventas_90d_pct,
-    ventas_maximas_90d,
-    dias_con_ventas_90d,
-    ventas_promedio_30d,
-    ventas_promedio_60d,
-    variacion_30d_90d,
-    dias_desde_ultima_venta,
-    tendencia_ventas_30d_pct,
-    dias_historial_disponible,
-):
+def _validar_valores(valores):
     """
-    Estima los días hasta agotar el inventario.
+    Valida y normaliza las variables de entrada.
 
-    Utiliza las 13 variables del Random Forest ampliado.
-
-    Las tendencias y variaciones pueden ser negativas,
-    ya que representan disminuciones de ventas.
+    Retorna (valores, None) si se puede ejecutar el modelo,
+    o (None, resultado) cuando la respuesta se conoce sin él.
     """
+
+    valores = dict(valores)
 
     # ------------------------------------------------------
     # 1. VALIDAR LOS DATOS DE ENTRADA
     # ------------------------------------------------------
 
-    valores = {
-        "stock_actual": stock_actual,
-        "stock_minimo": stock_minimo,
-        "ventas_promedio_90d": ventas_promedio_90d,
-        "cobertura_stock_dias": cobertura_stock_dias,
-        "desviacion_ventas_90d": desviacion_ventas_90d,
-        "tendencia_ventas_90d_pct": tendencia_ventas_90d_pct,
-        "ventas_maximas_90d": ventas_maximas_90d,
-        "dias_con_ventas_90d": dias_con_ventas_90d,
-        "ventas_promedio_30d": ventas_promedio_30d,
-        "ventas_promedio_60d": ventas_promedio_60d,
-        "variacion_30d_90d": variacion_30d_90d,
-        "dias_desde_ultima_venta": dias_desde_ultima_venta,
-        "tendencia_ventas_30d_pct": tendencia_ventas_30d_pct,
-        "dias_historial_disponible": dias_historial_disponible,
-    }
-
     for nombre, valor in valores.items():
 
         if valor is None:
-            return {
+            return None, {
                 "prediccion_disponible": False,
                 "mensaje": f"No se recibió el valor de {nombre}.",
             }
@@ -311,13 +290,13 @@ def predecir_stock(
         try:
             valor = float(valor)
         except (TypeError, ValueError):
-            return {
+            return None, {
                 "prediccion_disponible": False,
                 "mensaje": f"El valor de {nombre} no es numérico.",
             }
 
         if not np.isfinite(valor):
-            return {
+            return None, {
                 "prediccion_disponible": False,
                 "mensaje": f"El valor de {nombre} no es válido.",
             }
@@ -338,7 +317,7 @@ def predecir_stock(
     for nombre in VARIABLES_NO_NEGATIVAS:
 
         if valores[nombre] < 0:
-            return {
+            return None, {
                 "prediccion_disponible": False,
                 "mensaje": (
                     f"La variable {nombre} no puede "
@@ -347,7 +326,7 @@ def predecir_stock(
             }
 
     if valores["dias_con_ventas_90d"] > 90:
-        return {
+        return None, {
             "prediccion_disponible": False,
             "mensaje": (
                 "Los días con ventas no pueden superar "
@@ -356,7 +335,7 @@ def predecir_stock(
         }
 
     if valores["dias_desde_ultima_venta"] > 90:
-        return {
+        return None, {
             "prediccion_disponible": False,
             "mensaje": (
                 "Los días desde la última venta no pueden "
@@ -369,7 +348,7 @@ def predecir_stock(
     # ------------------------------------------------------
 
     if stock_actual == 0:
-        return {
+        return None, {
             "prediccion_disponible": True,
             "dias_hasta_agotar_stock": 0,
             "estado_reposicion": "REPOSICION_INMEDIATA",
@@ -381,7 +360,7 @@ def predecir_stock(
     # ------------------------------------------------------
 
     if dias_historial_disponible < MIN_DIAS_HISTORIAL:
-        return {
+        return None, {
             "prediccion_disponible": False,
             "mensaje": (
                 "No existe suficiente historial de ventas confiable. "
@@ -394,7 +373,7 @@ def predecir_stock(
     # ------------------------------------------------------
 
     if valores["ventas_promedio_90d"] == 0:
-        return {
+        return None, {
             "prediccion_disponible": False,
             "mensaje": (
                 "No se registraron ventas durante los últimos "
@@ -403,43 +382,13 @@ def predecir_stock(
             ),
         }
 
-    # ------------------------------------------------------
-    # 6. PREPARAR LAS VARIABLES DEL MODELO
-    # ------------------------------------------------------
+    return valores, None
 
-    datos_producto = pd.DataFrame(
-        [{
-            variable: valores[variable]
-            for variable in VARIABLES_MODELO
-        }],
-        columns=VARIABLES_MODELO,
-    )
 
-    # ------------------------------------------------------
-    # 7. GENERAR LA PREDICCIÓN
-    # ------------------------------------------------------
-
-    try:
-        modelo = cargar_modelo()
-
-        prediccion = float(
-            modelo.predict(datos_producto)[0]
-        )
-
-    except FileNotFoundError as error:
-        return {
-            "prediccion_disponible": False,
-            "mensaje": str(error),
-        }
-
-    except Exception as error:
-        return {
-            "prediccion_disponible": False,
-            "mensaje": (
-                "No fue posible ejecutar el modelo de "
-                f"predicción: {str(error)}"
-            ),
-        }
+def _construir_resultado(valores, prediccion):
+    """
+    Arma la respuesta final a partir de la predicción del modelo.
+    """
 
     if not np.isfinite(prediccion):
         return {
@@ -447,8 +396,12 @@ def predecir_stock(
             "mensaje": "El modelo generó una predicción no válida.",
         }
 
+    stock_actual = valores["stock_actual"]
+    stock_minimo = valores["stock_minimo"]
+
     prediccion = max(0.0, prediccion)
     advertencia = evaluar_rangos_entrenamiento(valores)
+
     # ------------------------------------------------------
     # 8. DETERMINAR EL ESTADO DE REPOSICIÓN
     # ------------------------------------------------------
@@ -483,6 +436,114 @@ def predecir_stock(
         "mensaje": mensaje,
         **advertencia,
     }
+
+
+
+
+def predecir_stock_lote(lista_valores):
+    """
+    Ejecuta la predicción de varios productos a la vez.
+
+    Recibe una lista de diccionarios con los mismos argumentos
+    que predecir_stock y retorna los resultados en el mismo orden.
+
+    El modelo se invoca una sola vez para todo el lote, lo que
+    es mucho más rápido que predecir producto por producto.
+    """
+
+    resultados = [None] * len(lista_valores)
+    pendientes = []
+
+    for indice, entrada in enumerate(lista_valores):
+        valores, temprano = _validar_valores(entrada)
+
+        if temprano is not None:
+            resultados[indice] = temprano
+        else:
+            pendientes.append((indice, valores))
+
+    if not pendientes:
+        return resultados
+
+    datos = pd.DataFrame(
+        [
+            [valores[variable] for variable in VARIABLES_MODELO]
+            for _, valores in pendientes
+        ],
+        columns=VARIABLES_MODELO,
+    )
+
+    try:
+        modelo = cargar_modelo()
+        predicciones = modelo.predict(datos)
+
+    except FileNotFoundError as error:
+        for indice, _ in pendientes:
+            resultados[indice] = {
+                "prediccion_disponible": False,
+                "mensaje": str(error),
+            }
+        return resultados
+
+    except Exception as error:
+        for indice, _ in pendientes:
+            resultados[indice] = {
+                "prediccion_disponible": False,
+                "mensaje": (
+                    "No fue posible ejecutar el modelo de "
+                    f"predicción: {str(error)}"
+                ),
+            }
+        return resultados
+
+    for (indice, valores), prediccion in zip(pendientes, predicciones):
+        resultados[indice] = _construir_resultado(
+            valores, float(prediccion)
+        )
+
+    return resultados
+
+
+def predecir_stock(
+    stock_actual,
+    stock_minimo,
+    ventas_promedio_90d,
+    cobertura_stock_dias,
+    desviacion_ventas_90d,
+    tendencia_ventas_90d_pct,
+    ventas_maximas_90d,
+    dias_con_ventas_90d,
+    ventas_promedio_30d,
+    ventas_promedio_60d,
+    variacion_30d_90d,
+    dias_desde_ultima_venta,
+    tendencia_ventas_30d_pct,
+    dias_historial_disponible,
+):
+    """
+    Estima los días hasta agotar el inventario de un producto.
+
+    Utiliza las 13 variables del Random Forest ampliado.
+    Las tendencias y variaciones pueden ser negativas,
+    ya que representan disminuciones de ventas.
+    """
+
+    return predecir_stock_lote([{
+        "stock_actual": stock_actual,
+        "stock_minimo": stock_minimo,
+        "ventas_promedio_90d": ventas_promedio_90d,
+        "cobertura_stock_dias": cobertura_stock_dias,
+        "desviacion_ventas_90d": desviacion_ventas_90d,
+        "tendencia_ventas_90d_pct": tendencia_ventas_90d_pct,
+        "ventas_maximas_90d": ventas_maximas_90d,
+        "dias_con_ventas_90d": dias_con_ventas_90d,
+        "ventas_promedio_30d": ventas_promedio_30d,
+        "ventas_promedio_60d": ventas_promedio_60d,
+        "variacion_30d_90d": variacion_30d_90d,
+        "dias_desde_ultima_venta": dias_desde_ultima_venta,
+        "tendencia_ventas_30d_pct": tendencia_ventas_30d_pct,
+        "dias_historial_disponible": dias_historial_disponible,
+    }])[0]
 
 
 # ==========================================================
