@@ -500,7 +500,7 @@ export default function Clientes({
                     <input className="input" value={field.value} readOnly />
                   </div>
                 ))}
-                {!can(authUser, "direcciones", "Consultar") ? (
+                {can(authUser, "direcciones", "Consultar") ? (
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <label className="label">Direcciones ({selected.dirs.length})</label>
