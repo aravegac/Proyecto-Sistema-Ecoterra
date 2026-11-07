@@ -507,7 +507,7 @@ function NotificationBell({
               </div>
             ) : error ? (
               <div className="notification-empty notification-error">
-                No se pudieron actualizar las notificaciones.
+                {error}
               </div>
             ) : notificaciones.length === 0 ? (
               <div className="notification-empty">

@@ -1,0 +1,221 @@
+{
+    "nombre_modelo": "Random Forest ampliado",
+    "tipo_modelo": "RandomForestRegressor",
+    "version": "1.0",
+    "fecha_generacion": "2026-11-06T13:23:10.573183",
+    "origen_datos": "Dataset sintético",
+    "cantidad_registros": 2600,
+    "cantidad_productos": 50,
+    "variable_objetivo": "dias_hasta_agotar_stock",
+    "variables_predictoras": [
+        "stock_actual",
+        "stock_minimo",
+        "ventas_promedio_90d",
+        "cobertura_stock_dias",
+        "desviacion_ventas_90d",
+        "tendencia_ventas_90d_pct",
+        "ventas_maximas_90d",
+        "dias_con_ventas_90d",
+        "ventas_promedio_30d",
+        "ventas_promedio_60d",
+        "variacion_30d_90d",
+        "dias_desde_ultima_venta",
+        "tendencia_ventas_30d_pct"
+    ],
+    "rangos_variables": {
+        "stock_actual": {
+            "minimo": 0.05906499853771886,
+            "maximo": 693586.3883389026,
+            "percentil_01": 0.5766234824231575,
+            "percentil_99": 477173.5794556534
+        },
+        "stock_minimo": {
+            "minimo": 0.24039715646029736,
+            "maximo": 189506.27938893653,
+            "percentil_01": 0.4508939560357033,
+            "percentil_99": 118206.89091460915
+        },
+        "ventas_promedio_90d": {
+            "minimo": 0.014035278022451638,
+            "maximo": 4225.9466853112,
+            "percentil_01": 0.02247914977154871,
+            "percentil_99": 3750.100527688114
+        },
+        "cobertura_stock_dias": {
+            "minimo": 2.147823047566086,
+            "maximo": 179.86408786495636,
+            "percentil_01": 4.5655730863926145,
+            "percentil_99": 178.20337081615645
+        },
+        "desviacion_ventas_90d": {
+            "minimo": 0.009752772603047216,
+            "maximo": 3234.019171151649,
+            "percentil_01": 0.013169108257005383,
+            "percentil_99": 2860.9568927827154
+        },
+        "tendencia_ventas_90d_pct": {
+            "minimo": -0.8127422718810356,
+            "maximo": 2.58319557136107,
+            "percentil_01": -0.5872507242830991,
+            "percentil_99": 1.1505248078290418
+        },
+        "ventas_maximas_90d": {
+            "minimo": 0.07789518325153247,
+            "maximo": 14255.251228522111,
+            "percentil_01": 0.08603091605622337,
+            "percentil_99": 13073.122536192282
+        },
+        "dias_con_ventas_90d": {
+            "minimo": 17.0,
+            "maximo": 90.0,
+            "percentil_01": 22.0,
+            "percentil_99": 90.0
+        },
+        "ventas_promedio_30d": {
+            "minimo": 0.008846031964182493,
+            "maximo": 5038.247598492186,
+            "percentil_01": 0.017152805662158703,
+            "percentil_99": 3667.8183447836045
+        },
+        "ventas_promedio_60d": {
+            "minimo": 0.012631555744768708,
+            "maximo": 4583.976654664616,
+            "percentil_01": 0.020452987257537032,
+            "percentil_99": 3702.142956263143
+        },
+        "variacion_30d_90d": {
+            "minimo": -0.7431609557781669,
+            "maximo": 0.9253466185607175,
+            "percentil_01": -0.4867896833864513,
+            "percentil_99": 0.5543996664614959
+        },
+        "dias_desde_ultima_venta": {
+            "minimo": 0.0,
+            "maximo": 20.0,
+            "percentil_01": 0.0,
+            "percentil_99": 8.0
+        },
+        "tendencia_ventas_30d_pct": {
+            "minimo": -1.0,
+            "maximo": 5.0,
+            "percentil_01": -0.7891435966160071,
+            "percentil_99": 3.5025493487861397
+        }
+    },
+    "parametros": {
+        "bootstrap": true,
+        "ccp_alpha": 0.0,
+        "criterion": "squared_error",
+        "max_depth": null,
+        "max_features": 0.9,
+        "max_leaf_nodes": null,
+        "max_samples": null,
+        "min_impurity_decrease": 0.0,
+        "min_samples_leaf": 2,
+        "min_samples_split": 4,
+        "min_weight_fraction_leaf": 0.0,
+        "monotonic_cst": null,
+        "n_estimators": 400,
+        "n_jobs": -1,
+        "oob_score": false,
+        "random_state": 42,
+        "verbose": 0,
+        "warm_start": false
+    },
+    "evaluacion_cronologica": {
+        "Dummy": {
+            "MAE": 46.56353172007848,
+            "RMSE": 54.88080450474482,
+            "R2": -0.12855005638185513
+        },
+        "Referencia matematica": {
+            "MAE": 11.635839162682366,
+            "RMSE": 18.499196387483877,
+            "R2": 0.8717711892876345
+        },
+        "RF 3 variables": {
+            "MAE": 15.917410641378824,
+            "RMSE": 23.224807297631425,
+            "R2": 0.7978917102819556
+        },
+        "RF 4 variables": {
+            "MAE": 12.937060654421336,
+            "RMSE": 19.16302139028401,
+            "R2": 0.8624033510063189
+        },
+        "RF ampliado": {
+            "MAE": 11.96872761463284,
+            "RMSE": 18.401395469000878,
+            "R2": 0.8731234366840239
+        },
+        "Hibrido RF ampliado": {
+            "MAE": 11.68887807192247,
+            "RMSE": 18.069786496724443,
+            "R2": 0.8776550829224898
+        }
+    },
+    "evaluacion_groupkfold": {
+        "Dummy": {
+            "MAE_promedio_folds": 47.62511316568047,
+            "MAE_desviacion_folds": 1.6628819167030076,
+            "RMSE_promedio_folds": 56.624192563696774,
+            "R2_promedio_folds": -0.0025023979080273763,
+            "MAE_global": 47.625113165680474,
+            "RMSE_global": 56.674972239652526,
+            "R2_global": -0.0009152612739222743
+        },
+        "Referencia matematica": {
+            "MAE_promedio_folds": 15.278472080619617,
+            "MAE_desviacion_folds": 2.370206270170146,
+            "RMSE_promedio_folds": 22.534179036520207,
+            "R2_promedio_folds": 0.8397594428366281,
+            "MAE_global": 15.278472080619613,
+            "RMSE_global": 22.841463718061576,
+            "R2_global": 0.8374217140531773
+        },
+        "RF 3 variables": {
+            "MAE_promedio_folds": 20.515982962174043,
+            "MAE_desviacion_folds": 1.1628849998835538,
+            "RMSE_promedio_folds": 29.133246362465833,
+            "R2_promedio_folds": 0.7341987998167468,
+            "MAE_global": 20.515982962174043,
+            "RMSE_global": 29.20574468873503,
+            "R2_global": 0.7342022821738904
+        },
+        "RF 4 variables": {
+            "MAE_promedio_folds": 16.640441567596397,
+            "MAE_desviacion_folds": 1.7111488521603455,
+            "RMSE_promedio_folds": 24.194151216596758,
+            "R2_promedio_folds": 0.8161739067638543,
+            "MAE_global": 16.640441567596397,
+            "RMSE_global": 24.372719658640975,
+            "R2_global": 0.8148930754628122
+        },
+        "RF ampliado": {
+            "MAE_promedio_folds": 15.444031789233737,
+            "MAE_desviacion_folds": 1.9832426010863722,
+            "RMSE_promedio_folds": 22.98494236292778,
+            "R2_promedio_folds": 0.8333537827165542,
+            "MAE_global": 15.444031789233732,
+            "RMSE_global": 23.243810126644856,
+            "R2_global": 0.8316437214633151
+        },
+        "Hibrido RF ampliado": {
+            "MAE_promedio_folds": 15.344193233885298,
+            "MAE_desviacion_folds": 2.2992559718721153,
+            "RMSE_promedio_folds": 22.8067513266189,
+            "R2_promedio_folds": 0.8351228552098509,
+            "MAE_global": 15.3441932338853,
+            "RMSE_global": 23.07964202328794,
+            "R2_global": 0.834013481528278
+        }
+    },
+    "seleccion": {
+        "modelo_seleccionado": "RF ampliado",
+        "supera_consistentemente": false,
+        "mejora_mae_cronologica_pct": -2.860889079818928,
+        "mejora_mae_groupkfold_pct": -1.0836143021403768,
+        "conclusion": "El RF ampliado no supera consistentemente la referencia matemática. Se selecciona como modelo ML final por ser la alternativa ampliada evaluada, pero la referencia matemática mantiene el mejor desempeño en al menos una de las evaluaciones. No se debe afirmar que el ML es más preciso."
+    },
+    "advertencia": "Modelo entrenado exclusivamente con datos sintéticos. Las métricas no representan validación con datos reales de Ecoterra."
+}

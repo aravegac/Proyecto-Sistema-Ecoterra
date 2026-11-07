@@ -321,6 +321,18 @@ export default function App() {
 
         const data: RespuestaPrediccionesStock = await response.json()
 
+        if (response.status === 403) {
+          throw new Error(
+            "No tienes permisos para ver las notificaciones de predicción de stock."
+          )
+        }
+
+        if (response.status === 401) {
+          throw new Error(
+            "Tu sesión ha expirado. Inicia sesión nuevamente para consultar las notificaciones."
+          )
+        }
+
         if (!response.ok) {
           throw new Error(
             data.detalle ||
