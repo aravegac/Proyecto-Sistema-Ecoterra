@@ -138,114 +138,116 @@ export default function Productos({
             <span className="productos-count">{filtered.length} productos</span>
           </div>
 
-          <table className="dt w-full">
-            <thead>
-              <tr>
-                <th>Código</th>
-                <th>Nombre</th>
-                <th>Tipo</th>
-                <th>Unidad</th>
-                <th>Stock mín.</th>
-                <th>Stock disp.</th>
-                <th>Stock total</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filtered.map((product) => (
-                <tr key={product.id}>
-                  <td className="productos-code">{product.codigo}</td>
-
-                  <td>
-                    <div className="productos-name">{product.nombre}</div>
-                    <div className="productos-desc">{product.desc}</div>
-                  </td>
-
-                  <td>
-                    <Badge t="info">{product.tipo}</Badge>
-                  </td>
-
-                  <td className="productos-unit">{product.unidad}</td>
-
-                  <td className="productos-meta" style={{ color: "#64748b" }}>
-                    {fmt(product.stockMin)} L
-                  </td>
-
-                  <td className="productos-meta">
-                    <span
-                      style={{
-                        color:
-                          product.stock === 0
-                            ? "#DC2626"
-                            : product.stock < product.stockMin
-                              ? "#D97706"
-                              : "#00995A",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(product.stock)} L
-                    </span>
-                  </td>
-
-                  <td className="productos-meta" style={{ color: "#64748b" }}>
-                    {fmt(product.stockTotal)} L
-                  </td>
-
-                  <td>
-                    <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
-                      {product.estado}
-                    </Badge>
-                  </td>
-
-                  <td>
-                    <div className="productos-actions">
-                      <button
-                        className="btn btn-ghost btn-sm productos-edit-btn"
-                        title="Editar producto"
-                        aria-label="Editar producto"
-                        onClick={() => {
-                          setEditingProduct(product)
-                          setForm({
-                            codigo: product.codigo,
-                            nombre: product.nombre,
-                            descripcion: product.desc,
-                            tipo: product.tipo,
-                            unidad: product.unidad,
-                            stockMinimo: product.stockMin,
-                            estado: product.estado,
-                          })
-                          setShowModal(true)
-                        }}
-                        disabled={!can(authUser, "productos", "Editar")}
-                      >
-                        <Ico p={I.edit} size={13} />
-                      </button>
-
-                      <button
-                        className="btn btn-ghost btn-sm productos-delete-btn"
-                        title="Eliminar producto"
-                        aria-label="Eliminar producto"
-                        onClick={() => setDeletingProduct(product)}
-                        disabled={!can(authUser, "productos", "Eliminar")}
-                      >
-                        <Ico p={I.trash} size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {filtered.length === 0 && (
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
                 <tr>
-                  <td colSpan={9} style={{ textAlign: "center", padding: 24 }}>
-                    No hay productos que coincidan con los filtros seleccionados.
-                  </td>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Unidad</th>
+                  <th>Stock mín.</th>
+                  <th>Stock disp.</th>
+                  <th>Stock total</th>
+                  <th>Estado</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filtered.map((product) => (
+                  <tr key={product.id}>
+                    <td className="productos-code">{product.codigo}</td>
+
+                    <td>
+                      <div className="productos-name">{product.nombre}</div>
+                      <div className="productos-desc">{product.desc}</div>
+                    </td>
+
+                    <td>
+                      <Badge t="info">{product.tipo}</Badge>
+                    </td>
+
+                    <td className="productos-unit">{product.unidad}</td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockMin)} L
+                    </td>
+
+                    <td className="productos-meta">
+                      <span
+                        style={{
+                          color:
+                            product.stock === 0
+                              ? "#DC2626"
+                              : product.stock < product.stockMin
+                                ? "#D97706"
+                                : "#00995A",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {fmt(product.stock)} L
+                      </span>
+                    </td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockTotal)} L
+                    </td>
+
+                    <td>
+                      <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
+                        {product.estado}
+                      </Badge>
+                    </td>
+
+                    <td>
+                      <div className="productos-actions">
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          title="Editar producto"
+                          aria-label="Editar producto"
+                          onClick={() => {
+                            setEditingProduct(product)
+                            setForm({
+                              codigo: product.codigo,
+                              nombre: product.nombre,
+                              descripcion: product.desc,
+                              tipo: product.tipo,
+                              unidad: product.unidad,
+                              stockMinimo: product.stockMin,
+                              estado: product.estado,
+                            })
+                            setShowModal(true)
+                          }}
+                          disabled={!can(authUser, "productos", "Editar")}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-delete-btn"
+                          title="Eliminar producto"
+                          aria-label="Eliminar producto"
+                          onClick={() => setDeletingProduct(product)}
+                          disabled={!can(authUser, "productos", "Eliminar")}
+                        >
+                          <Ico p={I.trash} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: "center", padding: 24 }}>
+                      No hay productos que coincidan con los filtros seleccionados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="panel" style={{ padding: 24, textAlign: "center" }}>

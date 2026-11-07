@@ -127,7 +127,6 @@ function Sidebar({
           >
             <div
               style={{
-                background: "white",
                 borderRadius: 8,
                 padding: "5px 10px",
                 display: "inline-flex",

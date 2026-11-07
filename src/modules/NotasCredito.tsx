@@ -579,146 +579,148 @@ export default function NotasCredito({
       )}
       {can(authUser, "notas_credito", "Consultar") ? (
         <div className="panel nc-table-panel">
-          <table className="dt w-full">
-            <thead>
-              <tr>
-                <th>N° NC</th>
-                <th>Factura Origen</th>
-                <th>Cliente</th>
-                <th>Fecha</th>
-                <th>Subtotal</th>
-                <th>IVA</th>
-                <th>Total</th>
-                <th>Motivo</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cargando ? (
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
                 <tr>
-                  <td colSpan={10} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                    Cargando Notas de Crédito...
-                  </td>
+                  <th>N° NC</th>
+                  <th>Factura Origen</th>
+                  <th>Cliente</th>
+                  <th>Fecha</th>
+                  <th>Subtotal</th>
+                  <th>IVA</th>
+                  <th>Total</th>
+                  <th>Motivo</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
-              ) : errorCarga ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>
-                    <div role="alert">
-                      <p>{errorCarga}</p>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => setListRetry((value) => value + 1)}
-                      >
-                        Reintentar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : notes.length === 0 ? (
-                <tr>
-                  <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>No hay notas de crédito registradas.</td>
-                </tr>
-              ) : (
-                notes.map((note) => (
-                  <tr key={note.id}>
-                    <td className="nc-id">{note.numero_nc}</td>
-                    <td>{note.factura_numero}</td>
-                    <td>{note.cliente_nombre}</td>
-                    <td>{note.fecha_emision}</td>
-                    <td>{formatMoney(Number(note.subtotal), note.moneda)}</td>
-                    <td>{formatMoney(Number(note.iva), note.moneda)}</td>
-                    <td className="nc-monto">
-                      {formatMoney(Number(note.total), note.moneda)}
+              </thead>
+              <tbody>
+                {cargando ? (
+                  <tr>
+                    <td colSpan={10} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                      Cargando Notas de Crédito...
                     </td>
-                    <td className="nc-reason-cell">{note.motivo}</td>
-                    <td>
-                      <Badge
-                        t={
-                          note.estado === "EMITIDA"
-                            ? "ok"
-                            : note.estado === "ANULADA"
-                              ? "danger"
-                              : "warn"
-                        }
-                      >
-                        {estadoLegible(note.estado)}
-                      </Badge>
-                    </td>
-                    <td>
-                      <div className="nc-row-actions">
+                  </tr>
+                ) : errorCarga ? (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>
+                      <div role="alert">
+                        <p>{errorCarga}</p>
                         <button
                           className="btn btn-ghost btn-sm"
-                          aria-label={`Ver ${note.numero_nc}`}
-                          disabled={busy || !can(authUser, "notas_credito", "Consultar")}
-                          title="Detalles"
-                          onClick={() => setViewNote(note)}
+                          onClick={() => setListRetry((value) => value + 1)}
                         >
-                          <Ico p={I.pdf} size={13} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          aria-label={`PDF ${note.numero_nc}`}
-                          title="Ver PDF"
-                          disabled={busy || !canViewPdf(note)}
-                          onClick={() => void downloadPdf(note)}
-                        >
-                          <Ico p={I.download} size={13} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm productos-edit-btn"
-                          aria-label={`Editar ${note.numero_nc}`}
-                          title="Editar"
-                          disabled={
-                            busy ||
-                            note.estado !== "PENDIENTE" ||
-                            !can(authUser, "notas_credito", "Editar")
-                          }
-                          onClick={() => void openEdit(note)}
-                        >
-                          <Ico p={I.edit} size={13} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          aria-label={`Emitir ${note.numero_nc}`}
-                          title="Emitir PDF"
-                          disabled={
-                            busy ||
-                            note.estado !== "PENDIENTE" ||
-                            !can(authUser, "notas_credito", "Editar")
-                          }
-                          onClick={() => {
-                            setNoteAction({ note, action: "emitir" })
-                            setActionError("")
-                            setActionReason("")
-                          }}
-                        >
-                          <Ico p={I.send} size={13} />
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm productos-delete-btn"
-                          aria-label={`Anular ${note.numero_nc}`}
-                          title="Anular"
-                          disabled={
-                            busy ||
-                            !["PENDIENTE", "EMITIDA"].includes(note.estado) ||
-                            !can(authUser, "notas_credito", "Eliminar")
-                          }
-                          onClick={() => {
-                            setNoteAction({ note, action: "anular" })
-                            setActionError("")
-                            setActionReason("")
-                          }}
-                        >
-                          <Ico p={I.trash} size={13} />
+                          Reintentar
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : notes.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} style={{ textAlign: "center", padding: "24px" }}>No hay notas de crédito registradas.</td>
+                  </tr>
+                ) : (
+                  notes.map((note) => (
+                    <tr key={note.id}>
+                      <td className="nc-id">{note.numero_nc}</td>
+                      <td>{note.factura_numero}</td>
+                      <td>{note.cliente_nombre}</td>
+                      <td>{note.fecha_emision}</td>
+                      <td>{formatMoney(Number(note.subtotal), note.moneda)}</td>
+                      <td>{formatMoney(Number(note.iva), note.moneda)}</td>
+                      <td className="nc-monto">
+                        {formatMoney(Number(note.total), note.moneda)}
+                      </td>
+                      <td className="nc-reason-cell">{note.motivo}</td>
+                      <td>
+                        <Badge
+                          t={
+                            note.estado === "EMITIDA"
+                              ? "ok"
+                              : note.estado === "ANULADA"
+                                ? "danger"
+                                : "warn"
+                          }
+                        >
+                          {estadoLegible(note.estado)}
+                        </Badge>
+                      </td>
+                      <td>
+                        <div className="nc-row-actions">
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            aria-label={`Ver ${note.numero_nc}`}
+                            disabled={busy || !can(authUser, "notas_credito", "Consultar")}
+                            title="Detalles"
+                            onClick={() => setViewNote(note)}
+                          >
+                            <Ico p={I.pdf} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            aria-label={`PDF ${note.numero_nc}`}
+                            title="Ver PDF"
+                            disabled={busy || !canViewPdf(note)}
+                            onClick={() => void downloadPdf(note)}
+                          >
+                            <Ico p={I.download} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm productos-edit-btn"
+                            aria-label={`Editar ${note.numero_nc}`}
+                            title="Editar"
+                            disabled={
+                              busy ||
+                              note.estado !== "PENDIENTE" ||
+                              !can(authUser, "notas_credito", "Editar")
+                            }
+                            onClick={() => void openEdit(note)}
+                          >
+                            <Ico p={I.edit} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            aria-label={`Emitir ${note.numero_nc}`}
+                            title="Emitir PDF"
+                            disabled={
+                              busy ||
+                              note.estado !== "PENDIENTE" ||
+                              !can(authUser, "notas_credito", "Editar")
+                            }
+                            onClick={() => {
+                              setNoteAction({ note, action: "emitir" })
+                              setActionError("")
+                              setActionReason("")
+                            }}
+                          >
+                            <Ico p={I.send} size={13} />
+                          </button>
+                          <button
+                            className="btn btn-ghost btn-sm productos-delete-btn"
+                            aria-label={`Anular ${note.numero_nc}`}
+                            title="Anular"
+                            disabled={
+                              busy ||
+                              !["PENDIENTE", "EMITIDA"].includes(note.estado) ||
+                              !can(authUser, "notas_credito", "Eliminar")
+                            }
+                            onClick={() => {
+                              setNoteAction({ note, action: "anular" })
+                              setActionError("")
+                              setActionReason("")
+                            }}
+                          >
+                            <Ico p={I.trash} size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="panel" style={{ padding: 24, textAlign: "center" }}>

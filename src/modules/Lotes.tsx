@@ -193,129 +193,131 @@ export default function Lotes({
               <span className="lotes-count">{filtered.length} lotes</span>
             </div>
 
-            <table className="dt w-full">
-              <thead>
-                <tr>
-                  <th>ID Lote</th>
-                  <th>Producto</th>
-                  <th>Cantidad</th>
-                  <th>Envase</th>
-                  <th>Fabricación</th>
-                  <th>Vencimiento</th>
-                  <th>Ubicación</th>
-                  <th>Estado</th>
-                  <th></th>
-                </tr>
-              </thead>
+            <div className="table-scroll">
+              <table className="dt w-full">
+                <thead>
+                  <tr>
+                    <th>ID Lote</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Envase</th>
+                    <th>Fabricación</th>
+                    <th>Vencimiento</th>
+                    <th>Ubicación</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
 
-              <tbody>
-                {filtered.map((lot) => {
-                  const capacidad = CAPACIDAD_ENVASE[lot.envase]
-                  const ocupacion = capacidad
-                    ? Math.min(100, Math.max(0, 100 * lot.qty / capacidad))
-                    : 0
+                <tbody>
+                  {filtered.map((lot) => {
+                    const capacidad = CAPACIDAD_ENVASE[lot.envase]
+                    const ocupacion = capacidad
+                      ? Math.min(100, Math.max(0, 100 * lot.qty / capacidad))
+                      : 0
 
-                  return (
-                    <tr key={lot.id}>
-                      <td className="lotes-id">{lot.id}</td>
-                      <td className="lotes-prod">{lot.prod}</td>
+                    return (
+                      <tr key={lot.id}>
+                        <td className="lotes-id">{lot.id}</td>
+                        <td className="lotes-prod">{lot.prod}</td>
 
-                      <td
-                        className={`lotes-qty ${lot.qty === 0 ? "lotes-qty-danger" : "lotes-qty-normal"}`}
-                      >
-                        <div className="lotes-qty-stack">
-                          <span>{fmt(lot.qty)} L</span>
-                          <div className="progress lotes-progress">
-                            <div
-                              className="progress-fill"
-                              style={{
-                                width: `${ocupacion}%`,
-                                background:
-                                  ocupacion >= 100
-                                    ? "#00995A"
-                                    : ocupacion >= 40
-                                      ? "#D97706"
-                                      : "#DC2626",
-                              }}
-                            />
+                        <td
+                          className={`lotes-qty ${lot.qty === 0 ? "lotes-qty-danger" : "lotes-qty-normal"}`}
+                        >
+                          <div className="lotes-qty-stack">
+                            <span>{fmt(lot.qty)} L</span>
+                            <div className="progress lotes-progress">
+                              <div
+                                className="progress-fill"
+                                style={{
+                                  width: `${ocupacion}%`,
+                                  background:
+                                    ocupacion >= 100
+                                      ? "#00995A"
+                                      : ocupacion >= 40
+                                        ? "#D97706"
+                                        : "#DC2626",
+                                }}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td>
-                        <Badge t="neutral">{lot.envase}</Badge>
-                      </td>
+                        <td>
+                          <Badge t="neutral">{lot.envase}</Badge>
+                        </td>
 
-                      <td>{lot.fabr}</td>
+                        <td>{lot.fabr}</td>
 
-                      <td
-                        className={
-                          expiringSoon(lot.venc)
-                            ? "lotes-venc-warn"
-                            : "lotes-venc"
-                        }
-                      >
-                        {expiringSoon(lot.venc) && "⚠ "}
-                        {lot.venc}
-                      </td>
-
-                      <td>
-                        <code className="lotes-location">{lot.ubic}</code>
-                      </td>
-
-                      <td>
-                        <Badge t={lot.estado === "Disponible" ? "ok" : "warn"}>
-                          {lot.estado}
-                        </Badge>
-                      </td>
-
-                      <td>
-                        <button
-                          className="btn btn-ghost btn-sm productos-edit-btn"
-                          aria-label={`Editar lote ${lot.id}`}
-                          onClick={() => {
-                            setEditId(lot.id)
-                            setForm({
-                              prod: lot.prod,
-                              qty: lot.qty,
-                              envase: lot.envase,
-                              fabr: lot.fabr,
-                              venc: lot.venc,
-                              ubic: lot.ubic,
-                              estado: lot.estado,
-                            })
-                            setFormError("")
-                            setShowModal(true)
-                          }}
-                          disabled={!can(authUser, "lotes", "Editar")}
+                        <td
+                          className={
+                            expiringSoon(lot.venc)
+                              ? "lotes-venc-warn"
+                              : "lotes-venc"
+                          }
                         >
-                          <Ico p={I.edit} size={13} />
-                        </button>
+                          {expiringSoon(lot.venc) && "⚠ "}
+                          {lot.venc}
+                        </td>
 
-                        <button
-                          aria-label={`Eliminar lote ${lot.id}`}
-                          className="btn btn-ghost btn-sm productos-delete-btn"
-                          onClick={async () => {
-                            if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
-                            try {
-                              await onDelete(lot)
-                            } catch (e) {
-                              alert(
-                                e instanceof Error ? e.message : "Error al eliminar"
-                              )
-                            }
-                          }}
-                          disabled={!can(authUser, "lotes", "Eliminar")}
-                        >
-                          <Ico p={I.trash} size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
+                        <td>
+                          <code className="lotes-location">{lot.ubic}</code>
+                        </td>
+
+                        <td>
+                          <Badge t={lot.estado === "Disponible" ? "ok" : "warn"}>
+                            {lot.estado}
+                          </Badge>
+                        </td>
+
+                        <td>
+                          <button
+                            className="btn btn-ghost btn-sm productos-edit-btn"
+                            aria-label={`Editar lote ${lot.id}`}
+                            onClick={() => {
+                              setEditId(lot.id)
+                              setForm({
+                                prod: lot.prod,
+                                qty: lot.qty,
+                                envase: lot.envase,
+                                fabr: lot.fabr,
+                                venc: lot.venc,
+                                ubic: lot.ubic,
+                                estado: lot.estado,
+                              })
+                              setFormError("")
+                              setShowModal(true)
+                            }}
+                            disabled={!can(authUser, "lotes", "Editar")}
+                          >
+                            <Ico p={I.edit} size={13} />
+                          </button>
+
+                          <button
+                            aria-label={`Eliminar lote ${lot.id}`}
+                            className="btn btn-ghost btn-sm productos-delete-btn"
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
+                              try {
+                                await onDelete(lot)
+                              } catch (e) {
+                                alert(
+                                  e instanceof Error ? e.message : "Error al eliminar"
+                                )
+                              }
+                            }}
+                            disabled={!can(authUser, "lotes", "Eliminar")}
+                          >
+                            <Ico p={I.trash} size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
             </table>
           </div>
+        </div>
         </>
       ) : (
         <div className="panel" style={{ padding: 24, textAlign: "center" }}>

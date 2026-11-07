@@ -627,120 +627,122 @@ const linkOrder = async () => {
             <button className="btn btn-ghost btn-sm" onClick={() => void reloadCotizaciones()} disabled={isLoadingQuotes}>Reintentar</button>
           </div>}
           <div className="panel cotizaciones-table-panel" aria-busy={isLoadingQuotes}>
-            <table className="dt w-full">
-              <thead>
-                <tr>
-                  <th>N° Cotización</th>
-                  <th>Cliente</th>
-                  <th>Fecha</th>
-                  <th>Vigencia</th>
-                  <th>Subtotal</th>
-                  <th>IVA</th>
-                  <th>Total</th>
-                  <th>OC</th>
-                  <th>Factura</th>
-                  <th>Estado</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoadingQuotes ? (
+            <div className="table-scroll">
+              <table className="dt w-full">
+                <thead>
                   <tr>
-                    <td colSpan={11} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                      Cargando Cotizaciones...
-                    </td>
+                    <th>N° Cotización</th>
+                    <th>Cliente</th>
+                    <th>Fecha</th>
+                    <th>Vigencia</th>
+                    <th>Subtotal</th>
+                    <th>IVA</th>
+                    <th>Total</th>
+                    <th>OC</th>
+                    <th>Factura</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
                   </tr>
-                ) : filteredQuotes.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} style={{ textAlign: "center", padding: "24px" }}>
-                      {quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}
-                    </td>
-                  </tr>
-                ) : filteredQuotes.map((quote) => (
-                  <tr key={quote.id}>
-                    {(() => {
-                      const order = getPurchaseOrder(quote)
-                      const invoice = getInvoice(quote)
+                </thead>
+                <tbody>
+                  {isLoadingQuotes ? (
+                    <tr>
+                      <td colSpan={11} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                        Cargando Cotizaciones...
+                      </td>
+                    </tr>
+                  ) : filteredQuotes.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} style={{ textAlign: "center", padding: "24px" }}>
+                        {quotesError ? "Listado no disponible." : "No hay cotizaciones para los filtros seleccionados."}
+                      </td>
+                    </tr>
+                  ) : filteredQuotes.map((quote) => (
+                    <tr key={quote.id}>
+                      {(() => {
+                        const order = getPurchaseOrder(quote)
+                        const invoice = getInvoice(quote)
 
-                      return (
-                        <>
-                          <td className="cotizaciones-table-id">{quote.id}</td>
-                          <td>{quote.cliente}</td>
-                          <td>{quote.fecha}</td>
-                          <td>{quote.vigencia}</td>
-                          <td>{formatMoney(quote.subtotal, quote.moneda || "CLP")}</td>
-                          <td>{formatMoney(quote.iva, quote.moneda || "CLP")}</td>
-                          <td>{formatMoney(quote.total, quote.moneda || "CLP")}</td>
-                          <td>{order?.id ?? "—"}</td>
-                          <td>{invoice?.id ?? "—"}</td>
-                          <td>
-                            <span className={`badge cotizaciones-status cotizaciones-status-${quote.estado.toLowerCase()}`}>
-                              {quote.estado}
-                            </span>
-                          </td>
-                          <td>
-                            <div className="cotizaciones-row-actions">
-                              <button
-                                className="btn btn-ghost btn-sm cotizaciones-action-edit"
-                                title="Editar productos"
-                                aria-label={`Editar ${quote.id}`}
-                                disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
-                                onClick={() => openEdit(quote)}
-                              >
-                                <Ico p={I.edit} size={13} />
-                              </button>
-                              <button
-                                className="btn btn-ghost btn-sm cotizaciones-action-preview"
-                                title="Vista previa"
-                                aria-label={`Vista previa ${quote.id}`}
-                                onClick={() => openPreview(quote)}
-                                disabled={!can(authUser, "cotizaciones", "Consultar")}
-                              >
-                                <Ico p={I.pdf} size={13} />
-                              </button>
-                              <button
-                                className="btn btn-ghost btn-sm cotizaciones-action-download"
-                                title="Descargar PDF"
-                                aria-label={`Descargar PDF ${quote.id}`}
-                                onClick={() => downloadQuotePdf(quote)}
-                                disabled={!can(authUser, "cotizaciones", "Descargar PDF")}
-                              >
-                                <Ico p={I.download} size={13} />
-                              </button>
-                              {/* BOTÓN DE CORREO ELIMINADO */}
-                              <button
-                                className="btn btn-ghost btn-sm cotizaciones-action-link"
-                                title="Asociar a orden de compra"
-                                aria-label={`Asociar ${quote.id} a una orden de compra`}
-                                disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
-                                onClick={() => setQuoteToLink(quote)}
-                              >
-                                <Ico p={I.link} size={13} />
-                              </button>
-                              <button
-                                className="btn btn-ghost btn-sm productos-delete-btn"
-                                title="Anular cotización"
-                                aria-label={`Anular ${quote.id}`}
-                                disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
-                                  !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
-                                    (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
-                                onClick={() => {
-                                  setQuoteToCancel(quote)
-                                  setCancelReason("")
-                                  setCancelError("")
-                                }}
-                              >
-                                <Ico p={I.trash} size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </>
-                      )
-                    })()}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        return (
+                          <>
+                            <td className="cotizaciones-table-id">{quote.id}</td>
+                            <td>{quote.cliente}</td>
+                            <td>{quote.fecha}</td>
+                            <td>{quote.vigencia}</td>
+                            <td>{formatMoney(quote.subtotal, quote.moneda || "CLP")}</td>
+                            <td>{formatMoney(quote.iva, quote.moneda || "CLP")}</td>
+                            <td>{formatMoney(quote.total, quote.moneda || "CLP")}</td>
+                            <td>{order?.id ?? "—"}</td>
+                            <td>{invoice?.id ?? "—"}</td>
+                            <td>
+                              <span className={`badge cotizaciones-status cotizaciones-status-${quote.estado.toLowerCase()}`}>
+                                {quote.estado}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="cotizaciones-row-actions">
+                                <button
+                                  className="btn btn-ghost btn-sm cotizaciones-action-edit"
+                                  title="Editar productos"
+                                  aria-label={`Editar ${quote.id}`}
+                                  disabled={editingQuote !== null || !["Borrador", "Vigente"].includes(quote.estado) || !can(authUser, "cotizaciones", "Editar")}
+                                  onClick={() => openEdit(quote)}
+                                >
+                                  <Ico p={I.edit} size={13} />
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm cotizaciones-action-preview"
+                                  title="Vista previa"
+                                  aria-label={`Vista previa ${quote.id}`}
+                                  onClick={() => openPreview(quote)}
+                                  disabled={!can(authUser, "cotizaciones", "Consultar")}
+                                >
+                                  <Ico p={I.pdf} size={13} />
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm cotizaciones-action-download"
+                                  title="Descargar PDF"
+                                  aria-label={`Descargar PDF ${quote.id}`}
+                                  onClick={() => downloadQuotePdf(quote)}
+                                  disabled={!can(authUser, "cotizaciones", "Descargar PDF")}
+                                >
+                                  <Ico p={I.download} size={13} />
+                                </button>
+                                {/* BOTÓN DE CORREO ELIMINADO */}
+                                <button
+                                  className="btn btn-ghost btn-sm cotizaciones-action-link"
+                                  title="Asociar a orden de compra"
+                                  aria-label={`Asociar ${quote.id} a una orden de compra`}
+                                  disabled={quote.estado !== "Aceptada" || Boolean(order) || !can(authUser, "ordenes_compra", "Editar")}
+                                  onClick={() => setQuoteToLink(quote)}
+                                >
+                                  <Ico p={I.link} size={13} />
+                                </button>
+                                <button
+                                  className="btn btn-ghost btn-sm productos-delete-btn"
+                                  title="Anular cotización"
+                                  aria-label={`Anular ${quote.id}`}
+                                  disabled={!can(authUser, "cotizaciones", "Eliminar") || Boolean(order) ||
+                                    !(["Borrador", "Vigente", "Vencida"].includes(quote.estado) ||
+                                      (quote.estado === "Aceptada" && authUser?.id_rol === 1))}
+                                  onClick={() => {
+                                    setQuoteToCancel(quote)
+                                    setCancelReason("")
+                                    setCancelError("")
+                                  }}
+                                >
+                                  <Ico p={I.trash} size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )
+                      })()}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       ) : (

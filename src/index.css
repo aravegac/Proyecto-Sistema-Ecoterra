@@ -206,6 +206,43 @@ body,
   text-align: left;
 }
 
+/* ── Scroll vertical para tablas ───────────── */
+
+.table-scroll {
+  width: 100%;
+  max-height: 580px;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* Mantener encabezados visibles al desplazarse */
+.table-scroll .dt thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Scrollbar */
+.table-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 /* ── Badges ──────────────────────────────── */
 .badge {
   display: inline-flex;
@@ -2395,7 +2432,6 @@ body,
   flex-shrink: 0;
   padding: 8px 14px;
   border-radius: 10px;
-  background: #fff;
 }
 .dashboard-hero-logo svg {
   display: block;
@@ -2541,10 +2577,7 @@ button.dashboard-hero-kpi:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  border: 1px solid #d1fae5;
   border-radius: 7px;
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.06);
 }
 .topbar-logo svg {
   display: block;

@@ -389,90 +389,92 @@ export default function Movimientos({
         {can(authUser, "movimientos", "Consultar") ? (
           <div className="panel">
             <div className="panel-header">Historial de Movimientos</div>
-            <table className="dt mov-table" style={{ tableLayout: "auto" }}>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Fecha / Hora</th>
-                  <th>Tipo</th>
-                  <th>Producto</th>
-                  <th>Cantidad</th>
-                  <th>Stock</th>
-                  <th>Lote</th>
-                  <th>Referencia</th>
-                  <th>Observación</th>
-                  <th>Usuario</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimientos.map((movement) => {
-                  const isAjuste = movement.tipo === "Ajuste"
-                  return (
-                    <tr key={movement.id}>
-                      <td>{movement.id}</td>
-                      <td>{movement.ts}</td>
-                      <td>
-                        <Badge
-                          t={
-                            movement.tipo === "Entrada"
-                              ? "ok"
-                              : movement.tipo === "Salida"
-                                ? "danger"
-                                : "warn"
+            <div className="table-scroll">
+              <table className="dt mov-table" style={{ tableLayout: "auto" }}>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Fecha / Hora</th>
+                    <th>Tipo</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Stock</th>
+                    <th>Lote</th>
+                    <th>Referencia</th>
+                    <th>Observación</th>
+                    <th>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientos.map((movement) => {
+                    const isAjuste = movement.tipo === "Ajuste"
+                    return (
+                      <tr key={movement.id}>
+                        <td>{movement.id}</td>
+                        <td>{movement.ts}</td>
+                        <td>
+                          <Badge
+                            t={
+                              movement.tipo === "Entrada"
+                                ? "ok"
+                                : movement.tipo === "Salida"
+                                  ? "danger"
+                                  : "warn"
+                            }
+                          >
+                            {movement.tipo}
+                          </Badge>
+                        </td>
+                        <td>{movement.prod}</td>
+                        <td
+                          className={
+                            movement.tipo === "Salida"
+                              ? "mov-history-qty-negative"
+                              : "mov-history-qty-positive"
                           }
                         >
-                          {movement.tipo}
-                        </Badge>
-                      </td>
-                      <td>{movement.prod}</td>
-                      <td
-                        className={
-                          movement.tipo === "Salida"
-                            ? "mov-history-qty-negative"
-                            : "mov-history-qty-positive"
-                        }
-                      >
-                        {movement.tipo === "Entrada" ? "+" : movement.tipo === "Salida" ? "-" : ""}
-                        {fmt(movement.qty)} L
-                      </td>
-                      <td style={{ fontSize: "0.75rem" }}>
-                        {movement.stockAnterior != null &&
-                        movement.stockPosterior != null ? (
-                          <span>
-                            <span style={{ color: "#64748B" }}>
-                              {fmt(movement.stockAnterior)}
+                          {movement.tipo === "Entrada" ? "+" : movement.tipo === "Salida" ? "-" : ""}
+                          {fmt(movement.qty)} L
+                        </td>
+                        <td style={{ fontSize: "0.75rem" }}>
+                          {movement.stockAnterior != null &&
+                          movement.stockPosterior != null ? (
+                            <span>
+                              <span style={{ color: "#64748B" }}>
+                                {fmt(movement.stockAnterior)}
+                              </span>
+                              {" → "}
+                              <strong
+                                style={{
+                                  color:
+                                    movement.stockPosterior >
+                                    movement.stockAnterior
+                                      ? "#00995A"
+                                      : movement.stockPosterior <
+                                          movement.stockAnterior
+                                        ? "#DC2626"
+                                        : "#64748B",
+                                }}
+                              >
+                                {fmt(movement.stockPosterior)} L
+                              </strong>
                             </span>
-                            {" → "}
-                            <strong
-                              style={{
-                                color:
-                                  movement.stockPosterior >
-                                  movement.stockAnterior
-                                    ? "#00995A"
-                                    : movement.stockPosterior <
-                                        movement.stockAnterior
-                                      ? "#DC2626"
-                                      : "#64748B",
-                              }}
-                            >
-                              {fmt(movement.stockPosterior)} L
-                            </strong>
-                          </span>
-                        ) : (
-                          <span style={{ color: "#94A3B8" }}>—</span>
-                        )}
-                      </td>
-                      <td>{movement.lote}</td>
-                      <td>{movement.ref}</td>
-                      <td style={{ fontSize: "0.75rem", maxWidth: "250px", whiteSpace: "normal", wordBreak: "break-word" }}>
-                        {movement.observacion || "—"}
-                      </td>
-                      <td>{movement.user}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                          ) : (
+                            <span style={{ color: "#94A3B8" }}>—</span>
+                          )}
+                        </td>
+                        <td>{movement.lote}</td>
+                        <td>{movement.ref}</td>
+                        <td style={{ fontSize: "0.75rem", maxWidth: "250px", whiteSpace: "normal", wordBreak: "break-word" }}>
+                          {movement.observacion || "—"}
+                        </td>
+                        <td>{movement.user}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           <div className="panel" style={{ padding: 24, textAlign: "center" }}>

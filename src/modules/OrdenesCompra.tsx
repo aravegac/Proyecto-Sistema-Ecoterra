@@ -311,69 +311,71 @@ export default function OrdenesCompra({
           </div>
         </div>
         <div className="panel oc-table-panel">
-          <table className="dt w-full">
-            <thead><tr><th>N° OC</th><th>Cotización</th><th>Cliente</th><th>Fecha</th><th>Tipo de operación</th><th>Factura</th><th>Archivo OC</th><th>Acciones</th></tr></thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                    Cargando Órdenes de Compra...
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
-                    No hay órdenes para los filtros seleccionados.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((order) => (
-                  <tr key={order.idOc}>
-                    <td className="oc-id">{order.id}</td>
-                    <td>{order.cot || "—"}</td>
-                    <td>{order.cliente}</td>
-                    <td>{order.fecha}</td>
-                    <td>{order.tipoOperacion}</td>
-                    <td>
-                      {invoiceNumber(order) ? (
-                        <Badge t="ok">{invoiceNumber(order)}</Badge>
-                      ) : "Sin factura"}
-                    </td>
-                    <td>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        disabled={!can(authUser, "ordenes_compra", "Consultar")}
-                        onClick={() => {
-                          setPreviewOrder(order)
-                          void loadDocument(order)
-                        }}
-                      >
-                        <Ico p={I.pdf} size={13} /> Vista previa
-                      </button>
-                    </td>
-                    <td>
-                      <div className="oc-row-actions">
-                        <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} title="Editar orden" disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}>
-                          <Ico p={I.edit} size={13} />
-                        </button>
-                        {order.cotizacionId != null && (
-                          <button 
-                            className="btn btn-ghost btn-sm productos-delete-btn" 
-                            title="Desasociar cotización"
-                            aria-label={`Desasociar cotización de ${order.id}`}
-                            disabled={!can(authUser, "ordenes_compra", "Eliminar")} 
-                            onClick={() => void unlinkQuote(order)}
-                          >
-                            <Ico p={I.unlink} size={13} />
-                          </button>
-                        )}
-                      </div>
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead><tr><th>N° OC</th><th>Cotización</th><th>Cliente</th><th>Fecha</th><th>Tipo de operación</th><th>Factura</th><th>Archivo OC</th><th>Acciones</th></tr></thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                      Cargando Órdenes de Compra...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
+                      No hay órdenes para los filtros seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((order) => (
+                    <tr key={order.idOc}>
+                      <td className="oc-id">{order.id}</td>
+                      <td>{order.cot || "—"}</td>
+                      <td>{order.cliente}</td>
+                      <td>{order.fecha}</td>
+                      <td>{order.tipoOperacion}</td>
+                      <td>
+                        {invoiceNumber(order) ? (
+                          <Badge t="ok">{invoiceNumber(order)}</Badge>
+                        ) : "Sin factura"}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={!can(authUser, "ordenes_compra", "Consultar")}
+                          onClick={() => {
+                            setPreviewOrder(order)
+                            void loadDocument(order)
+                          }}
+                        >
+                          <Ico p={I.pdf} size={13} /> Vista previa
+                        </button>
+                      </td>
+                      <td>
+                        <div className="oc-row-actions">
+                          <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} title="Editar orden" disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}>
+                            <Ico p={I.edit} size={13} />
+                          </button>
+                          {order.cotizacionId != null && (
+                            <button 
+                              className="btn btn-ghost btn-sm productos-delete-btn" 
+                              title="Desasociar cotización"
+                              aria-label={`Desasociar cotización de ${order.id}`}
+                              disabled={!can(authUser, "ordenes_compra", "Eliminar")} 
+                              onClick={() => void unlinkQuote(order)}
+                            >
+                              <Ico p={I.unlink} size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </>
     ) : (

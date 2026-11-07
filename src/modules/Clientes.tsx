@@ -338,63 +338,65 @@ export default function Clientes({
             </div>
             <span className="clientes-count">{filtered.length} clientes</span>
           </div>
-          <table className="dt w-full">
-            <thead>
-              <tr>
-                <th>RUT</th>
-                <th>Razón Social</th>
-                <th>País / Región / Ciudad</th>
-                <th>Representante</th>
-                <th>Teléfono</th>
-                <th>Dirs.</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
-                <tr
-                  key={client.id}
-                  onClick={() => {
-                    setSelected(client)
-                    setDeleteError("") // 👈 Limpiamos el error al cambiar de cliente
-                  }}
-                  className="clientes-row"
-                >
-                  <td className="clientes-rut">{client.rut || "—"}</td>
-                  <td>
-                    <div className="clientes-name">{client.razon}</div>
-                    <div className="clientes-fantasia">{client.fantasia}</div>
-                  </td>
-                  <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
-                  <td>{client.rep}</td>
-                  <td>{client.tel}</td>
-                  <td>
-                    <Badge t={client.dirs.length ? "info" : "neutral"}>
-                      {client.dirs.length}
-                    </Badge>
-                  </td>
-                  <td>
-                    <Badge t={client.estado === "Activo" ? "ok" : "neutral"}>
-                      {client.estado}
-                    </Badge>
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setSelected(client)
-                        setDeleteError("") // 👈 Limpiamos el error
-                      }}
-                    >
-                      Detalles <Ico p={I.chevR} size={12} />
-                    </button>
-                  </td>
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>RUT</th>
+                  <th>Razón Social</th>
+                  <th>País / Región / Ciudad</th>
+                  <th>Representante</th>
+                  <th>Teléfono</th>
+                  <th>Dirs.</th>
+                  <th>Estado</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
+                  <tr
+                    key={client.id}
+                    onClick={() => {
+                      setSelected(client)
+                      setDeleteError("") // 👈 Limpiamos el error al cambiar de cliente
+                    }}
+                    className="clientes-row"
+                  >
+                    <td className="clientes-rut">{client.rut || "—"}</td>
+                    <td>
+                      <div className="clientes-name">{client.razon}</div>
+                      <div className="clientes-fantasia">{client.fantasia}</div>
+                    </td>
+                    <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
+                    <td>{client.rep}</td>
+                    <td>{client.tel}</td>
+                    <td>
+                      <Badge t={client.dirs.length ? "info" : "neutral"}>
+                        {client.dirs.length}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge t={client.estado === "Activo" ? "ok" : "neutral"}>
+                        {client.estado}
+                      </Badge>
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setSelected(client)
+                          setDeleteError("") // 👈 Limpiamos el error
+                        }}
+                      >
+                        Detalles <Ico p={I.chevR} size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="panel" style={{ padding: 20 }}>

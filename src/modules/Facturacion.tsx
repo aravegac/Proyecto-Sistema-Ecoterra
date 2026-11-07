@@ -759,155 +759,157 @@ export default function Facturacion({
         {editingLoading && <p role="status">Cargando factura para editar…</p>}
 
         <div className="panel facturacion-table-panel" aria-busy={loading}>
-          <table className="dt w-full">
-            <thead>
-              <tr>
-                <th>N° Factura</th>
-                <th>OC</th>
-                <th>Cliente</th>
-                <th>Emisión</th>
-                <th>Subtotal</th>
-                <th>IVA</th>
-                <th>Total</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading || filteredInvoices.length === 0 ? (
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
                 <tr>
-                  <td
-                    colSpan={9}
-                    role="status"
-                    style={{ textAlign: "center", padding: "24px" }}
-                  >
-                    {loading
-                      ? "Cargando Facturas..."
-                      : "No hay facturas para los filtros seleccionados."}
-                  </td>
+                  <th>N° Factura</th>
+                  <th>OC</th>
+                  <th>Cliente</th>
+                  <th>Emisión</th>
+                  <th>Subtotal</th>
+                  <th>IVA</th>
+                  <th>Total</th>
+                  <th>Estado</th>
+                  <th></th>
                 </tr>
-              ) : (
-                filteredInvoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td className="facturacion-id-cell">{invoice.id}</td>
-                    <td>{invoice.oc}</td>
-                    <td className="facturacion-client-cell">{invoice.cliente}</td>
-                    <td>{invoice.fecha}</td>
-                    <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
-                    <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
-                    <td>{formatMoney(invoice.total, invoice.moneda)}</td>
-                    <td>
-                      <Badge
-                        t={
-                          ["Pagada", "PAGADA"].includes(invoice.estado)
-                            ? "ok"
-                            : [
-                                "Anulada",
-                                "ANULADA",
-                                "Vencida",
-                                "VENCIDA",
-                              ].includes(invoice.estado)
-                              ? "danger"
-                              : "warn"
-                        }
-                      >
-                        {estadoLegible(invoice.estado)}
-                      </Badge>
-                    </td>
-                    <td>
-                      <div className="facturacion-action-group">
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Ver factura"
-                          onClick={() => setPreview(invoice)}
-                          disabled={!can(authUser, "facturacion", "Consultar")}
-                        >
-                          <Ico p={I.pdf} size={13} />
-                        </button>
-
-                        {/* BOTÓN DE CORREO ELIMINADO */}
-
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          title="Imprimir o guardar como PDF"
-                          disabled={
-                            invoice.estado.toUpperCase() === "PENDIENTE" ||
-                            !can(authUser, "facturacion", "Descargar PDF")
-                          }
-                          onClick={() => downloadInvoicePdf(invoice)}
-                        >
-                          <Ico p={I.download} size={13} />
-                        </button>
-
-                        <button
-                          className="btn btn-ghost btn-sm productos-edit-btn"
-                          aria-label={`Editar ${invoice.id}`}
-                          disabled={
-                            editingLoading ||
-                            invoice.estado.toUpperCase() !== "PENDIENTE" ||
-                            !can(authUser, "facturacion", "Editar")
-                          }
-                          onClick={() => void openEditInvoice(invoice)}
-                        >
-                          <Ico p={I.edit} size={13} />
-                        </button>
-
-                        {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
-                          const state = invoice.estado.toUpperCase();
-                          const allowed =
-                            action === "emitir"
-                              ? state === "PENDIENTE"
-                              : action === "pagar"
-                                ? state === "EMITIDA"
-                                : ["PENDIENTE", "EMITIDA"].includes(state);
-
-                          const label =
-                            action === "emitir"
-                              ? "Emitir"
-                              : action === "pagar"
-                                ? "Marcar pagada"
-                                : "Anular";
-
-                          return (
-                            <button
-                              key={action}
-                              className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
-                              title={label}
-                              aria-label={`${label} ${invoice.id}`}
-                              disabled={
-                                !allowed ||
-                                !can(
-                                  authUser,
-                                  "facturacion",
-                                  action === "anular" ? "Eliminar" : "Editar"
-                                )
-                              }
-                              onClick={() => {
-                                setInvoiceAction({ invoice, action });
-                                setActionReason("");
-                                setActionError("");
-                              }}
-                            >
-                              <Ico
-                                p={
-                                  action === "emitir"
-                                    ? I.send
-                                    : action === "pagar"
-                                      ? I.check
-                                      : I.trash
-                                }
-                                size={13}
-                              />
-                            </button>
-                          );
-                        })}
-                      </div>
+              </thead>
+              <tbody>
+                {loading || filteredInvoices.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={9}
+                      role="status"
+                      style={{ textAlign: "center", padding: "24px" }}
+                    >
+                      {loading
+                        ? "Cargando Facturas..."
+                        : "No hay facturas para los filtros seleccionados."}
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredInvoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <td className="facturacion-id-cell">{invoice.id}</td>
+                      <td>{invoice.oc}</td>
+                      <td className="facturacion-client-cell">{invoice.cliente}</td>
+                      <td>{invoice.fecha}</td>
+                      <td>{formatMoney(invoice.subtotal, invoice.moneda)}</td>
+                      <td>{formatMoney(invoice.iva, invoice.moneda)}</td>
+                      <td>{formatMoney(invoice.total, invoice.moneda)}</td>
+                      <td>
+                        <Badge
+                          t={
+                            ["Pagada", "PAGADA"].includes(invoice.estado)
+                              ? "ok"
+                              : [
+                                  "Anulada",
+                                  "ANULADA",
+                                  "Vencida",
+                                  "VENCIDA",
+                                ].includes(invoice.estado)
+                                ? "danger"
+                                : "warn"
+                          }
+                        >
+                          {estadoLegible(invoice.estado)}
+                        </Badge>
+                      </td>
+                      <td>
+                        <div className="facturacion-action-group">
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Ver factura"
+                            onClick={() => setPreview(invoice)}
+                            disabled={!can(authUser, "facturacion", "Consultar")}
+                          >
+                            <Ico p={I.pdf} size={13} />
+                          </button>
+
+                          {/* BOTÓN DE CORREO ELIMINADO */}
+
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Imprimir o guardar como PDF"
+                            disabled={
+                              invoice.estado.toUpperCase() === "PENDIENTE" ||
+                              !can(authUser, "facturacion", "Descargar PDF")
+                            }
+                            onClick={() => downloadInvoicePdf(invoice)}
+                          >
+                            <Ico p={I.download} size={13} />
+                          </button>
+
+                          <button
+                            className="btn btn-ghost btn-sm productos-edit-btn"
+                            aria-label={`Editar ${invoice.id}`}
+                            disabled={
+                              editingLoading ||
+                              invoice.estado.toUpperCase() !== "PENDIENTE" ||
+                              !can(authUser, "facturacion", "Editar")
+                            }
+                            onClick={() => void openEditInvoice(invoice)}
+                          >
+                            <Ico p={I.edit} size={13} />
+                          </button>
+
+                          {(["emitir", "pagar", "anular"] as InvoiceAction[]).map((action) => {
+                            const state = invoice.estado.toUpperCase();
+                            const allowed =
+                              action === "emitir"
+                                ? state === "PENDIENTE"
+                                : action === "pagar"
+                                  ? state === "EMITIDA"
+                                  : ["PENDIENTE", "EMITIDA"].includes(state);
+
+                            const label =
+                              action === "emitir"
+                                ? "Emitir"
+                                : action === "pagar"
+                                  ? "Marcar pagada"
+                                  : "Anular";
+
+                            return (
+                              <button
+                                key={action}
+                                className={`btn btn-ghost btn-sm ${action === "anular" ? "productos-delete-btn" : ""}`}
+                                title={label}
+                                aria-label={`${label} ${invoice.id}`}
+                                disabled={
+                                  !allowed ||
+                                  !can(
+                                    authUser,
+                                    "facturacion",
+                                    action === "anular" ? "Eliminar" : "Editar"
+                                  )
+                                }
+                                onClick={() => {
+                                  setInvoiceAction({ invoice, action });
+                                  setActionReason("");
+                                  setActionError("");
+                                }}
+                              >
+                                <Ico
+                                  p={
+                                    action === "emitir"
+                                      ? I.send
+                                      : action === "pagar"
+                                        ? I.check
+                                        : I.trash
+                                  }
+                                  size={13}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </>
     ) : (

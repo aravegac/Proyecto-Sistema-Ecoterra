@@ -199,72 +199,74 @@ export default function Proveedores({
             </span>
           </div>
 
-          <table className="dt w-full">
-            <thead>
-              <tr>
-                <th>Empresa</th>
-                <th>País</th>
-                <th>Contacto</th>
-                <th>Email</th>
-                <th>Estado</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((provider) => (
-                <tr key={provider.id}>
-                  <td className="proveedores-name">{provider.empresa}</td>
-                  <td>
-                    <Badge t="info">{provider.pais}</Badge>
-                  </td>
-                  <td>
-                    <div>{provider.contacto}</div>
-                    <div className="proveedores-phone">{provider.tel}</div>
-                  </td>
-                  <td className="proveedores-email">{provider.email}</td>
-                  <td>
-                    <Badge t={provider.estado === "Activo" ? "ok" : "neutral"}>
-                      {provider.estado}
-                    </Badge>
-                  </td>
-                  <td>
-                    <div className="proveedores-actions">
-                      <button
-                        className="btn btn-ghost btn-sm productos-edit-btn"
-                        title="Editar proveedor"
-                        aria-label="Editar proveedor"
-                        onClick={() => openEdit(provider)}
-                        disabled={!can(authUser, "proveedores", "Editar")}
-                      >
-                        <Ico p={I.edit} size={13} />
-                      </button>
-
-                      <button
-                        className="btn btn-ghost btn-sm productos-delete-btn"
-                        title="Eliminar proveedor"
-                        aria-label="Eliminar proveedor"
-                        onClick={() => handleDelete(provider)}
-                        disabled={
-                          deletingId === provider.id ||
-                          !can(authUser, "proveedores", "Eliminar")
-                        }
-                      >
-                        <Ico p={I.trash} size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {filtered.length === 0 && (
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
                 <tr>
-                  <td colSpan={6} style={{ textAlign: "center", padding: 24 }}>
-                    No hay proveedores que coincidan con la búsqueda.
-                  </td>
+                  <th>Empresa</th>
+                  <th>País</th>
+                  <th>Contacto</th>
+                  <th>Email</th>
+                  <th>Estado</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((provider) => (
+                  <tr key={provider.id}>
+                    <td className="proveedores-name">{provider.empresa}</td>
+                    <td>
+                      <Badge t="info">{provider.pais}</Badge>
+                    </td>
+                    <td>
+                      <div>{provider.contacto}</div>
+                      <div className="proveedores-phone">{provider.tel}</div>
+                    </td>
+                    <td className="proveedores-email">{provider.email}</td>
+                    <td>
+                      <Badge t={provider.estado === "Activo" ? "ok" : "neutral"}>
+                        {provider.estado}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="proveedores-actions">
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          title="Editar proveedor"
+                          aria-label="Editar proveedor"
+                          onClick={() => openEdit(provider)}
+                          disabled={!can(authUser, "proveedores", "Editar")}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-delete-btn"
+                          title="Eliminar proveedor"
+                          aria-label="Eliminar proveedor"
+                          onClick={() => handleDelete(provider)}
+                          disabled={
+                            deletingId === provider.id ||
+                            !can(authUser, "proveedores", "Eliminar")
+                          }
+                        >
+                          <Ico p={I.trash} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: 24 }}>
+                      No hay proveedores que coincidan con la búsqueda.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="panel" style={{ padding: 24, textAlign: "center" }}>
