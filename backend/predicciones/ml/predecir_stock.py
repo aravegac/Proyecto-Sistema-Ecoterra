@@ -68,30 +68,44 @@ VARIABLES_NO_NEGATIVAS = [
 # CARGA DEL MODELO
 # ==========================================================
 
+_modelo_cache = None
+
 def cargar_modelo():
-    """
-    Carga el Random Forest ampliado previamente entrenado.
-    """
+    global _modelo_cache
 
-    if not RUTA_MODELO.exists():
-        raise FileNotFoundError(
-            f"No se encontró el modelo entrenado: {RUTA_MODELO}"
-        )
+    if _modelo_cache is None:
+        if not RUTA_MODELO.exists():
+            raise FileNotFoundError(
+                f"No se encontró el modelo entrenado: {RUTA_MODELO}"
+            )
 
-    return joblib.load(RUTA_MODELO)
+        _modelo_cache = joblib.load(RUTA_MODELO)
+
+    return _modelo_cache
+
+_rangos_cache = None
 
 def cargar_rangos():
     """
     Carga los rangos calculados durante el entrenamiento.
+
+    Mantiene los rangos en memoria para evitar leer
+    repetidamente el archivo JSON.
     """
 
-    if not RUTA_RANGOS.exists():
-        raise FileNotFoundError(
-            f"No se encontró el archivo de rangos: {RUTA_RANGOS}"
-        )
+    global _rangos_cache
 
-    with open(RUTA_RANGOS, "r", encoding="utf-8") as archivo:
-        return json.load(archivo)
+    if _rangos_cache is None:
+
+        if not RUTA_RANGOS.exists():
+            raise FileNotFoundError(
+                f"No se encontró el archivo de rangos: {RUTA_RANGOS}"
+            )
+
+        with open(RUTA_RANGOS, "r", encoding="utf-8") as archivo:
+            _rangos_cache = json.load(archivo)
+
+    return _rangos_cache
 
 def validar_rangos(rangos):
     """
@@ -137,6 +151,8 @@ def validar_rangos(rangos):
     return True
 
 
+_rangos_validados = False
+
 def evaluar_rangos_entrenamiento(valores):
     """
     Compara las variables relevantes del producto con los
@@ -144,11 +160,19 @@ def evaluar_rangos_entrenamiento(valores):
 
     Distingue entre valores fuera del rango absoluto y
     valores atípicos según los percentiles 1 y 99.
+
+    Los rangos se cargan y validan una sola vez por proceso.
     """
 
+    global _rangos_validados
+
     try:
+
         rangos = cargar_rangos()
-        validar_rangos(rangos)
+
+        if not _rangos_validados:
+            validar_rangos(rangos)
+            _rangos_validados = True
 
     except (FileNotFoundError, json.JSONDecodeError):
         return {
@@ -168,9 +192,6 @@ def evaluar_rangos_entrenamiento(valores):
 
     for variable in VARIABLES_CLAVE_OOD:
 
-        if variable not in rangos:
-            continue
-
         valor = valores[variable]
         limites = rangos[variable]
 
@@ -180,9 +201,11 @@ def evaluar_rangos_entrenamiento(valores):
         percentil_99 = limites["percentil_99"]
 
         if valor < minimo or valor > maximo:
+
             variables_fuera_rango.append(variable)
 
         elif valor < percentil_01 or valor > percentil_99:
+
             variables_atipicas.append(variable)
 
     if variables_fuera_rango:
@@ -221,7 +244,6 @@ def evaluar_rangos_entrenamiento(valores):
         "variables_atipicas": [],
         "mensaje_advertencia": None,
     }
-
 
 # ==========================================================
 # PREDICCIÓN DE REPOSICIÓN
