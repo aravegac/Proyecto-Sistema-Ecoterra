@@ -178,6 +178,7 @@ export default function App() {
   })
   const [productos, setProductos] = useState<Product[]>([])
   const [productosError, setProductosError] = useState("")
+  const [productosLoading, setProductosLoading] = useState(true)
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
   >([])
@@ -190,8 +191,10 @@ export default function App() {
   const [lotesError, setLotesError] = useState("")
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
   const [movimientosError, setMovimientosError] = useState("")
+  const [movimientosLoading, setMovimientosLoading] = useState(true)
   const [facturas, setFacturas] = useState<Invoice[]>([])
   const [facturasLoading, setFacturasLoading] = useState(true)
+  const [facturasError, setFacturasError] = useState("")
   const [ordenes, setOrdenes] = useState<PurchaseOrder[]>([])
   const [prediccionesStock, setPrediccionesStock] = useState<PrediccionStock[]>([])
   const [prediccionesLoading, setPrediccionesLoading] = useState(true)
@@ -433,6 +436,7 @@ export default function App() {
   // Cargar productos + lotes (en cadena porque lotes dependen de productos)
   useEffect(/* Carga productos y después sus lotes de inventario para la sesión actual. */ () => {
     if (!authUser) return
+    setProductosLoading(true)
     apiFetch("/api/productos/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar productos")
@@ -443,6 +447,7 @@ export default function App() {
         const mappedProductos = productosData.map(mapProductFromApi)
         setProductosError("")
         setProductos(mappedProductos)
+        setProductosLoading(false)
 
         return apiFetch("/api/inventario/", { headers: authHeaders(authUser) })
           .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
@@ -454,9 +459,14 @@ export default function App() {
             setLotes(lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, mappedProductos). */ (l: any) => mapLoteFromApi(l, mappedProductos)))
             setLotesError("")
           })
+          .catch((error) => {
+            setLotes([])
+            setLotesError(error instanceof Error ? error.message : "No se pudieron cargar los lotes.")
+          })
       })
       .catch(/* Gestiona el error actualizando setProductos, setLotes, setLotesError. */ (error) => {
         setProductosError("No se pudieron actualizar los datos de stock. Vuelve a cargar la página.")
+        setProductosLoading(false)
         setLotes([])
         setLotesError(
           error instanceof Error
@@ -469,18 +479,22 @@ export default function App() {
   // Cargar movimientos (depende de lotes y usuarios para enriquecer)
   useEffect(/* Carga los movimientos y resuelve sus lotes y usuarios cuando cambian las dependencias del efecto. */ () => {
     if (!authUser) return
+    const controller = new AbortController()
+    setMovimientosLoading(true)
 
-    apiFetch("/api/movimientos/", { headers: authHeaders(authUser) })
+    apiFetch("/api/movimientos/", { headers: authHeaders(authUser), signal: controller.signal })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar movimientos")
         return r.json()
       })
       .then(/* Procesa la respuesta actualizando setMovimientos, setMovimientosError. */ (data) => {
+        if (controller.signal.aborted) return
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setMovimientos(data.map(/* Transforma cada elemento de la lista devolviendo mapMovimientoFromApi(m, lotes, usuarios). */ (m: any) => mapMovimientoFromApi(m, lotes, usuarios)))
         setMovimientosError("")
       })
       .catch(/* Gestiona el error actualizando setMovimientos, setMovimientosError. */ (error) => {
+        if (controller.signal.aborted) return
         setMovimientos([])
         setMovimientosError(
           error instanceof Error
@@ -488,26 +502,39 @@ export default function App() {
             : "No se pudieron cargar los movimientos.",
         )
       })
+      .finally(() => {
+        if (!controller.signal.aborted) setMovimientosLoading(false)
+      })
+    return () => controller.abort()
   }, [authUser, lotes, usuarios])
 
   // Cargar facturas desde el backend
   useEffect(/* Carga las facturas de la sesión actual y vacía el listado si falla la consulta. */ () => {
     if (!authUser) return
+    const controller = new AbortController()
     setFacturasLoading(true)
-    apiFetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
+    setFacturasError("")
+    apiFetch("/api/facturas/", { headers: authHeaders(authUser), signal: controller.signal })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar facturas")
         return r.json()
       })
       .then(/* Procesa la respuesta actualizando setFacturas. */ (data) => {
-        const items = Array.isArray(data) ? data : data.value || []
+        if (controller.signal.aborted) return
+        const items = Array.isArray(data) ? data : data.value
+        if (!Array.isArray(items)) throw new Error("Formato de facturas inválido")
         setFacturas(items.map(mapFacturaFromApi))
       })
       .catch(/* Gestiona el error actualizando setFacturas. */ (error) => {
+        if (controller.signal.aborted) return
         console.error("Error cargando facturas:", error)
         setFacturas([])
+        setFacturasError("No se pudieron cargar las facturas.")
       })
-      .finally(() => setFacturasLoading(false))
+      .finally(() => {
+        if (!controller.signal.aborted) setFacturasLoading(false)
+      })
+    return () => controller.abort()
   }, [authUser])
 
   // Cargar órdenes de compra desde el backend
@@ -994,7 +1021,16 @@ export default function App() {
   const views: Record<Screen, React.ReactNode> = {
     dashboard: (
       <Dashboard
+        authUser={authUser}
         productos={productos}
+        productosError={productosError}
+        productosLoading={productosLoading}
+        facturas={facturas}
+        facturasLoading={facturasLoading}
+        facturasError={facturasError}
+        movimientos={movimientos}
+        movimientosLoading={movimientosLoading}
+        movimientosError={movimientosError}
         predicciones={prediccionesStock}
         loadingPredicciones={prediccionesLoading}
         errorPredicciones={prediccionesError}
