@@ -47,7 +47,7 @@ class PrecioEntrada(serializers.Serializer):
 
 class Prediccion(APIView):
     permission_classes = [PermisoModulo]
-    permisos_por_metodo = {"POST": ("ia", "consultar")}
+    permisos_por_metodo = {}
 
     def post(self, request, tipo):
         entrada = (LlegadaEntrada if tipo == "llegada" else PrecioEntrada)(data=request.data)
