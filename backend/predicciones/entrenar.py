@@ -6,6 +6,10 @@ from pathlib import Path
 import joblib
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# El modelo de precio lee las facturas reales, por eso se necesita Django.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+import django
+django.setup()
 from predicciones.modelos import entrenar
 from predicciones.portables import exportar
 
@@ -20,5 +24,5 @@ if __name__ == "__main__":
     os.replace(temporal, destino / "modelos.joblib")
     exportar(modelos, destino / "modelos.json")
     reporte = {k: {a:b for a,b in v.items() if a != "modelo"} for k,v in modelos.items()}
-    (destino / "metricas.json").write_text(json.dumps(reporte, indent=2))
-    print(json.dumps(reporte, indent=2))
+    (destino / "metricas.json").write_text(json.dumps(reporte, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(reporte, indent=2, ensure_ascii=False))

@@ -17,20 +17,40 @@
     "prueba": 300
   },
   "precio": {
-    "mae": 1141.61,
-    "mae_base": 9474.76,
-    "min_samples_leaf": 3,
+    "mae": 156.21,
+    "mae_base": 1364.26,
+    "min_samples_leaf": 1,
     "ajuste": [
       {
-        "mae_validacion": 1306.23,
-        "min_samples_leaf": 3
+        "mae_validacion": 248.19,
+        "min_samples_leaf": 1
       },
       {
-        "mae_validacion": 1480.8,
-        "min_samples_leaf": 8
+        "mae_validacion": 531.4,
+        "min_samples_leaf": 2
+      },
+      {
+        "mae_validacion": 758.57,
+        "min_samples_leaf": 3
       }
     ],
-    "entrenamiento": 1200,
-    "prueba": 300
+    "entrenamiento": 54,
+    "prueba": 14,
+    "origen": "facturas",
+    "productos": {
+      "COM-046": 8,
+      "DES-ACU": 4,
+      "DES-ALC": 6,
+      "DES-NEU": 8,
+      "ENG-150": 7,
+      "ENG-220": 5,
+      "ENG-320": 6,
+      "HID-032": 8,
+      "HID-046": 5,
+      "HID-068": 6,
+      "REF-LON": 5
+    },
+    "fecha_inicio_datos": "2026-05-17",
+    "fecha_fin_entrenamiento": "2026-11-03"
   }
 }
