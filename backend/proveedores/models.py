@@ -11,6 +11,8 @@ class Proveedor(models.Model):
     contacto = models.CharField(max_length=150, db_column="contacto_proveedor")
     telefono = models.CharField(max_length=50, db_column="telefono_proveedor")
     email = models.EmailField(max_length=150, db_column="correo_proveedor")
+    # Requiere la columna creada por scripts/proveedores_estado.sql.
+    estado = models.BooleanField(default=True, db_column="estado_proveedor")
     # direccion = models.CharField(max_length=255, db_column="direccion_proveedor")
 
     class Meta:

@@ -1,7 +1,7 @@
 """Pruebas de aceptación S4-T01 sobre una base SQLite aislada."""
 from copy import deepcopy
 from io import BytesIO
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from config.test_support import SalesTablesMixin
 from clientes.models import Cliente, Direccion
-from inventario.models import Producto
+from inventario.models import Inventario, Movimiento, Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
 from .models import Factura, DetalleFactura
@@ -21,6 +21,58 @@ from ventas.models import OrdenCompra
 
 
 class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_emitir_descuenta_stock_por_vencimiento_y_anular_lo_devuelve(self, storage):
+        Inventario.objects.filter(id_producto=self.product.pk).delete()
+        hoy = date.today()
+        tarde = Inventario.objects.create(id_producto=self.product.pk, codigo_lote="TARDE", cantidad=100,
+            tipo_envase="Tambor 200 L", fecha_fabricacion=hoy, fecha_vencimiento=hoy + timedelta(days=90),
+            estado="Disponible")
+        pronto = Inventario.objects.create(id_producto=self.product.pk, codigo_lote="PRONTO", cantidad="1.50",
+            tipo_envase="Tambor 200 L", fecha_fabricacion=hoy, fecha_vencimiento=hoy + timedelta(days=10),
+            estado="Disponible")
+        reservado = Inventario.objects.create(id_producto=self.product.pk, codigo_lote="RES", cantidad=50,
+            tipo_envase="Tambor 200 L", fecha_fabricacion=hoy, fecha_vencimiento=hoy + timedelta(days=5),
+            estado="Reservado")
+        invoice = self.invoice()
+        url = f"/api/facturas/{invoice.pk}"
+        self.assertEqual(self.api.post(f"{url}/emitir/").status_code, 200)
+        for lote in (tarde, pronto, reservado):
+            lote.refresh_from_db()
+        self.assertEqual(pronto.cantidad, Decimal("0.00"))
+        self.assertEqual(tarde.cantidad, Decimal("99.50"))
+        self.assertEqual(reservado.cantidad, Decimal("50.00"))
+        salidas = Movimiento.objects.filter(tipo_movimiento="Salida", referencia=f"Factura {invoice.numero_factura}")
+        self.assertEqual(salidas.count(), 2)
+        self.assertEqual({m.id_usuario for m in salidas}, {self.admin.pk})
+        # Reintentar la emisión no vuelve a descontar.
+        self.assertEqual(self.api.post(f"{url}/emitir/").status_code, 200)
+        self.assertEqual(salidas.count(), 2)
+
+        response = self.api.post(f"{url}/anular/", {"motivo_anulacion_factura": "Error"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        tarde.refresh_from_db()
+        pronto.refresh_from_db()
+        self.assertEqual(pronto.cantidad, Decimal("1.50"))
+        self.assertEqual(tarde.cantidad, Decimal("100.00"))
+        self.assertEqual(Movimiento.objects.filter(tipo_movimiento="Entrada").count(), 2)
+
+    @patch("facturacion.views.obtener_cliente_supabase")
+    def test_emitir_sin_stock_suficiente_no_cambia_nada(self, storage):
+        Inventario.objects.filter(id_producto=self.product.pk).update(cantidad=1)
+        Inventario.objects.create(id_producto=self.product.pk, codigo_lote="VENCIDO", cantidad=100,
+            tipo_envase="Tambor 200 L", fecha_fabricacion=date(2020, 1, 1),
+            fecha_vencimiento=date.today(), estado="Disponible")
+        invoice = self.invoice()
+        response = self.api.post(f"/api/facturas/{invoice.pk}/emitir/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Stock insuficiente", str(response.data))
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.estado, "PENDIENTE")
+        self.assertFalse(Movimiento.objects.exists())
+        self.assertEqual(Inventario.objects.get(codigo_lote=f"LOTE-{self.product.codigo}").cantidad, Decimal("1.00"))
+        storage.return_value.storage.from_.return_value.upload.assert_not_called()
+
     @patch("facturacion.views.obtener_cliente_supabase")
     def test_moneda_se_guarda_y_queda_bloqueada_al_emitir(self, storage):
         self.payload["moneda_factura"] = "USD"
@@ -259,6 +311,11 @@ class FacturacionAcceptanceTests(SalesTablesMixin, TestCase):
                                                tipo="Control", unidad="Litros")
         self.second_product = Producto.objects.create(codigo="QA-FAC-2", nombre="Control de polvo",
                                                       tipo="Control", unidad="Litros")
+        # Emitir una factura descuenta stock: cada producto tiene un lote disponible.
+        for producto in (self.product, self.second_product):
+            Inventario.objects.create(id_producto=producto.pk, codigo_lote=f"LOTE-{producto.codigo}",
+                cantidad=1000, tipo_envase="IBC 1000 L", fecha_fabricacion=date.today(),
+                fecha_vencimiento=date.today() + timedelta(days=365), estado="Disponible")
         self.order = OrdenCompra.objects.create(id_cliente=self.customer, numero_oc="OC-QA-S4T01",
             fecha_oc=date(2026, 10, 25), ruta_documento_oc="")
         self.payload = {"cliente_id": self.customer.pk, "id_oc": self.order.pk,

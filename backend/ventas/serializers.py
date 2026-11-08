@@ -257,6 +257,7 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
         nota.calcular_totales(subtotal_bruto)
         if nota.total > Decimal("9999999999.99"):
             raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.validar_saldo_factura()
         nota.save()
         return nota
 
@@ -278,6 +279,7 @@ class NotaCreditoSerializer(serializers.ModelSerializer):
         nota.calcular_totales(subtotal_bruto)
         if nota.total > Decimal("9999999999.99"):
             raise serializers.ValidationError({"subtotal_bruto": "El total supera el importe máximo permitido."})
+        nota.validar_saldo_factura()
         nota.ruta_pdf_nc = ""
         nota.save()
         return nota

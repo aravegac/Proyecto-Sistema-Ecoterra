@@ -552,16 +552,26 @@ function PrediccionesStock({
           )}
         </div>
 
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={recargar}
-          disabled={cargando}
-          title="Actualizar predicciones"
-        >
-          <Ico p={I.bar} size={14} />
-          {cargando ? "Consultando…" : "Actualizar"}
-        </button>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}>
+          <Badge t="info">
+            Modelo predictivo Random Forest
+          </Badge>
+
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={recargar}
+            disabled={cargando}
+            title="Actualizar predicciones"
+          >
+            <Ico p={I.bar} size={14} />
+            {cargando ? "Consultando…" : "Actualizar"}
+          </button>
+        </div>
       </div>
 
       <div style={{ backgroundColor: "#f8fafc",}}>

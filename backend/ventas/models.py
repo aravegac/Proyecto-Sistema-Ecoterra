@@ -160,3 +160,24 @@ class NotaCredito(models.Model):
         self.subtotal = subtotal
         self.iva = iva
         self.total = subtotal + iva
+
+    # Total que aún se puede acreditar sobre la factura de origen, sin contar esta nota ni las anuladas.
+    def saldo_disponible_factura(self):
+        otras = NotaCredito.objects.filter(id_factura_id=self.id_factura_id).exclude(estado="ANULADA")
+        if self.pk:
+            otras = otras.exclude(pk=self.pk)
+        acreditado = otras.aggregate(suma=models.Sum("total"))["suma"] or Decimal("0")
+        return self.id_factura.total - acreditado
+
+    # Rechaza una nota cuyo total, sumado a las demás notas vigentes, supere el total de la factura.
+    def validar_saldo_factura(self):
+        from rest_framework.exceptions import ValidationError
+
+        saldo = self.saldo_disponible_factura()
+        if self.total > saldo:
+            raise ValidationError({
+                "subtotal_bruto": (
+                    f"El total de la nota ({self.total}) supera el saldo disponible de la factura "
+                    f"{self.id_factura.numero_factura} ({max(saldo, Decimal('0'))})."
+                )
+            })

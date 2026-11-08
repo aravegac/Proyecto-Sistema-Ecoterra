@@ -198,222 +198,308 @@ export default function Dashboard({
       </div>
 
       {/* ============ ALERTAS IA · STOCKOUT ============ */}
-      {canReadAlerts && <div className="panel">
-        <div className="panel-header flex-wrap gap-3">
-          <div className="dashboard-section-title-row">
-            <span className={!loadingPredicciones && !errorPredicciones && stockAlerts.length > 0 ? "dashboard-alert-icon" : "text-slate-500"}>
-              <Ico p={I.alert} size={15} />
-            </span>
-            <span className="dashboard-section-title">
-              Alertas IA · Inventario
-            </span>
-            {!loadingPredicciones && !errorPredicciones && (
-              <Badge t={stockAlerts.length > 0 ? "danger" : "neutral"}>{stockAlerts.length}</Badge>
+      {canReadAlerts && (
+        <div
+          className={`panel dashboard-scroll-panel dashboard-alert-panel ${
+            loadingPredicciones || errorPredicciones || stockAlerts.length === 0 ? "is-loading" : ""
+          }`}
+        >
+          <div className="panel-header flex-wrap gap-3">
+            <div className="dashboard-section-title-row">
+              <span className={!loadingPredicciones && !errorPredicciones && stockAlerts.length > 0 ? "dashboard-alert-icon" : "text-slate-500"}>
+                <Ico p={I.alert} size={15} />
+              </span>
+              <span className="dashboard-section-title">
+                Alertas IA · Inventario
+              </span>
+              {!loadingPredicciones && !errorPredicciones && (
+                <Badge t={stockAlerts.length > 0 ? "danger" : "neutral"}>{stockAlerts.length}</Badge>
+              )}
+            </div>
+
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onNav("ia")}
+            >
+              Ver panel IA →
+            </button>
+          </div>
+
+          <div className="dashboard-scroll-content">
+            {loadingPredicciones ? (
+              <div
+                className="ia-empty-state ia-info-stock"
+                style={{ padding: 20 }}
+              >
+                Consultando alertas de stock...
+              </div>
+            ) : errorPredicciones ? (
+              <div
+                className="ia-empty-state ia-info-stock"
+                style={{ padding: 20 }}
+                role="alert"
+              >
+                <p style={{ color: "#dc2626" }}>
+                  {errorPredicciones}
+                </p>
+                <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                  No fue posible actualizar las alertas de stock.
+                </span>
+              </div>
+            ) : stockAlerts.length === 0 ? (
+              <div className="m-4 flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                  <Ico p={I.check} size={18} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-950">Stock en niveles adecuados</p>
+                  <p className="mt-0.5 text-xs text-slate-600">Ningún producto requiere reposición en este momento.</p>
+                </div>
+              </div>
+            ) : (
+              stockAlerts.map(product => {
+                const stock = Number(product.stock_actual) || 0
+
+                const minimo = product.stock_minimo == null
+                  ? null
+                  : Number(product.stock_minimo)
+
+                const productoLocal = productos.find(
+                  item => item.id === product.id_producto
+                )
+
+                const codigo =
+                  product.codigo_producto ||
+                  productoLocal?.codigo ||
+                  ""
+
+                const nombre =
+                  product.nombre_producto ||
+                  productoLocal?.nombre ||
+                  `Producto ${product.id_producto}`
+
+                const unidad = productoLocal?.unidad || ""
+
+                const stockTotal = productoLocal?.stockTotal ?? stock
+
+                const pct =
+                  minimo != null && minimo > 0
+                    ? Math.max(0, Math.min((stock / minimo) * 100, 100))
+                    : 0
+
+                const agotado = stock <= 0
+
+                return (
+                  <div
+                    key={product.id_producto}
+                    className="dashboard-alert-item"
+                  >
+                    <div className="dashboard-alert-content">
+                      <div className="dashboard-alert-name">
+                        {nombre}
+                      </div>
+
+                      <div className="dashboard-alert-meta">
+                        {codigo} · Mínimo:{" "}
+                        {minimo == null
+                          ? "No configurado"
+                          : `${fmt(minimo)} ${unidad}`}
+                      </div>
+
+                      {minimo != null && minimo > 0 && (
+                        <div className="progress dashboard-stock-progress">
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${pct}%`,
+                              background: agotado ? "#DC2626" : "#D97706",
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      <div className="dashboard-alert-stock">
+                        <span
+                          className="tabular"
+                          style={{
+                            color: agotado ? "#DC2626" : "#B45309",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {fmt(stock)} {unidad}
+                        </span>
+
+                        {" "}disponibles · {fmt(stockTotal)} {unidad} total
+                      </div>
+                    </div>
+
+                    <div className="dashboard-alert-side">
+                      <Badge t={agotado ? "danger" : "warn"}>
+                        {agotado ? "Sin stock" : "Bajo mínimo"}
+                      </Badge>
+                    </div>
+                  </div>
+                )
+              })
             )}
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={/* Ejecuta onNav("ia") al invocarse este callback. */ () => onNav("ia")}>
-            Ver panel IA →
-          </button>
         </div>
-        {loadingPredicciones ? (
-          <div className="ia-empty-state ia-info-stock" style={{ padding: 20 }}>
-            Consultando alertas de stock...
-          </div>
-        ) : errorPredicciones ? (
-          <div
-            className="ia-empty-state ia-info-stock"
-            style={{ padding: 20 }}
-            role="alert"
-          >
-            <p style={{ color: "#dc2626" }}>
-              {errorPredicciones}
-            </p>
-            <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-              No fue posible actualizar las alertas de stock.
-            </span>
-          </div>
-        ) : stockAlerts.length === 0 ? (
-          <div className="m-4 flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
-              <Ico p={I.check} size={18} />
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-emerald-950">Stock en niveles adecuados</p>
-              <p className="mt-0.5 text-xs text-slate-600">Ningún producto requiere reposición en este momento.</p>
+      )}
+
+
+      {/* ============ STOCK Y ACTIVIDAD RECIENTE ============ */}
+      <div className="dashboard-bottom-grid">
+
+        {/* STOCK ACTUAL POR PRODUCTO */}
+        {canReadProducts && (
+          <div className="panel dashboard-scroll-panel">
+            <div className="panel-header">
+              <span className="dashboard-section-title">
+                Stock actual por producto
+              </span>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => onNav("productos")}
+              >
+                Ver catálogo →
+              </button>
+            </div>
+
+            <div className="dashboard-scroll-content">
+              {productosLoading && (
+                <div className="dashboard-stock-item" role="status">
+                  Consultando stock…
+                </div>
+              )}
+
+              {!productosLoading && productosError && (
+                <div className="dashboard-stock-item" role="alert">
+                  {productosError}
+                </div>
+              )}
+
+              {!productosLoading && !productosError && productos.length === 0 && (
+                <div className="dashboard-stock-item">
+                  No hay productos registrados.
+                </div>
+              )}
+
+              {!productosLoading && !productosError && productos.map((product) => {
+                const pct =
+                  product.stockMin === 0
+                    ? 100
+                    : Math.min(100, (product.stock / product.stockMin) * 100);
+
+                const color =
+                  product.stock === 0
+                    ? "#DC2626"
+                    : pct < 50
+                      ? "#D97706"
+                      : "#00995A";
+
+                return (
+                  <div key={product.id} className="dashboard-stock-item">
+                    <div className="dashboard-stock-content">
+                      <div className="dashboard-stock-name">
+                        {product.nombre}
+                      </div>
+
+                      <div className="progress" style={{ marginTop: 7 }}>
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: `${pct}%`,
+                            background: color,
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="dashboard-stock-side">
+                      <div
+                        className="tabular"
+                        style={{
+                          fontSize: "0.8125rem",
+                          fontWeight: 700,
+                          color,
+                        }}
+                      >
+                        {fmt(product.stock)} {product.unidad}
+                      </div>
+
+                      <div className="dashboard-stock-meta">
+                        mín. {fmt(product.stockMin)} {product.unidad} ·{" "}
+                        {fmt(product.stockTotal)} {product.unidad} total
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ) : (
-          stockAlerts.map(product => {
-            const stock = Number(product.stock_actual) || 0
-
-            const minimo = product.stock_minimo == null
-              ? null
-              : Number(product.stock_minimo)
-
-            const productoLocal = productos.find(
-              item => item.id === product.id_producto
-            )
-
-            const codigo =
-              product.codigo_producto ||
-              productoLocal?.codigo ||
-              ""
-
-            const nombre =
-              product.nombre_producto ||
-              productoLocal?.nombre ||
-              `Producto ${product.id_producto}`
-
-            const unidad = productoLocal?.unidad || ""
-
-            const stockTotal = productoLocal?.stockTotal ?? stock
-
-            const pct =
-              minimo != null && minimo > 0
-                ? Math.max(0, Math.min((stock / minimo) * 100, 100))
-                : 0
-
-            const agotado = stock <= 0
-
-            return (
-              <div
-                key={product.id_producto}
-                className="dashboard-alert-item"
-              >
-                <div className="dashboard-alert-content">
-                  <div className="dashboard-alert-name">
-                    {nombre}
-                  </div>
-
-                  <div className="dashboard-alert-meta">
-                    {codigo} · Mínimo:{" "}
-                    {minimo == null ? "No configurado" : `${fmt(minimo)} ${unidad}`}
-                  </div>
-
-                  {minimo != null && minimo > 0 && (
-                    <div className="progress dashboard-stock-progress">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${pct}%`,
-                          background: agotado ? "#DC2626" : "#D97706",
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <div className="dashboard-alert-stock">
-                    <span
-                      className="tabular"
-                      style={{
-                        color: agotado ? "#DC2626" : "#B45309",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {fmt(stock)} {unidad}
-                    </span>
-
-                    {" "}disponibles · {fmt(stockTotal)} {unidad} total
-                  </div>
-                </div>
-
-                <div className="dashboard-alert-side">
-                  <Badge t={agotado ? "danger" : "warn"}>
-                    {agotado ? "Sin stock" : "Bajo mínimo"}
-                  </Badge>
-                </div>
-              </div>
-            )
-          })
         )}
-      </div>}
 
-      {/* ============ STOCK ACTUAL POR PRODUCTO ============ */}
-      {canReadProducts && <div className="panel">
-        <div className="panel-header">
-          <span className="dashboard-section-title">
-            Stock actual por producto
-          </span>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={/* Ejecuta onNav("productos") al invocarse este callback. */ () => onNav("productos")}
-          >
-            Ver catálogo →
-          </button>
-        </div>
-        {productosLoading && <div className="dashboard-stock-item" role="status">Consultando stock…</div>}
-        {!productosLoading && productosError && <div className="dashboard-stock-item" role="alert">{productosError}</div>}
-        {!productosLoading && !productosError && productos.length === 0 && (
-          <div className="dashboard-stock-item">No hay productos registrados.</div>
-        )}
-        {!productosLoading && !productosError && productos.map(/* Renderiza el indicador de stock del producto evitando dividir por un mínimo igual a cero. */ (product) => {
-          const pct =
-            product.stockMin === 0
-              ? 100
-              : Math.min(100, (product.stock / product.stockMin) * 100)
-          const color =
-            product.stock === 0 ? "#DC2626" : pct < 50 ? "#D97706" : "#00995A"
-          return (
-            <div key={product.id} className="dashboard-stock-item">
-              <div className="dashboard-stock-content">
-                <div className="dashboard-stock-name">{product.nombre}</div>
-                <div className="progress" style={{ marginTop: 7 }}>
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${pct}%`, background: color }}
-                  />
-                </div>
-              </div>
-              <div className="dashboard-stock-side">
+        {/* ACTIVIDAD RECIENTE */}
+        {(canReadQuotes || canReadInvoices || canReadMovements) && (
+          <div className="panel dashboard-scroll-panel">
+            <div className="panel-header">
+              <span className="dashboard-activity-title">
+                Actividad reciente
+              </span>
+            </div>
+
+            <div className="dashboard-scroll-content">
+              {activityLoading && (
+                <p className="dashboard-activity-item" role="status">
+                  Consultando actividad…
+                </p>
+              )}
+
+              {activityError && (
+                <p className="dashboard-activity-item" role="alert">
+                  No se pudieron cargar todos los registros de actividad.
+                </p>
+              )}
+
+              {!activityLoading && !activityError && activity.length === 0 && (
+                <p className="dashboard-activity-item">
+                  No hay actividad registrada.
+                </p>
+              )}
+
+              {activity.map((item, index) => (
                 <div
-                  className="tabular"
+                  key={item.id}
+                  className="dashboard-activity-item"
                   style={{
-                    fontSize: "0.8125rem",
-                    fontWeight: 700,
-                    color,
+                    borderBottom:
+                      index < activity.length - 1
+                        ? "1px solid #F1F5F9"
+                        : "none",
                   }}
                 >
-                  {fmt(product.stock)} {product.unidad}
-                </div>
-                <div className="dashboard-stock-meta">
-                  mín. {fmt(product.stockMin)} {product.unidad} · {fmt(product.stockTotal)} {product.unidad} total
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>}
+                  <div
+                    className="dashboard-activity-icon"
+                    style={{ background: item.background }}
+                  >
+                    <Ico p={item.icon} size={13} />
+                  </div>
 
-      {/* ============ ACTIVIDAD RECIENTE ============ */}
-      {(canReadQuotes || canReadInvoices || canReadMovements) && <div className="panel">
-        <div className="panel-header">
-          <span className="dashboard-activity-title">Actividad reciente</span>
-        </div>
-        {activityLoading && <p className="dashboard-activity-item" role="status">Consultando actividad…</p>}
-        {activityError && <p className="dashboard-activity-item" role="alert">No se pudieron cargar todos los registros de actividad.</p>}
-        {!activityLoading && !activityError && activity.length === 0 && (
-          <p className="dashboard-activity-item">No hay actividad registrada.</p>
-        )}
-        {activity.map((item, index) => (
-          <div
-            key={item.id}
-            className="dashboard-activity-item"
-            style={{
-              borderBottom:
-                index < activity.length - 1 ? "1px solid #F1F5F9" : "none",
-            }}
-          >
-            <div
-              className="dashboard-activity-icon"
-              style={{ background: item.background }}
-            >
-              <Ico p={item.icon} size={13} />
+                  <p className="dashboard-activity-desc">
+                    {item.desc}
+                  </p>
+
+                  <span className="dashboard-activity-time">
+                    {activityDate.format(item.timestamp)}
+                  </span>
+                </div>
+              ))}
             </div>
-            <p className="dashboard-activity-desc">{item.desc}</p>
-            <span className="dashboard-activity-time">{activityDate.format(item.timestamp)}</span>
           </div>
-        ))}
-      </div>}
+        )}
+
+      </div>
+
     </div>
   )
 }

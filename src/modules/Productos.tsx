@@ -1,7 +1,7 @@
 // client/src/modules/Productos.tsx
 
 import React, { useState } from "react"
-import { Badge, fmt, I, Ico, PageTitle, Product } from "../shared"
+import { AuthUser, Badge, can, fmt, I, Ico, PageTitle, Product } from "../shared"
 
 export type ProductInput = {
   codigo: string
@@ -16,6 +16,7 @@ export type ProductInput = {
 type ProductProps = {
   productos: Product[]
   loadError?: string
+  authUser: AuthUser | null
   onCreate: (input: ProductInput) => Promise<Product>
   onUpdate: (product: Product, input: ProductInput) => Promise<Product>
   onDelete: (product: Product) => Promise<void>
@@ -32,7 +33,14 @@ const emptyProduct: ProductInput = {
 }
 
 // Muestra y filtra productos y gestiona sus formularios de creación, edición y eliminación.
-export default function Productos({ productos, loadError, onCreate, onUpdate, onDelete }: ProductProps) {
+export default function Productos({
+  productos,
+  loadError,
+  authUser,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: ProductProps) {
   const [tipo, setTipo] = useState("")
   const [estado, setEstado] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -85,142 +93,167 @@ export default function Productos({ productos, loadError, onCreate, onUpdate, on
       >
         <button
           className="btn btn-primary"
-          onClick={/* Limpia la selección y abre el formulario de creación de productos. */ () => {
+          onClick={() => {
             setEditingProduct(null)
             setForm(emptyProduct)
             setShowModal(true)
           }}
+          disabled={!can(authUser, "productos", "Crear")}
         >
           <Ico p={I.plus ?? "M12 5v14M5 12h14"} size={14} /> Nuevo producto
         </button>
       </PageTitle>
       {loadError && <p className="panel" role="alert" style={{ padding: 16, color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>}
-      <div className="panel">
-        <div className="panel-header">
-          <div className="productos-filter-row">
-            <select
-              className="select productos-filter-a"
-              value={tipo}
-              onChange={/* Ejecuta setTipo(event.target.value) al invocarse este callback. */ (event) => setTipo(event.target.value)}
-            >
-              <option value="">Todos los tipos</option>
-              {tipos.map(/* Renderiza el contenido de cada elemento de tipos. */ (productType) => (
-                <option key={productType} value={productType}>
-                  {productType}
-                </option>
-              ))}
-            </select>
-            <select
-              className="select productos-filter-b"
-              value={estado}
-              onChange={/* Ejecuta setEstado(event.target.value) al invocarse este callback. */ (event) => setEstado(event.target.value)}
-            >
-              <option value="">Todos los estados</option>
-              {estados.map(/* Renderiza el contenido de cada elemento de estados. */ (productStatus) => (
-                <option key={productStatus} value={productStatus}>
-                  {productStatus}
-                </option>
-              ))}
-            </select>
+      {can(authUser, "productos", "Consultar") ? (
+        <div className="panel">
+          <div className="panel-header">
+            <div className="productos-filter-row">
+              <select
+                className="select productos-filter-a"
+                value={tipo}
+                onChange={(event) => setTipo(event.target.value)}
+              >
+                <option value="">Todos los tipos</option>
+                {tipos.map((productType) => (
+                  <option key={productType} value={productType}>
+                    {productType}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="select productos-filter-b"
+                value={estado}
+                onChange={(event) => setEstado(event.target.value)}
+              >
+                <option value="">Todos los estados</option>
+                {estados.map((productStatus) => (
+                  <option key={productStatus} value={productStatus}>
+                    {productStatus}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <span className="productos-count">{filtered.length} productos</span>
           </div>
-          <span className="productos-count">{filtered.length} productos</span>
+
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Unidad</th>
+                  <th>Stock mín.</th>
+                  <th>Stock disp.</th>
+                  <th>Stock total</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filtered.map((product) => (
+                  <tr key={product.id}>
+                    <td className="productos-code">{product.codigo}</td>
+
+                    <td>
+                      <div className="productos-name">{product.nombre}</div>
+                      <div className="productos-desc">{product.desc}</div>
+                    </td>
+
+                    <td>
+                      <Badge t="info">{product.tipo}</Badge>
+                    </td>
+
+                    <td className="productos-unit">{product.unidad}</td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockMin)} L
+                    </td>
+
+                    <td className="productos-meta">
+                      <span
+                        style={{
+                          color:
+                            product.stock === 0
+                              ? "#DC2626"
+                              : product.stock < product.stockMin
+                                ? "#D97706"
+                                : "#00995A",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {fmt(product.stock)} L
+                      </span>
+                    </td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockTotal)} L
+                    </td>
+
+                    <td>
+                      <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
+                        {product.estado}
+                      </Badge>
+                    </td>
+
+                    <td>
+                      <div className="productos-actions">
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          title="Editar producto"
+                          aria-label="Editar producto"
+                          onClick={() => {
+                            setEditingProduct(product)
+                            setForm({
+                              codigo: product.codigo,
+                              nombre: product.nombre,
+                              descripcion: product.desc,
+                              tipo: product.tipo,
+                              unidad: product.unidad,
+                              stockMinimo: product.stockMin,
+                              estado: product.estado,
+                            })
+                            setShowModal(true)
+                          }}
+                          disabled={!can(authUser, "productos", "Editar")}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-delete-btn"
+                          title="Eliminar producto"
+                          aria-label="Eliminar producto"
+                          onClick={() => setDeletingProduct(product)}
+                          disabled={!can(authUser, "productos", "Eliminar")}
+                        >
+                          <Ico p={I.trash} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: "center", padding: 24 }}>
+                      No hay productos que coincidan con los filtros seleccionados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>Código</th>
-              <th>Nombre</th>
-              <th>Tipo</th>
-              <th>Unidad</th>
-              <th>Stock mín.</th>
-              <th>Stock disp.</th>
-              <th>Stock total</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (product) => (
-              <tr key={product.id}>
-                <td className="productos-code">{product.codigo}</td>
-                <td>
-                  <div className="productos-name">{product.nombre}</div>
-                  <div className="productos-desc">{product.desc}</div>
-                </td>
-                <td>
-                  <Badge t="info">{product.tipo}</Badge>
-                </td>
-                <td className="productos-unit">{product.unidad}</td>
-
-                {/* Stock mínimo */}
-                <td className="productos-meta" style={{ color: "#64748b" }}>
-                  {fmt(product.stockMin)} L
-                </td>
-
-                {/* Stock disponible (con color según nivel) */}
-                <td className="productos-meta">
-                  <span
-                    style={{
-                      color:
-                        product.stock === 0
-                          ? "#DC2626"
-                          : product.stock < product.stockMin
-                            ? "#D97706"
-                            : "#00995A",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {fmt(product.stock)} L
-                  </span>
-                </td>
-
-                {/* Stock total */}
-                <td className="productos-meta" style={{ color: "#64748b" }}>
-                  {fmt(product.stockTotal)} L
-                </td>
-
-                <td>
-                  <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
-                    {product.estado}
-                  </Badge>
-                </td>
-                <td>
-                  <div className="productos-actions">
-                    <button
-                      className="btn btn-ghost btn-sm productos-edit-btn"
-                      title="Editar producto"
-                      aria-label="Editar producto"
-                      onClick={/* Carga los campos del producto seleccionado y abre su formulario de edición. */ () => {
-                        setEditingProduct(product)
-                        setForm({
-                          codigo: product.codigo,
-                          nombre: product.nombre,
-                          descripcion: product.desc,
-                          tipo: product.tipo,
-                          unidad: product.unidad,
-                          stockMinimo: product.stockMin,
-                          estado: product.estado,
-                        })
-                        setShowModal(true)
-                      }}
-                    >
-                      <Ico p={I.edit} size={13} />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm productos-delete-btn"
-                      title="Eliminar producto"
-                      aria-label="Eliminar producto"
-                      onClick={/* Ejecuta setDeletingProduct(product) al invocarse este callback. */ () => setDeletingProduct(product)}
-                    >
-                      <Ico p={I.trash} size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      ) : (
+        <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+          No tienes permisos para consultar los productos.
+        </div>
+      )}
       {showModal && (
         <div className="modal-backdrop">
           <div
@@ -342,6 +375,11 @@ export default function Productos({ productos, loadError, onCreate, onUpdate, on
               <button
                 className="btn btn-primary productos-save"
                 onClick={saveProduct}
+                disabled={
+                  editingProduct
+                    ? !can(authUser, "productos", "Editar")
+                    : !can(authUser, "productos", "Crear")
+                }
               >
                 <Ico p={I.check} size={14} /> Guardar
               </button>
@@ -368,7 +406,7 @@ export default function Productos({ productos, loadError, onCreate, onUpdate, on
             <div className="productos-delete-actions">
               <button
                 className="btn btn-danger productos-delete-confirm"
-                onClick={/* Solicita eliminar el producto seleccionado y cierra la confirmación al completarse. */ async () => {
+                onClick={async () => {
                   try {
                     await onDelete(deletingProduct)
                     setDeletingProduct(null)
@@ -380,6 +418,7 @@ export default function Productos({ productos, loadError, onCreate, onUpdate, on
                     )
                   }
                 }}
+                disabled={!can(authUser, "productos", "Eliminar")}
               >
                 Eliminar
               </button>

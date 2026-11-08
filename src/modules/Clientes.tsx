@@ -1,7 +1,7 @@
 // client/src/modules/Clientes.tsx
 import LocationFields from "../LocationFields"
 import React, { useState } from "react"
-import { Badge, I, Ico, PageTitle } from "../shared"
+import { AuthUser, Badge, can, I, Ico, PageTitle } from "../shared"
 
 export type Client = {
   id: number
@@ -100,6 +100,7 @@ const clientToInput = (client: Client): NewClientInput => ({
 export default function Clientes({
   clientes,
   loadError,
+  authUser,
   onCreate,
   onDelete,
   onUpdate,
@@ -109,6 +110,7 @@ export default function Clientes({
 }: {
   clientes: Client[]
   loadError: string
+  authUser: AuthUser | null
   onCreate: (client: NewClientInput) => Promise<Client>
   onDelete: (client: Client) => Promise<void>
   onUpdate: (client: Client, input: NewClientInput) => Promise<Client>
@@ -307,7 +309,11 @@ export default function Clientes({
         title="Gestión de Clientes"
         sub="Clientes y sus múltiples direcciones de entrega"
       >
-        <button className="btn btn-primary" onClick={openNewClient}>
+        <button
+          className="btn btn-primary"
+          onClick={openNewClient}
+          disabled={!can(authUser, "clientes", "Crear")}
+        >
           <Ico p={I.plus} size={14} /> Nuevo cliente
         </button>
       </PageTitle>
@@ -316,79 +322,87 @@ export default function Clientes({
           {loadError}
         </div>
       )}
-      <div className="panel">
-        <div className="panel-header">
-          <div className="clientes-search-wrap">
-            <span className="clientes-search-icon">
-              <Ico p={I.search ?? I.clients} size={14} />
-            </span>
-            <input
-              className="input clientes-search-input"
-              placeholder="Buscar por razón social o RUT…"
-              value={search}
-              onChange={/* Ejecuta setSearch(event.target.value) al invocarse este callback. */ (event) => setSearch(event.target.value)}
-            />
+      {can(authUser, "clientes", "Consultar") ? (
+        <div className="panel">
+          <div className="panel-header">
+            <div className="clientes-search-wrap">
+              <span className="clientes-search-icon">
+                <Ico p={I.search ?? I.clients} size={14} />
+              </span>
+              <input
+                className="input clientes-search-input"
+                placeholder="Buscar por razón social o RUT…"
+                value={search}
+                onChange={/* Ejecuta setSearch(event.target.value) al invocarse este callback. */ (event) => setSearch(event.target.value)}
+              />
+            </div>
+            <span className="clientes-count">{filtered.length} clientes</span>
           </div>
-          <span className="clientes-count">{filtered.length} clientes</span>
-        </div>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>RUT</th>
-              <th>Razón Social</th>
-              <th>País / Región / Ciudad</th>
-              <th>Representante</th>
-              <th>Teléfono</th>
-              <th>Dirs.</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
-              <tr
-                key={client.id}
-                onClick={() => {
-                  setSelected(client)
-                  setDeleteError("") // 👈 Limpiamos el error al cambiar de cliente
-                }}
-                className="clientes-row"
-              >
-                <td className="clientes-rut">{client.rut || "—"}</td>
-                <td>
-                  <div className="clientes-name">{client.razon}</div>
-                  <div className="clientes-fantasia">{client.fantasia}</div>
-                </td>
-                <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
-                <td>{client.rep}</td>
-                <td>{client.tel}</td>
-                <td>
-                  <Badge t={client.dirs.length ? "info" : "neutral"}>
-                    {client.dirs.length}
-                  </Badge>
-                </td>
-                <td>
-                  <Badge t={client.estado === "Activo" ? "ok" : "neutral"}>
-                    {client.estado}
-                  </Badge>
-                </td>
-                <td>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    onClick={(event) => {
-                      event.stopPropagation()
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>RUT</th>
+                  <th>Razón Social</th>
+                  <th>País / Región / Ciudad</th>
+                  <th>Representante</th>
+                  <th>Teléfono</th>
+                  <th>Dirs.</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (client) => (
+                  <tr
+                    key={client.id}
+                    onClick={() => {
                       setSelected(client)
-                      setDeleteError("") // 👈 Limpiamos el error
+                      setDeleteError("") // 👈 Limpiamos el error al cambiar de cliente
                     }}
+                    className="clientes-row"
                   >
-                    Detalles <Ico p={I.chevR} size={12} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <td className="clientes-rut">{client.rut || "—"}</td>
+                    <td>
+                      <div className="clientes-name">{client.razon}</div>
+                      <div className="clientes-fantasia">{client.fantasia}</div>
+                    </td>
+                    <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
+                    <td>{client.rep}</td>
+                    <td>{client.tel}</td>
+                    <td>
+                      <Badge t={client.dirs.length ? "info" : "neutral"}>
+                        {client.dirs.length}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge t={client.estado === "Activo" ? "ok" : "neutral"}>
+                        {client.estado}
+                      </Badge>
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setSelected(client)
+                          setDeleteError("") // 👈 Limpiamos el error
+                        }}
+                      >
+                        Detalles <Ico p={I.chevR} size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="panel" style={{ padding: 20 }}>
+          No tienes permisos para consultar los clientes.
+        </div>
+      )}
       {selected && (
         <div className="slideover-backdrop" onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)}>
           <div
@@ -488,112 +502,158 @@ export default function Clientes({
                     <input className="input" value={field.value} readOnly />
                   </div>
                 ))}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <label className="label">Direcciones ({selected.dirs.length})</label>
-                    <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta openAddressForm() al invocarse este callback. */ () => openAddressForm()}>
-                      <Ico p={I.plus} size={12} /> Agregar
-                    </button>
-                  </div>
-                  {selected.dirs.map(/* Renderiza el contenido de cada elemento de selected.dirs. */ (address) => (
-                    <div key={address.id} className="clientes-address" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <span>
-                        {address.nombre} · {address.ciudad}{" "}
-                        <Badge t={address.principal ? "ok" : "neutral"}>{address.tipo}</Badge>
-                      </span>
-                      <span style={{ display: "flex", gap: 4 }}>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta openAddressForm(address) al invocarse este callback. */ () => openAddressForm(address)} title="Editar dirección" aria-label={`Editar ${address.nombre}`}>
-                          <Ico p={I.edit} size={12} />
+                {can(authUser, "direcciones", "Consultar") ? (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <label className="label">Direcciones ({selected.dirs.length})</label>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          type="button"
+                          onClick={() => openAddressForm()}
+                          disabled={!can(authUser, "direcciones", "Crear")}
+                        >
+                          <Ico p={I.plus} size={12} /> Agregar
                         </button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={/* Ejecuta deleteAddress(address) al invocarse este callback. */ () => deleteAddress(address)} title="Eliminar dirección" aria-label={`Eliminar ${address.nombre}`}>
-                          <Ico p={I.trash} size={12} />
-                        </button>
-                      </span>
                     </div>
-                  ))}
-                  {addressError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{addressError}</p>}
-                  {showAddressForm && (
-                    <form onSubmit={saveAddress} style={{ marginTop: 12, padding: 12, border: "1px solid #E2E8F0", borderRadius: 8 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                        
-                        {/* 1. País, Región y Ciudad (usando LocationFields) */}
-                        <div style={{ gridColumn: "span 2" }}>
-                          <LocationFields 
-                            value={addressForm} 
-                            onChange={(location) => setAddressForm((current) => ({ ...current, ...location }))} 
-                          />
-                        </div>
+                    {selected.dirs.map(/* Renderiza el contenido de cada elemento de selected.dirs. */ (address) => (
+                      <div key={address.id} className="clientes-address" style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                        <span>
+                          {address.nombre} · {address.ciudad}{" "}
+                          <Badge t={address.principal ? "ok" : "neutral"}>{address.tipo}</Badge>
+                        </span>
+                        <span style={{ display: "flex", gap: 4 }}>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            onClick={() => openAddressForm(address)}
+                            title="Editar dirección"
+                            aria-label={`Editar ${address.nombre}`}
+                            disabled={!can(authUser, "direcciones", "Editar")}
+                          >
+                            <Ico p={I.edit} size={12} />
+                          </button>
 
-                        {/* 2. Calle */}
-                        <div className="field">
-                          <label className="label">Calle</label>
-                          <input className="input" value={addressForm.calle} onChange={(event) => setAddressForm((current) => ({ ...current, calle: event.target.value }))} required />
-                        </div>
-
-                        {/* 3. Código Postal */}
-                        <div className="field">
-                          <label className="label">Código postal</label>
-                          <input className="input" value={addressForm.codigo_postal ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, codigo_postal: event.target.value }))} />
-                        </div>
-
-                        {/* 4. Nombre de la dirección */}
-                        <div className="field" style={{ gridColumn: "span 2" }}>
-                          <label className="label">Nombre de dirección</label>
-                          <input className="input" value={addressForm.nombre} onChange={(event) => setAddressForm((current) => ({ ...current, nombre: event.target.value }))} required />
-                        </div>
-
-                        {/* 5. Tipo */}
-                        <div className="field">
-                          <label className="label">Tipo</label>
-                          <select className="input" value={addressForm.tipo} onChange={(event) => setAddressForm((current) => ({ ...current, tipo: event.target.value }))}>
-                            <option value="Despacho">Despacho</option>
-                            <option value="Facturación">Facturación</option>
-                            <option value="Otro">Otro</option>
-                          </select>
-                        </div>
-
-                        {/* 6. Contacto de recepción */}
-                        <div className="field">
-                          <label className="label">Contacto de recepción</label>
-                          <input className="input" value={addressForm.contacto_recepcion} onChange={(event) => setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
-                        </div>
-
-                        {/* 7. Teléfono de contacto */}
-                        <div className="field" style={{ gridColumn: "span 2" }}>
-                          <label className="label">Teléfono de contacto</label>
-                          <input className="input" value={addressForm.telefono_contacto} onChange={(event) => setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value }))} required />
-                        </div>
-
-                        {/* 8. Instrucciones de entrega */}
-                        <div className="field" style={{ gridColumn: "span 2" }}>
-                          <label className="label">Instrucciones de entrega</label>
-                          <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value }))} rows={2} />
-                        </div>
-
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            type="button"
+                            onClick={() => deleteAddress(address)}
+                            title="Eliminar dirección"
+                            aria-label={`Eliminar ${address.nombre}`}
+                            disabled={!can(authUser, "direcciones", "Eliminar")}
+                          >
+                            <Ico p={I.trash} size={12} />
+                          </button>
+                        </span>
                       </div>
+                    ))}
+                    {addressError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{addressError}</p>}
+                    {showAddressForm && (
+                      <form onSubmit={saveAddress} style={{ marginTop: 12, padding: 12, border: "1px solid #E2E8F0", borderRadius: 8 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          
+                          {/* 1. País, Región y Ciudad (usando LocationFields) */}
+                          <div style={{ gridColumn: "span 2" }}>
+                            <LocationFields 
+                              value={addressForm} 
+                              onChange={(location) => setAddressForm((current) => ({ ...current, ...location }))} 
+                            />
+                          </div>
 
-                      <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
-                        <input type="checkbox" checked={addressForm.principal} onChange={(event) => setAddressForm((current) => ({ ...current, principal: event.target.checked }))} />
-                        Dirección principal
-                      </label>
+                          {/* 2. Calle */}
+                          <div className="field">
+                            <label className="label">Calle</label>
+                            <input className="input" value={addressForm.calle} onChange={(event) => setAddressForm((current) => ({ ...current, calle: event.target.value }))} required />
+                          </div>
 
-                      <div className="clientes-detail-actions" style={{ marginTop: 12 }}>
-                        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>
-                          <Ico p={I.check} size={12} /> Guardar dirección
-                        </button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>
-                          Cancelar
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
+                          {/* 3. Código Postal */}
+                          <div className="field">
+                            <label className="label">Código postal</label>
+                            <input className="input" value={addressForm.codigo_postal ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, codigo_postal: event.target.value }))} />
+                          </div>
+
+                          {/* 4. Nombre de la dirección */}
+                          <div className="field" style={{ gridColumn: "span 2" }}>
+                            <label className="label">Nombre de dirección</label>
+                            <input className="input" value={addressForm.nombre} onChange={(event) => setAddressForm((current) => ({ ...current, nombre: event.target.value }))} required />
+                          </div>
+
+                          {/* 5. Tipo */}
+                          <div className="field">
+                            <label className="label">Tipo</label>
+                            <select className="input" value={addressForm.tipo} onChange={(event) => setAddressForm((current) => ({ ...current, tipo: event.target.value }))}>
+                              <option value="Despacho">Despacho</option>
+                              <option value="Facturación">Facturación</option>
+                              <option value="Otro">Otro</option>
+                            </select>
+                          </div>
+
+                          {/* 6. Contacto de recepción */}
+                          <div className="field">
+                            <label className="label">Contacto de recepción</label>
+                            <input className="input" value={addressForm.contacto_recepcion} onChange={(event) => setAddressForm((current) => ({ ...current, contacto_recepcion: event.target.value }))} required />
+                          </div>
+
+                          {/* 7. Teléfono de contacto */}
+                          <div className="field" style={{ gridColumn: "span 2" }}>
+                            <label className="label">Teléfono de contacto</label>
+                            <input className="input" value={addressForm.telefono_contacto} onChange={(event) => setAddressForm((current) => ({ ...current, telefono_contacto: event.target.value }))} required />
+                          </div>
+
+                          {/* 8. Instrucciones de entrega */}
+                          <div className="field" style={{ gridColumn: "span 2" }}>
+                            <label className="label">Instrucciones de entrega</label>
+                            <textarea className="input" value={addressForm.instrucciones_entrega ?? ""} onChange={(event) => setAddressForm((current) => ({ ...current, instrucciones_entrega: event.target.value }))} rows={2} />
+                          </div>
+
+                        </div>
+
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+                          <input type="checkbox" checked={addressForm.principal} onChange={(event) => setAddressForm((current) => ({ ...current, principal: event.target.checked }))} />
+                          Dirección principal
+                        </label>
+
+                        <div className="clientes-detail-actions" style={{ marginTop: 12 }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            type="submit"
+                            disabled={
+                              saving ||
+                              (editingAddress
+                                ? !can(authUser, "direcciones", "Editar")
+                                : !can(authUser, "direcciones", "Crear"))
+                            }
+                          >
+                            <Ico p={I.check} size={12} /> Guardar dirección
+                          </button>
+                          <button className="btn btn-ghost btn-sm" type="button" onClick={() => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label">Direcciones</label>
+                    <p>No tienes permisos para consultar las direcciones de este cliente.</p>
+                  </div>
+                )}
                 {deleteError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{deleteError}</p>}
                 <div className="clientes-detail-actions">
-                  <button className="btn btn-primary" type="button" onClick={startEditing}>
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    onClick={startEditing}
+                    disabled={!can(authUser, "clientes", "Editar")}
+                  >
                     <Ico p={I.edit} size={14} /> Editar cliente
                   </button>
-                  <button className="btn btn-danger" type="button" onClick={deleteSelectedClient}>
+                  <button
+                    className="btn btn-danger"
+                    type="button"
+                    onClick={deleteSelectedClient}
+                    disabled={!can(authUser, "clientes", "Eliminar")}
+                  >
                     <Ico p={I.trash} size={14} /> Eliminar cliente
                   </button>
                 </div>
@@ -664,8 +724,12 @@ export default function Clientes({
             </div>
             {saveError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{saveError}</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-              <button className="btn btn-primary" type="submit" disabled={saving}>
-                <Ico p={I.check} size={14} /> Guardar
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={saving || !can(authUser, "clientes", "Crear")}
+              >
+                <Ico p={I.check} size={14} /> Guardar cambios
               </button>
               <button
                 className="btn btn-ghost"

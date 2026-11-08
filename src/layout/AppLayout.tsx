@@ -127,7 +127,6 @@ function Sidebar({
           >
             <div
               style={{
-                background: "white",
                 borderRadius: 8,
                 padding: "5px 10px",
                 display: "inline-flex",
@@ -507,7 +506,7 @@ function NotificationBell({
               </div>
             ) : error ? (
               <div className="notification-empty notification-error">
-                No se pudieron actualizar las notificaciones.
+                {error}
               </div>
             ) : notificaciones.length === 0 ? (
               <div className="notification-empty">

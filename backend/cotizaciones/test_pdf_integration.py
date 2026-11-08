@@ -8,7 +8,9 @@ from pypdf import PdfReader
 from rest_framework.test import APIClient
 
 from clientes.models import Cliente, Direccion
-from inventario.models import Producto
+from datetime import date, timedelta
+
+from inventario.models import Inventario, Producto
 from usuarios.models import Usuario
 from usuarios.authentication import crear_token
 from facturacion.models import Factura, DetalleFactura
@@ -105,6 +107,10 @@ class PdfIntegrationTests(SalesTablesMixin, TestCase):
                                                 ciudad="Santiago", telefono="123", email="test@example.com")
         self.product = Producto.objects.create(codigo="PDF-001", nombre="Polímero agrícola",
                                                tipo="Control", unidad="Litros")
+        # Emitir una factura descuenta stock: se deja un lote disponible del producto.
+        Inventario.objects.create(id_producto=self.product.pk, codigo_lote="LOTE-PDF", cantidad=1000,
+            tipo_envase="IBC 1000 L", fecha_fabricacion=date.today(),
+            fecha_vencimiento=date.today() + timedelta(days=365), estado="Disponible")
         self.order = OrdenCompra.objects.create(id_cliente=self.customer, numero_oc="OC-TEST-01",
                                                 fecha_oc="2026-10-25", ruta_documento_oc="")
         self.files = {}

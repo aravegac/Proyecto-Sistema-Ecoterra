@@ -91,6 +91,11 @@ export default function OrdenesCompra({
   )
 
   const loadDocument = async (order: PurchaseOrder) => {
+    if (!can(authUser, "ordenes_compra", "Descargar PDF")) {
+      setDocumentUrl("")
+      setDocumentError("No tienes permisos para consultar el documento PDF.")
+      return
+    }
     const requestId = ++documentRequest.current
     setDocumentUrl("")
     setDocumentError("")
@@ -113,6 +118,7 @@ export default function OrdenesCompra({
 
   // Lee el PDF en el backend y completa los campos que sigan vacíos.
   const detectFields = async (selected: File) => {
+    if (!can(authUser, "ordenes_compra", "Crear / Subir PDF")) return
     const requestId = ++detectRequest.current
     setDetectNote("Leyendo el PDF…")
     const body = new FormData()
@@ -149,6 +155,10 @@ export default function OrdenesCompra({
   }
 
   const openNewFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!can(authUser, "ordenes_compra", "Crear / Subir PDF")) {
+    event.target.value = ""
+    return
+    }
     const selected = event.target.files?.[0]
     if (!selected) return
     setEditingOrder(null)
@@ -165,6 +175,7 @@ export default function OrdenesCompra({
   }
 
   const openEdit = (order: PurchaseOrder) => {
+    if (!can(authUser, "ordenes_compra", "Editar")) return
     setEditingOrder(order)
     setForm({ numero: order.id, clienteId: String(order.clienteId), fecha: order.fecha, tipoOperacion: order.tipoOperacion })
     setFile(null)
@@ -186,6 +197,13 @@ export default function OrdenesCompra({
   const saveOrder = async (event: React.FormEvent) => {
     event.preventDefault()
     if (saving) return
+    if (
+      editingOrder
+        ? !can(authUser, "ordenes_compra", "Editar")
+        : !can(authUser, "ordenes_compra", "Crear / Subir PDF")
+    ) {
+      return
+    }
     if (!editingOrder && !file) { setFormError("Adjunta el documento PDF."); return }
     setSaving(true)
     setFormError("")
@@ -221,6 +239,7 @@ export default function OrdenesCompra({
   }
 
   const unlinkQuote = async (order: PurchaseOrder) => {
+    if (!can(authUser, "ordenes_compra", "Eliminar")) return
     if (!window.confirm(`¿Desasociar la cotización ${order.cot} de ${order.id}?`)) return
     setPageError("")
     try {
@@ -253,108 +272,137 @@ export default function OrdenesCompra({
 
   return <div>
     <PageTitle title="Órdenes de Compra" sub="Documentos recibidos de clientes y seguimiento de su facturación">
-      <button className="btn btn-ghost" onClick={() => fileInput.current?.click()} disabled={!can(authUser, "ordenes_compra", "Crear")}>
+      <button className="btn btn-ghost" onClick={() => fileInput.current?.click()} disabled={!can(authUser, "ordenes_compra", "Crear / Subir PDF")}>
         <Ico p={I.upload} size={14} /> Subir OC en PDF
       </button>
       <input ref={fileInput} type="file" accept="application/pdf,.pdf" className="oc-hidden-input" onChange={openNewFile} />
     </PageTitle>
     {pageError && <p role="alert">{pageError}</p>}
-    <div className="oc-filters">
-      <div className="field oc-filter-cliente">
-        <label className="label" htmlFor="oc-filter-cliente">Cliente</label>
-        <select 
-          id="oc-filter-cliente" 
-          className="select" 
-          value={clientFilter} 
-          onChange={(e) => setClientFilter(e.target.value)}
-        >
-          <option value="">Todos los clientes</option>
-          {clientes.map((c) => (
-            <option key={c.id} value={c.id}>{c.razon}</option>
-          ))}
-        </select>
-      </div>
-      <div className="field oc-filter-estado">
-        <label className="label" htmlFor="oc-filter-factura">Factura</label>
-        <select 
-          id="oc-filter-factura" 
-          className="select" 
-          value={invoiceFilter} 
-          onChange={(e) => setInvoiceFilter(e.target.value)}
-        >
-          <option value="">Todas</option>
-          <option value="con">Con factura</option>
-          <option value="sin">Sin factura</option>
-        </select>
-      </div>
-    </div>
-    <div className="panel oc-table-panel">
-      <table className="dt w-full">
-        <thead><tr><th>N° OC</th><th>Cotización</th><th>Cliente</th><th>Fecha</th><th>Tipo de operación</th><th>Factura</th><th>Archivo OC</th><th>Acciones</th></tr></thead>
-        <tbody>
-          {isLoading ? (
-            <tr>
-              <td colSpan={8} role="status" style={{ textAlign: "center", padding: "24px" }}>
-                Cargando Órdenes de Compra...
-              </td>
-            </tr>
-          ) : filtered.length === 0 ? (
-            <tr>
-              <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
-                No hay órdenes para los filtros seleccionados.
-              </td>
-            </tr>
-          ) : (
-            filtered.map((order) => (
-              <tr key={order.idOc}>
-                <td className="oc-id">{order.id}</td>
-                <td>{order.cot || "—"}</td>
-                <td>{order.cliente}</td>
-                <td>{order.fecha}</td>
-                <td>{order.tipoOperacion}</td>
-                <td>
-                  {invoiceNumber(order) ? (
-                    <Badge t="ok">{invoiceNumber(order)}</Badge>
-                  ) : "Sin factura"}
-                </td>
-                <td>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { setPreviewOrder(order); void loadDocument(order) }}>
-                    <Ico p={I.pdf} size={13} /> Vista previa
-                  </button>
-                </td>
-                <td>
-                  <div className="oc-row-actions">
-                    <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} title="Editar orden" disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}>
-                      <Ico p={I.edit} size={13} />
-                    </button>
-                    {order.cotizacionId != null && (
-                      <button 
-                        className="btn btn-ghost btn-sm productos-delete-btn" 
-                        title="Desasociar cotización"
-                        aria-label={`Desasociar cotización de ${order.id}`}
-                        disabled={!can(authUser, "ordenes_compra", "Eliminar")} 
-                        onClick={() => void unlinkQuote(order)}
-                      >
-                        <Ico p={I.unlink} size={13} />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
 
-    {previewOrder && <div className="modal-backdrop" onClick={() => setPreviewOrder(null)}>
+    {can(authUser, "ordenes_compra", "Consultar") ? (
+      <>
+        <div className="oc-filters">
+          <div className="field oc-filter-cliente">
+            <label className="label" htmlFor="oc-filter-cliente">Cliente</label>
+            <select 
+              id="oc-filter-cliente" 
+              className="select" 
+              value={clientFilter} 
+              onChange={(e) => setClientFilter(e.target.value)}
+            >
+              <option value="">Todos los clientes</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.razon}</option>
+              ))}
+            </select>
+          </div>
+          <div className="field oc-filter-estado">
+            <label className="label" htmlFor="oc-filter-factura">Factura</label>
+            <select 
+              id="oc-filter-factura" 
+              className="select" 
+              value={invoiceFilter} 
+              onChange={(e) => setInvoiceFilter(e.target.value)}
+            >
+              <option value="">Todas</option>
+              <option value="con">Con factura</option>
+              <option value="sin">Sin factura</option>
+            </select>
+          </div>
+        </div>
+        <div className="panel oc-table-panel">
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead><tr><th>N° OC</th><th>Cotización</th><th>Cliente</th><th>Fecha</th><th>Tipo de operación</th><th>Factura</th><th>Archivo OC</th><th>Acciones</th></tr></thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} role="status" style={{ textAlign: "center", padding: "24px" }}>
+                      Cargando Órdenes de Compra...
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "center", padding: "24px" }}>
+                      No hay órdenes para los filtros seleccionados.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((order) => (
+                    <tr key={order.idOc}>
+                      <td className="oc-id">{order.id}</td>
+                      <td>{order.cot || "—"}</td>
+                      <td>{order.cliente}</td>
+                      <td>{order.fecha}</td>
+                      <td>{order.tipoOperacion}</td>
+                      <td>
+                        {invoiceNumber(order) ? (
+                          <Badge t="ok">{invoiceNumber(order)}</Badge>
+                        ) : "Sin factura"}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          disabled={!can(authUser, "ordenes_compra", "Consultar")}
+                          onClick={() => {
+                            setPreviewOrder(order)
+                            void loadDocument(order)
+                          }}
+                        >
+                          <Ico p={I.pdf} size={13} /> Vista previa
+                        </button>
+                      </td>
+                      <td>
+                        <div className="oc-row-actions">
+                          <button className="btn btn-ghost btn-sm productos-edit-btn" aria-label={`Editar ${order.id}`} title="Editar orden" disabled={!can(authUser, "ordenes_compra", "Editar")} onClick={() => openEdit(order)}>
+                            <Ico p={I.edit} size={13} />
+                          </button>
+                          {order.cotizacionId != null && (
+                            <button 
+                              className="btn btn-ghost btn-sm productos-delete-btn" 
+                              title="Desasociar cotización"
+                              aria-label={`Desasociar cotización de ${order.id}`}
+                              disabled={!can(authUser, "ordenes_compra", "Eliminar")} 
+                              onClick={() => void unlinkQuote(order)}
+                            >
+                              <Ico p={I.unlink} size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </>
+    ) : (
+      <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+        No tienes permisos para consultar las órdenes de compra.
+      </div>
+    )}
+    {previewOrder && can(authUser, "ordenes_compra", "Consultar") && <div className="modal-backdrop" onClick={() => setPreviewOrder(null)}>
       <div className="modal oc-modal-wide" role="dialog" aria-modal="true" aria-labelledby="oc-preview-title" onClick={(event) => event.stopPropagation()}>
         <div className="oc-modal-header"><h2 className="oc-modal-title" id="oc-preview-title">Orden de Compra {previewOrder.id}</h2>
           <button className="oc-modal-close" aria-label="Cerrar vista previa" onClick={() => setPreviewOrder(null)}><Ico p={I.x} size={18} /></button>
         </div>
-        <p>{previewOrder.cliente} · {previewOrder.fecha} · {previewOrder.tipoOperacion}</p>
-        <p>Cotización: {previewOrder.cot || "Sin cotización"} · Factura: {invoiceNumber(previewOrder) || "Sin factura"}</p>
-        {previewOrder.cotizacionId != null && <p>Total de cotización asociada: {fmtCLP(previewOrder.total)}</p>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "14px 18px", margin: "4px 0 14px" }}>
+          {[
+            ["Cliente", previewOrder.cliente],
+            ["Fecha", previewOrder.fecha],
+            ["Tipo de operación", previewOrder.tipoOperacion],
+            ["Cotización", previewOrder.cot || "Sin cotización"],
+            ["Factura", invoiceNumber(previewOrder) || "Sin factura"],
+            ...(previewOrder.cotizacionId != null ? [["Total de cotización asociada", fmtCLP(previewOrder.total)]] : []),
+          ].map(([label, value], i) => (
+            <div key={label} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+              <label className="label" htmlFor={`oc-prev-${i}`} style={{ fontWeight: 700 }}>{label}</label>
+              <input id={`oc-prev-${i}`} className="input" value={String(value ?? "")} readOnly style={{ width: "100%", boxSizing: "border-box", background: "#f3f4f6", cursor: "default" }} />
+            </div>
+          ))}
+        </div>
         {renderDocument(previewOrder)}
       </div>
     </div>}
@@ -389,7 +437,7 @@ export default function OrdenesCompra({
                 {editingOrder && invoiceNumber(editingOrder) && <span className="label">Cliente y tipo de operación quedan fijados al facturar.</span>}
               </div>
               <div className="field"><label className="label" htmlFor="oc-pdf">Documento PDF {editingOrder ? "(opcional para reemplazar)" : "*"}</label>
-                <button id="oc-pdf" type="button" className="input oc-file-input" disabled={saving} title="Cambiar archivo" onClick={() => pdfField.current?.click()}>
+                <button id="oc-pdf" type="button" className="input oc-file-input" disabled={saving || (editingOrder ? !can(authUser, "ordenes_compra", "Editar") : !can(authUser, "ordenes_compra", "Crear / Subir PDF")) } title="Cambiar archivo" onClick={() => pdfField.current?.click()}>
                   {file?.name || editingOrder?.documento.split("/").pop() || "Ningún archivo seleccionado"}
                 </button>
                 <input ref={pdfField} type="file" accept="application/pdf,.pdf" className="oc-hidden-input" tabIndex={-1}
@@ -398,7 +446,7 @@ export default function OrdenesCompra({
             </div>
             {formError && <p role="alert">{formError}</p>}
             <div className="oc-edit-actions">
-              <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? "Guardando…" : "Guardar orden"}</button>
+              <button className="btn btn-primary" type="submit" disabled={saving || (editingOrder ? !can(authUser, "ordenes_compra", "Editar") : !can(authUser, "ordenes_compra", "Crear / Subir PDF"))}>{saving ? "Guardando…" : "Guardar orden"}</button>
               <button className="btn btn-ghost" type="button" disabled={saving} onClick={closeForm}>Cancelar</button>
             </div>
           </div>

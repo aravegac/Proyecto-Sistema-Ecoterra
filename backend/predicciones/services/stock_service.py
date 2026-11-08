@@ -8,7 +8,7 @@ from django.utils import timezone
 from inventario.models import Producto, Inventario
 from facturacion.models import Factura, DetalleFactura
 
-from predicciones.ml.predecir_stock import predecir_stock
+from predicciones.ml.predecir_stock import predecir_stock, predecir_stock_lote
 
 
 # ==========================================================
@@ -23,7 +23,7 @@ DIAS_ANALISIS = 90
 # VALOR DE PRUEBA
 # FECHA_INICIO_HISTORIAL = date(2026, 10, 1)
 
-# VALOR REAL
+# VALOR "REAL"
 FECHA_INICIO_HISTORIAL = date(2026, 8, 1)
 
 ESTADOS_FACTURA_VALIDOS = [
@@ -322,6 +322,70 @@ def calcular_variables_demanda(ventas_diarias):
 # GENERAR PREDICCIONES DE TODOS LOS PRODUCTOS
 # ==========================================================
 
+def obtener_stock_actual_por_producto(ids_productos, fecha_actual):
+    """
+    Igual que obtener_stock_actual, pero para todos los productos
+    en una sola consulta. Retorna {id_producto: stock}.
+    """
+
+    filas = Inventario.objects.filter(
+        id_producto__in=ids_productos,
+        estado=ESTADO_INVENTARIO_DISPONIBLE,
+        fecha_vencimiento__gt=fecha_actual,
+    ).values("id_producto").annotate(
+        stock_total=Sum("cantidad")
+    )
+
+    return {
+        fila["id_producto"]: fila["stock_total"] or Decimal("0")
+        for fila in filas
+    }
+
+
+def obtener_ventas_diarias_por_producto(
+    ids_productos,
+    fecha_inicio,
+    fecha_actual,
+):
+    """
+    Igual que obtener_ventas_diarias_90d, pero para todos los
+    productos en una sola consulta.
+
+    Retorna {id_producto: [ventas día a día]} en orden cronológico.
+    Los productos sin ventas no aparecen (equivale a todo cero).
+    """
+
+    filas = DetalleFactura.objects.filter(
+        id_producto__in=ids_productos,
+        id_factura__estado__in=ESTADOS_FACTURA_VALIDOS,
+        id_factura__fecha_emision__range=(
+            fecha_inicio,
+            fecha_actual,
+        ),
+    ).values(
+        "id_producto",
+        "id_factura__fecha_emision",
+    ).annotate(
+        ventas_dia=Sum("cantidad")
+    )
+
+    total_dias = (fecha_actual - fecha_inicio).days + 1
+    ventas = {}
+
+    for fila in filas:
+        indice = (fila["id_factura__fecha_emision"] - fecha_inicio).days
+
+        if not 0 <= indice < total_dias:
+            continue
+
+        serie = ventas.setdefault(
+            fila["id_producto"], [0.0] * total_dias
+        )
+        serie[indice] = float(fila["ventas_dia"] or Decimal("0"))
+
+    return ventas
+
+
 def obtener_predicciones_stock():
     """
     Consulta los productos activos, calcula su stock,
@@ -329,6 +393,10 @@ def obtener_predicciones_stock():
 
     Retorna una lista con los datos del producto y
     el resultado de su predicción.
+
+    Rendimiento: el stock y las ventas se obtienen con una
+    consulta cada uno para todos los productos, y el modelo
+    se ejecuta una sola vez para todo el lote.
     """
 
     fecha_actual = timezone.localdate()
@@ -341,11 +409,38 @@ def obtener_predicciones_stock():
         fecha_actual
     )
 
-    productos = Producto.objects.filter(
-        estado=True,
-    ).order_by("id")
+    productos = list(
+        Producto.objects.filter(
+            estado=True,
+        ).order_by("id").only(
+            "id", "codigo", "nombre", "stock_minimo",
+        )
+    )
+
+    ids_productos = [producto.id for producto in productos]
+
+    stock_por_producto = obtener_stock_actual_por_producto(
+        ids_productos,
+        fecha_actual,
+    )
+
+    # Las ventas solo se necesitan si hay historial suficiente.
+    ventas_por_producto = (
+        obtener_ventas_diarias_por_producto(
+            ids_productos,
+            fecha_inicio,
+            fecha_actual,
+        )
+        if dias_historial >= DIAS_ANALISIS
+        else {}
+    )
+
+    ventas_sin_movimiento = [0.0] * DIAS_ANALISIS
 
     resultados = []
+
+    # Productos que pasan por el modelo: (posición, entrada, extra).
+    pendientes = []
 
     for producto in productos:
 
@@ -353,9 +448,8 @@ def obtener_predicciones_stock():
         # 1. OBTENER STOCK ACTUAL
         # --------------------------------------------------
 
-        stock_actual = obtener_stock_actual(
-            producto,
-            fecha_actual,
+        stock_actual = stock_por_producto.get(
+            producto.id, Decimal("0")
         )
 
         # --------------------------------------------------
@@ -395,38 +489,38 @@ def obtener_predicciones_stock():
 
         if stock_actual <= 0:
 
-            resultado = predecir_stock(
-                stock_actual=0,
-                stock_minimo=stock_minimo,
-                ventas_promedio_90d=0,
-                cobertura_stock_dias=0,
-                desviacion_ventas_90d=0,
-                tendencia_ventas_90d_pct=0,
-                ventas_maximas_90d=0,
-                dias_con_ventas_90d=0,
-                ventas_promedio_30d=0,
-                ventas_promedio_60d=0,
-                variacion_30d_90d=0,
-                dias_desde_ultima_venta=90,
-                tendencia_ventas_30d_pct=0,
-                dias_historial_disponible=dias_historial,
-            )
-
-            resultado = normalizar_resultado_predictor(
-                resultado
-            )
-
-            resultados.append({
-                "id_producto": producto.id,
-                "codigo_producto": producto.codigo,
-                "nombre_producto": producto.nombre,
-                "stock_actual": 0,
-                "stock_minimo": stock_minimo,
-                "ventas_promedio_90d": None,
-                "dias_historial_disponible": dias_historial,
-                **resultado,
-                "requiere_reposicion": True,
-            })
+            resultados.append(None)
+            pendientes.append((
+                len(resultados) - 1,
+                {
+                    "stock_actual": 0,
+                    "stock_minimo": stock_minimo,
+                    "ventas_promedio_90d": 0,
+                    "cobertura_stock_dias": 0,
+                    "desviacion_ventas_90d": 0,
+                    "tendencia_ventas_90d_pct": 0,
+                    "ventas_maximas_90d": 0,
+                    "dias_con_ventas_90d": 0,
+                    "ventas_promedio_30d": 0,
+                    "ventas_promedio_60d": 0,
+                    "variacion_30d_90d": 0,
+                    "dias_desde_ultima_venta": 90,
+                    "tendencia_ventas_30d_pct": 0,
+                    "dias_historial_disponible": dias_historial,
+                },
+                {
+                    "agotado": True,
+                    "base": {
+                        "id_producto": producto.id,
+                        "codigo_producto": producto.codigo,
+                        "nombre_producto": producto.nombre,
+                        "stock_actual": 0,
+                        "stock_minimo": stock_minimo,
+                        "ventas_promedio_90d": None,
+                        "dias_historial_disponible": dias_historial,
+                    },
+                },
+            ))
 
             continue
 
@@ -459,10 +553,8 @@ def obtener_predicciones_stock():
         # 5. OBTENER HISTORIAL DE VENTAS
         # --------------------------------------------------
 
-        ventas_diarias = obtener_ventas_diarias_90d(
-            producto,
-            fecha_inicio,
-            fecha_actual,
+        ventas_diarias = ventas_por_producto.get(
+            producto.id, ventas_sin_movimiento
         )
 
         variables_demanda = calcular_variables_demanda(
@@ -483,54 +575,65 @@ def obtener_predicciones_stock():
             else 0.0
         )
 
-        # --------------------------------------------------
-        # 7. EJECUTAR PREDICTOR
-        # --------------------------------------------------
+        resultados.append(None)
+        pendientes.append((
+            len(resultados) - 1,
+            {
+                "stock_actual": float(stock_actual),
+                "stock_minimo": stock_minimo,
+                "ventas_promedio_90d": ventas_promedio_90d,
+                "cobertura_stock_dias": cobertura_stock_dias,
+                "desviacion_ventas_90d": variables_demanda["desviacion_ventas_90d"],
+                "tendencia_ventas_90d_pct": variables_demanda["tendencia_ventas_90d_pct"],
+                "ventas_maximas_90d": variables_demanda["ventas_maximas_90d"],
+                "dias_con_ventas_90d": variables_demanda["dias_con_ventas_90d"],
+                "ventas_promedio_30d": variables_demanda["ventas_promedio_30d"],
+                "ventas_promedio_60d": variables_demanda["ventas_promedio_60d"],
+                "variacion_30d_90d": variables_demanda["variacion_30d_90d"],
+                "dias_desde_ultima_venta": variables_demanda["dias_desde_ultima_venta"],
+                "tendencia_ventas_30d_pct": variables_demanda["tendencia_ventas_30d_pct"],
+                "dias_historial_disponible": dias_historial,
+            },
+            {
+                "agotado": False,
+                "base": {
+                    "id_producto": producto.id,
+                    "codigo_producto": producto.codigo,
+                    "nombre_producto": producto.nombre,
+                    "stock_actual": float(stock_actual),
+                    "stock_minimo": stock_minimo,
+                    "ventas_promedio_90d": round(ventas_promedio_90d, 2),
+                    "ventas_promedio_60d": round(
+                        variables_demanda["ventas_promedio_60d"], 2
+                    ),
+                    "ventas_promedio_30d": round(
+                        variables_demanda["ventas_promedio_30d"], 2
+                    ),
+                    "cobertura_stock_dias": round(cobertura_stock_dias, 2),
+                    "dias_historial_disponible": dias_historial,
+                },
+            },
+        ))
 
-        resultado = predecir_stock(
-            stock_actual=float(stock_actual),
-            stock_minimo=stock_minimo,
-            ventas_promedio_90d=ventas_promedio_90d,
-            cobertura_stock_dias=cobertura_stock_dias,
-            desviacion_ventas_90d=(
-                variables_demanda["desviacion_ventas_90d"]
-            ),
-            tendencia_ventas_90d_pct=(
-                variables_demanda["tendencia_ventas_90d_pct"]
-            ),
-            ventas_maximas_90d=(
-                variables_demanda["ventas_maximas_90d"]
-            ),
-            dias_con_ventas_90d=(
-                variables_demanda["dias_con_ventas_90d"]
-            ),
-            ventas_promedio_30d=(
-                variables_demanda["ventas_promedio_30d"]
-            ),
-            ventas_promedio_60d=(
-                variables_demanda["ventas_promedio_60d"]
-            ),
-            variacion_30d_90d=(
-                variables_demanda["variacion_30d_90d"]
-            ),
-            dias_desde_ultima_venta=(
-                variables_demanda["dias_desde_ultima_venta"]
-            ),
-            tendencia_ventas_30d_pct=(
-                variables_demanda["tendencia_ventas_30d_pct"]
-            ),
-            dias_historial_disponible=dias_historial,
-        )
+    # ------------------------------------------------------
+    # 7. EJECUTAR PREDICTOR (UNA SOLA VEZ PARA TODO EL LOTE)
+    # ------------------------------------------------------
 
-        resultado = normalizar_resultado_predictor(
-            resultado
-        )
+    predicciones = predecir_stock_lote(
+        [entrada for _, entrada, _ in pendientes]
+    )
+
+    for (posicion, _, extra), resultado in zip(pendientes, predicciones):
+
+        resultado = normalizar_resultado_predictor(resultado)
 
         # --------------------------------------------------
         # 8. DETERMINAR SI REQUIERE REPOSICIÓN
         # --------------------------------------------------
 
-        if not resultado.get("prediccion_disponible", False):
+        if extra["agotado"]:
+            requiere_reposicion = True
+        elif not resultado.get("prediccion_disponible", False):
             requiere_reposicion = None
         else:
             requiere_reposicion = (
@@ -542,31 +645,10 @@ def obtener_predicciones_stock():
         # 9. CONSTRUIR RESULTADO DEL PRODUCTO
         # --------------------------------------------------
 
-        resultados.append({
-            "id_producto": producto.id,
-            "codigo_producto": producto.codigo,
-            "nombre_producto": producto.nombre,
-            "stock_actual": float(stock_actual),
-            "stock_minimo": stock_minimo,
-            "ventas_promedio_90d": round(
-                ventas_promedio_90d,
-                2,
-            ),
-            "ventas_promedio_60d": round(
-                variables_demanda["ventas_promedio_60d"],
-                2,
-            ),
-            "ventas_promedio_30d": round(
-                variables_demanda["ventas_promedio_30d"],
-                2,
-            ),
-            "cobertura_stock_dias": round(
-                cobertura_stock_dias,
-                2,
-            ),
-            "dias_historial_disponible": dias_historial,
+        resultados[posicion] = {
+            **extra["base"],
             **resultado,
             "requiere_reposicion": requiere_reposicion,
-        })
+        }
 
     return resultados
