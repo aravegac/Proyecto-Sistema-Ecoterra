@@ -287,6 +287,25 @@ class NotaCreditoMonedaTests(SalesTablesMixin, TestCase):
             "subtotal_bruto": "100000.00", "estado": "PENDIENTE", **attrs,
         }, format="json")
 
+    def test_notas_no_superan_el_total_de_la_factura(self):
+        factura = self.factura()  # total 119000 con IVA
+        self.assertEqual(self.crear_nota(factura, subtotal_bruto="100000.01").status_code, 400)
+        primera = self.crear_nota(factura, subtotal_bruto="60000")
+        self.assertEqual(primera.status_code, 201, primera.data)
+        segunda = self.crear_nota(factura, subtotal_bruto="40000.01")
+        self.assertEqual(segunda.status_code, 400)
+        self.assertIn("saldo disponible", str(segunda.data))
+        self.assertEqual(self.crear_nota(factura, subtotal_bruto="40000").status_code, 201)
+        # Editar una nota pendiente no puede llevar la suma sobre el total.
+        response = self.api.patch(f"/api/notas-credito/{primera.data['id']}/",
+                                  {"subtotal_bruto": "60000.01"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        # Al anular una nota se libera su saldo.
+        response = self.api.post(f"/api/notas-credito/{primera.data['id']}/anular/",
+                                 {"motivo_anulacion_nc": "Duplicada"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.crear_nota(factura, subtotal_bruto="60000").status_code, 201)
+
     @patch("ventas.views.obtener_cliente_supabase")
     def test_moneda_y_operacion_heredadas_en_los_cuatro_casos_y_pdf(self, storage):
         bucket = storage.return_value.storage.from_.return_value

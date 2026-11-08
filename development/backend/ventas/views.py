@@ -316,6 +316,7 @@ class NotaCreditoViewSet(viewsets.ModelViewSet):
             nota.calcular_totales(nota.subtotal)
             if nota.total > Decimal("9999999999.99"):
                 raise ValidationError("El total supera el importe máximo permitido.")
+            nota.validar_saldo_factura()
             nota.estado = "EMITIDA"
 
         bucket = None

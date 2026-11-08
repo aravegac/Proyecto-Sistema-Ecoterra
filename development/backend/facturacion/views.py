@@ -39,6 +39,7 @@ from reportlab.platypus import (
 from supabase import create_client
 
 from usuarios.permissions import PermisoModulo
+from inventario.stock_facturas import descontar_stock_factura, devolver_stock_factura
 from .models import Factura, DetalleFactura
 from ventas.views import OrdenCompraViewSet as VentasOrdenCompraViewSet
 from .serializers import FacturaSerializer, OrdenCompraSerializer
@@ -548,6 +549,8 @@ class FacturaViewSet(viewsets.ModelViewSet):
         if factura.id_orden_compra.id_cliente_id != factura.id_cliente_id:
             raise ValidationError("El cliente de la factura no corresponde a la orden de compra.")
         if factura.estado == "PENDIENTE":
+            # Se descuenta el stock antes de generar el PDF; si algo falla, la transacción lo revierte.
+            descontar_stock_factura(factura, request.user.pk)
             factura.estado = "EMITIDA"
             factura.fecha_emision = timezone.localdate()
 
@@ -667,6 +670,8 @@ class FacturaViewSet(viewsets.ModelViewSet):
             motivo = request.data.get("motivo_anulacion_factura") if isinstance(request.data, dict) else None
             if not isinstance(motivo, str) or not motivo.strip():
                 raise ValidationError({"motivo_anulacion_factura": "Ingresa el motivo de anulación."})
+            if factura.estado == "EMITIDA":
+                devolver_stock_factura(factura, request.user.pk)
             factura.fecha_anulacion_factura = timezone.now()
             factura.motivo_anulacion_factura = motivo.strip()
             factura.id_usuario_anulacion_factura = request.user.pk
