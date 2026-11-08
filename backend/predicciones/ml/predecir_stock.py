@@ -28,6 +28,10 @@ VARIABLES_CLAVE_OOD = [
     "stock_actual",
     "ventas_promedio_90d",
     "desviacion_ventas_90d",
+    # Frecuencia de venta: es donde más se diferencian los
+    # productos reales de los usados en el entrenamiento.
+    "dias_con_ventas_90d",
+    "dias_desde_ultima_venta",
 ]
 
 MIN_DIAS_HISTORIAL = 90
