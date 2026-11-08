@@ -4,8 +4,22 @@ from rest_framework import serializers
 from .models import Proveedor
 
 
+class EstadoProveedorField(serializers.Field):
+    # Convierte el estado booleano del proveedor en Activo o Inactivo.
+    def to_representation(self, value):
+        return "Activo" if value else "Inactivo"
+
+    # Acepta un booleano o los textos Activo e Inactivo y los guarda como booleano.
+    def to_internal_value(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value in ("Activo", "Inactivo"):
+            return value == "Activo"
+        raise serializers.ValidationError("Debe ser Activo o Inactivo.")
+
+
 class ProveedorSerializer(serializers.ModelSerializer):
-    estado = serializers.CharField(required=False, write_only=True, default="Activo")
+    estado = EstadoProveedorField(required=False, default=True)
 
     class Meta:
         model = Proveedor
@@ -19,25 +33,3 @@ class ProveedorSerializer(serializers.ModelSerializer):
             # "direccion",
             "estado",
         ]
-
-    # Añade el estado Activo a los datos de salida del proveedor.
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data["estado"] = "Activo"
-        return data
-
-    # Acepta únicamente los textos Activo e Inactivo como estado del proveedor.
-    def validate_estado(self, value):
-        if value not in ("Activo", "Inactivo"):
-            raise serializers.ValidationError("Debe ser Activo o Inactivo.")
-        return value
-
-    # Descarta el estado recibido y guarda el proveedor con los campos persistentes del modelo.
-    def create(self, validated_data):
-        validated_data.pop("estado", None)
-        return super().create(validated_data)
-
-    # Descarta el estado recibido y actualiza los campos persistentes del proveedor.
-    def update(self, instance, validated_data):
-        validated_data.pop("estado", None)
-        return super().update(instance, validated_data)
