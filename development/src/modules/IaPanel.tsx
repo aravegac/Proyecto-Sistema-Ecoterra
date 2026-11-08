@@ -375,7 +375,7 @@ function Modelo({
                   type="number"
                   name="cantidad"
                   min="1"
-                  max="100"
+                  max="10000"
                   step="1"
                   defaultValue="10"
                   className="input"

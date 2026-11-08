@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import json
 
@@ -9,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from usuarios.permissions import PermisoModulo
 from inventario.models import Producto
-from .modelos import PUERTOS, NAVIERAS, CARGAS, cargar, variables_precio
+from .modelos import PUERTOS, NAVIERAS, CARGAS, MIN_VENTAS_PRECIO, cargar, variables_precio
 
 from predicciones.services.stock_service import (
     obtener_predicciones_stock,
@@ -31,7 +32,7 @@ class LlegadaEntrada(serializers.Serializer):
 class PrecioEntrada(serializers.Serializer):
     producto = serializers.IntegerField(min_value=1)
     fecha = serializers.DateField()
-    cantidad = serializers.IntegerField(min_value=1, max_value=100)
+    cantidad = serializers.IntegerField(min_value=1, max_value=10000)
     moneda = serializers.ChoiceField(choices=["CLP", "USD"], default="CLP")
     tipo_cambio = serializers.DecimalField(max_digits=12, decimal_places=4, min_value=Decimal("0.0001"), required=False)
 
@@ -58,18 +59,31 @@ class Prediccion(APIView):
             producto = Producto.objects.filter(pk=datos["producto"], estado=True).first()
             if not producto:
                 return Response({"detail": "Selecciona un producto activo existente."}, status=400)
-            if producto.codigo not in [f"POL-{i:03}" for i in range(1,6)]:
-                return Response({"detail": "Producto sin historial de entrenamiento. Incorpora sus datos y reentrena."}, status=422)
             datos = variables_precio(producto.codigo, datos["fecha"], datos["cantidad"])
         try:
             modelo = cargar()[tipo]
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             return Response({"detail": "Modelos no disponibles. Ejecuta el entrenamiento indicado en la guía."}, status=503)
+        if tipo == "precio":
+            # Solo se predice para productos que el modelo vio al entrenar.
+            ventas_producto = modelo.get("productos", {}).get(producto.codigo)
+            if not ventas_producto:
+                return Response({"detail": (
+                    f"{producto.codigo} no tiene suficiente historial de precios. Se necesitan al menos "
+                    f"{MIN_VENTAS_PRECIO} ventas facturadas y volver a entrenar el modelo."
+                )}, status=422)
         valor = round(max(0, float(modelo["modelo"].predict([datos])[0])), 2)
-        resultado = {"estimacion": valor, "origen": "simulado", "version": "demo-1",
+        if tipo == "precio" and modelo.get("origen") == "facturas":
+            aviso = (f"Basado en {ventas_producto} facturas reales de {producto.codigo} "
+                     f"({modelo['entrenamiento'] + modelo['prueba']} en total). Estimación de apoyo; no garantiza resultados.")
+            origen = "facturas"
+        else:
+            aviso = "Datos simulados. Estimación de apoyo; no garantiza resultados ni ejecuta compras."
+            origen = "simulado"
+        resultado = {"estimacion": valor, "origen": origen, "version": "facturas-1" if origen == "facturas" else "demo-1",
                      "mae_validacion": modelo["mae"], "muestras_entrenamiento": modelo["entrenamiento"],
                      "muestras_prueba": modelo["prueba"],
-                     "aviso": "Datos simulados. Estimación de apoyo; no garantiza resultados ni ejecuta compras."}
+                     "aviso": aviso}
         if tipo == "precio":
             moneda = entrada.validated_data["moneda"]
             tasa = entrada.validated_data.get("tipo_cambio", Decimal("1")) if moneda == "USD" else Decimal("1")
@@ -81,7 +95,9 @@ class Prediccion(APIView):
             if moneda == "USD":
                 resultado.update(tipo_cambio=float(tasa), origen_tipo_cambio="ingresado_por_usuario")
             fin = modelo.get("fecha_fin_entrenamiento")
-            if fin and entrada.validated_data["fecha"].isoformat() > fin:
+            # Con datos reales la última factura siempre es reciente: se avisa
+            # solo cuando la fecha pedida está a más de 90 días de ella.
+            if fin and entrada.validated_data["fecha"] > date.fromisoformat(fin) + timedelta(days=90):
                 resultado["aviso"] += " Fecha fuera del período entrenado; la precisión no está validada para ese horizonte."
 
         return Response(resultado)

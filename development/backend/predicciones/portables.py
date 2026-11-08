@@ -8,7 +8,7 @@ FORMATO = 1
 
 def exportar(modelos, destino):
     from .modelos import BASE
-    salida = {"formato": FORMATO, "version": "demo-1", "modelos": {}}
+    salida = {"formato": FORMATO, "version": "facturas-1", "modelos": {}}
     for tipo, datos in modelos.items():
         vectorizador, bosque = datos["modelo"].steps[0][1], datos["modelo"].steps[1][1]
         arboles = []
@@ -19,7 +19,7 @@ def exportar(modelos, destino):
                            "valor": t.value[:,0,0].tolist()})
         salida["modelos"][tipo] = {k:v for k,v in datos.items() if k != "modelo"}
         salida["modelos"][tipo].update(variables=vectorizador.get_feature_names_out().tolist(), arboles=arboles)
-        if tipo == "precio":
+        if tipo == "precio" and "fecha_fin_entrenamiento" not in datos:
             salida["modelos"][tipo]["fecha_fin_entrenamiento"] = (BASE + timedelta(days=datos["entrenamiento"]-1)).isoformat()
     destino = Path(destino)
     temporal = destino.with_suffix(".json.tmp")
