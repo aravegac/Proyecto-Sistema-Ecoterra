@@ -98,6 +98,12 @@ export default function OrdenesCompra({
     }
     const requestId = ++documentRequest.current
     setDocumentUrl("")
+    // Sin PDF adjunto no hay nada que pedir: se evita una consulta que siempre daría 404.
+    if (!order.documento) {
+      setDocumentLoading(false)
+      setDocumentError("Esta orden aún no tiene un PDF adjunto.")
+      return
+    }
     setDocumentError("")
     setDocumentLoading(true)
     try {
@@ -264,8 +270,11 @@ export default function OrdenesCompra({
         <iframe title="Documento de orden de compra" src={documentUrl} className="oc-preview-frame" />
         <a className="btn btn-ghost btn-sm" href={documentUrl} target="_blank" rel="noopener noreferrer">Abrir documento en otra pestaña</a>
       </> : <div className="oc-preview-empty">
-        <p role={documentError ? "alert" : undefined}>{documentError || "Selecciona un archivo PDF."}</p>
-        {order && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void loadDocument(order)}>Reintentar</button>}
+        <p role={documentError && order?.documento ? "alert" : undefined}>{documentError || "Selecciona un archivo PDF."}</p>
+        {order && !order.documento && <p className="oc-preview-note">
+          {showForm ? "Selecciona un PDF para adjuntarlo a esta orden." : "Puedes adjuntarlo desde Editar."}
+        </p>}
+        {order?.documento && <button className="btn btn-ghost btn-sm" type="button" onClick={() => void loadDocument(order)}>Reintentar</button>}
       </div>}
     {showForm && file && <div className="oc-preview-note">{file.name}</div>}
   </div>
