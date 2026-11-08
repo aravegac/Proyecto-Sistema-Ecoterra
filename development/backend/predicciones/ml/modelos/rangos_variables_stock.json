@@ -1,80 +1,80 @@
 {
     "stock_actual": {
-        "minimo": 0.05906499853771886,
-        "maximo": 693586.3883389026,
-        "percentil_01": 0.5766234824231575,
-        "percentil_99": 477173.5794556534
+        "minimo": 0.007681341718381684,
+        "maximo": 1679855.2324937384,
+        "percentil_01": 0.058212889803625226,
+        "percentil_99": 461932.6204175338
     },
     "stock_minimo": {
-        "minimo": 0.24039715646029736,
-        "maximo": 189506.27938893653,
-        "percentil_01": 0.4508939560357033,
-        "percentil_99": 118206.89091460915
+        "minimo": 0.04738145786695717,
+        "maximo": 287284.5212588456,
+        "percentil_01": 0.25668844705497545,
+        "percentil_99": 146762.338076527
     },
     "ventas_promedio_90d": {
-        "minimo": 0.014035278022451638,
-        "maximo": 4225.9466853112,
-        "percentil_01": 0.02247914977154871,
-        "percentil_99": 3750.100527688114
+        "minimo": 0.0007295288053484708,
+        "maximo": 3386.316139582024,
+        "percentil_01": 0.004973892994471103,
+        "percentil_99": 2501.200225350157
     },
     "cobertura_stock_dias": {
-        "minimo": 2.147823047566086,
-        "maximo": 179.86408786495636,
-        "percentil_01": 4.5655730863926145,
-        "percentil_99": 178.20337081615645
+        "minimo": 2.0010362069225307,
+        "maximo": 17576.477126051523,
+        "percentil_01": 2.118139103798772,
+        "percentil_99": 596.7900236137145
     },
     "desviacion_ventas_90d": {
-        "minimo": 0.009752772603047216,
-        "maximo": 3234.019171151649,
-        "percentil_01": 0.013169108257005383,
-        "percentil_99": 2860.9568927827154
+        "minimo": 0.00493417818815496,
+        "maximo": 3878.9065099544646,
+        "percentil_01": 0.01428532487488719,
+        "percentil_99": 2973.0382381525906
     },
     "tendencia_ventas_90d_pct": {
-        "minimo": -0.8127422718810356,
-        "maximo": 2.58319557136107,
-        "percentil_01": -0.5872507242830991,
-        "percentil_99": 1.1505248078290418
+        "minimo": -1.0,
+        "maximo": 5.0,
+        "percentil_01": -1.0,
+        "percentil_99": 5.0
     },
     "ventas_maximas_90d": {
-        "minimo": 0.07789518325153247,
-        "maximo": 14255.251228522111,
+        "minimo": 0.03929368893516708,
+        "maximo": 17811.098965074234,
         "percentil_01": 0.08603091605622337,
-        "percentil_99": 13073.122536192282
+        "percentil_99": 12939.019732935307
     },
     "dias_con_ventas_90d": {
-        "minimo": 17.0,
+        "minimo": 1.0,
         "maximo": 90.0,
-        "percentil_01": 22.0,
+        "percentil_01": 2.0,
         "percentil_99": 90.0
     },
     "ventas_promedio_30d": {
-        "minimo": 0.008846031964182493,
-        "maximo": 5038.247598492186,
-        "percentil_01": 0.017152805662158703,
-        "percentil_99": 3667.8183447836045
+        "minimo": 0.0,
+        "maximo": 4527.614745437409,
+        "percentil_01": 0.0,
+        "percentil_99": 2439.670337459057
     },
     "ventas_promedio_60d": {
-        "minimo": 0.012631555744768708,
-        "maximo": 4583.976654664616,
-        "percentil_01": 0.020452987257537032,
-        "percentil_99": 3702.142956263143
+        "minimo": 0.0,
+        "maximo": 3647.5701426980077,
+        "percentil_01": 0.004020209727552603,
+        "percentil_99": 2456.8409828036715
     },
     "variacion_30d_90d": {
-        "minimo": -0.7431609557781669,
-        "maximo": 0.9253466185607175,
-        "percentil_01": -0.4867896833864513,
-        "percentil_99": 0.5543996664614959
+        "minimo": -1.0,
+        "maximo": 2.0000000000000004,
+        "percentil_01": -1.0,
+        "percentil_99": 1.562102656139511
     },
     "dias_desde_ultima_venta": {
         "minimo": 0.0,
-        "maximo": 20.0,
+        "maximo": 82.0,
         "percentil_01": 0.0,
-        "percentil_99": 8.0
+        "percentil_99": 47.0
     },
     "tendencia_ventas_30d_pct": {
         "minimo": -1.0,
         "maximo": 5.0,
-        "percentil_01": -0.7891435966160071,
-        "percentil_99": 3.5025493487861397
+        "percentil_01": -1.0,
+        "percentil_99": 5.0
     }
 }

@@ -1,11 +1,11 @@
 {
     "nombre_modelo": "Random Forest ampliado",
     "tipo_modelo": "RandomForestRegressor",
-    "version": "1.0",
-    "fecha_generacion": "2026-11-06T13:23:10.573183",
+    "version": "2.0",
+    "fecha_generacion": "2026-11-08T17:05:46.039512",
     "origen_datos": "Dataset sintético",
-    "cantidad_registros": 2600,
-    "cantidad_productos": 50,
+    "cantidad_registros": 4160,
+    "cantidad_productos": 80,
     "variable_objetivo": "dias_hasta_agotar_stock",
     "variables_predictoras": [
         "stock_actual",
@@ -24,82 +24,82 @@
     ],
     "rangos_variables": {
         "stock_actual": {
-            "minimo": 0.05906499853771886,
-            "maximo": 693586.3883389026,
-            "percentil_01": 0.5766234824231575,
-            "percentil_99": 477173.5794556534
+            "minimo": 0.007681341718381684,
+            "maximo": 1679855.2324937384,
+            "percentil_01": 0.058212889803625226,
+            "percentil_99": 461932.6204175338
         },
         "stock_minimo": {
-            "minimo": 0.24039715646029736,
-            "maximo": 189506.27938893653,
-            "percentil_01": 0.4508939560357033,
-            "percentil_99": 118206.89091460915
+            "minimo": 0.04738145786695717,
+            "maximo": 287284.5212588456,
+            "percentil_01": 0.25668844705497545,
+            "percentil_99": 146762.338076527
         },
         "ventas_promedio_90d": {
-            "minimo": 0.014035278022451638,
-            "maximo": 4225.9466853112,
-            "percentil_01": 0.02247914977154871,
-            "percentil_99": 3750.100527688114
+            "minimo": 0.0007295288053484708,
+            "maximo": 3386.316139582024,
+            "percentil_01": 0.004973892994471103,
+            "percentil_99": 2501.200225350157
         },
         "cobertura_stock_dias": {
-            "minimo": 2.147823047566086,
-            "maximo": 179.86408786495636,
-            "percentil_01": 4.5655730863926145,
-            "percentil_99": 178.20337081615645
+            "minimo": 2.0010362069225307,
+            "maximo": 17576.477126051523,
+            "percentil_01": 2.118139103798772,
+            "percentil_99": 596.7900236137145
         },
         "desviacion_ventas_90d": {
-            "minimo": 0.009752772603047216,
-            "maximo": 3234.019171151649,
-            "percentil_01": 0.013169108257005383,
-            "percentil_99": 2860.9568927827154
+            "minimo": 0.00493417818815496,
+            "maximo": 3878.9065099544646,
+            "percentil_01": 0.01428532487488719,
+            "percentil_99": 2973.0382381525906
         },
         "tendencia_ventas_90d_pct": {
-            "minimo": -0.8127422718810356,
-            "maximo": 2.58319557136107,
-            "percentil_01": -0.5872507242830991,
-            "percentil_99": 1.1505248078290418
+            "minimo": -1.0,
+            "maximo": 5.0,
+            "percentil_01": -1.0,
+            "percentil_99": 5.0
         },
         "ventas_maximas_90d": {
-            "minimo": 0.07789518325153247,
-            "maximo": 14255.251228522111,
+            "minimo": 0.03929368893516708,
+            "maximo": 17811.098965074234,
             "percentil_01": 0.08603091605622337,
-            "percentil_99": 13073.122536192282
+            "percentil_99": 12939.019732935307
         },
         "dias_con_ventas_90d": {
-            "minimo": 17.0,
+            "minimo": 1.0,
             "maximo": 90.0,
-            "percentil_01": 22.0,
+            "percentil_01": 2.0,
             "percentil_99": 90.0
         },
         "ventas_promedio_30d": {
-            "minimo": 0.008846031964182493,
-            "maximo": 5038.247598492186,
-            "percentil_01": 0.017152805662158703,
-            "percentil_99": 3667.8183447836045
+            "minimo": 0.0,
+            "maximo": 4527.614745437409,
+            "percentil_01": 0.0,
+            "percentil_99": 2439.670337459057
         },
         "ventas_promedio_60d": {
-            "minimo": 0.012631555744768708,
-            "maximo": 4583.976654664616,
-            "percentil_01": 0.020452987257537032,
-            "percentil_99": 3702.142956263143
+            "minimo": 0.0,
+            "maximo": 3647.5701426980077,
+            "percentil_01": 0.004020209727552603,
+            "percentil_99": 2456.8409828036715
         },
         "variacion_30d_90d": {
-            "minimo": -0.7431609557781669,
-            "maximo": 0.9253466185607175,
-            "percentil_01": -0.4867896833864513,
-            "percentil_99": 0.5543996664614959
+            "minimo": -1.0,
+            "maximo": 2.0000000000000004,
+            "percentil_01": -1.0,
+            "percentil_99": 1.562102656139511
         },
         "dias_desde_ultima_venta": {
             "minimo": 0.0,
-            "maximo": 20.0,
+            "maximo": 82.0,
             "percentil_01": 0.0,
-            "percentil_99": 8.0
+            "percentil_99": 47.0
         },
         "tendencia_ventas_30d_pct": {
             "minimo": -1.0,
             "maximo": 5.0,
-            "percentil_01": -0.7891435966160071,
-            "percentil_99": 3.5025493487861397
+            "percentil_01": -1.0,
+            "percentil_99": 5.0
         }
     },
     "parametros": {
@@ -124,97 +124,97 @@
     },
     "evaluacion_cronologica": {
         "Dummy": {
-            "MAE": 46.56353172007848,
-            "RMSE": 54.88080450474482,
-            "R2": -0.12855005638185513
+            "MAE": 90.4018962510898,
+            "RMSE": 150.97324506325643,
+            "R2": -0.22954334364192452
         },
         "Referencia matematica": {
-            "MAE": 11.635839162682366,
-            "RMSE": 18.499196387483877,
-            "R2": 0.8717711892876345
+            "MAE": 36.60532073569218,
+            "RMSE": 123.95374830910089,
+            "R2": 0.17117433380593605
         },
         "RF 3 variables": {
-            "MAE": 15.917410641378824,
-            "RMSE": 23.224807297631425,
-            "R2": 0.7978917102819556
+            "MAE": 45.2152320777786,
+            "RMSE": 92.93061085114003,
+            "R2": 0.5341335377031495
         },
         "RF 4 variables": {
-            "MAE": 12.937060654421336,
-            "RMSE": 19.16302139028401,
-            "R2": 0.8624033510063189
+            "MAE": 42.80617359578553,
+            "RMSE": 89.88554338242528,
+            "R2": 0.5641635390311064
         },
         "RF ampliado": {
-            "MAE": 11.96872761463284,
-            "RMSE": 18.401395469000878,
-            "R2": 0.8731234366840239
+            "MAE": 38.78990402879949,
+            "RMSE": 84.16611849194953,
+            "R2": 0.6178635529694438
         },
         "Hibrido RF ampliado": {
-            "MAE": 11.68887807192247,
-            "RMSE": 18.069786496724443,
-            "R2": 0.8776550829224898
+            "MAE": 38.95279471415945,
+            "RMSE": 86.09513123412353,
+            "R2": 0.6001463656768795
         }
     },
     "evaluacion_groupkfold": {
         "Dummy": {
-            "MAE_promedio_folds": 47.62511316568047,
-            "MAE_desviacion_folds": 1.6628819167030076,
-            "RMSE_promedio_folds": 56.624192563696774,
-            "R2_promedio_folds": -0.0025023979080273763,
-            "MAE_global": 47.625113165680474,
-            "RMSE_global": 56.674972239652526,
-            "R2_global": -0.0009152612739222743
+            "MAE_promedio_folds": 117.73733545788646,
+            "MAE_desviacion_folds": 1.5954594311290051,
+            "RMSE_promedio_folds": 155.74182858864418,
+            "R2_promedio_folds": -0.0034976127034258564,
+            "MAE_global": 117.73733545788646,
+            "RMSE_global": 155.82179710978627,
+            "R2_global": -0.001219428659933186
         },
         "Referencia matematica": {
-            "MAE_promedio_folds": 15.278472080619617,
-            "MAE_desviacion_folds": 2.370206270170146,
-            "RMSE_promedio_folds": 22.534179036520207,
-            "R2_promedio_folds": 0.8397594428366281,
-            "MAE_global": 15.278472080619613,
-            "RMSE_global": 22.841463718061576,
-            "R2_global": 0.8374217140531773
+            "MAE_promedio_folds": 44.19144202350185,
+            "MAE_desviacion_folds": 27.705088123845588,
+            "RMSE_promedio_folds": 232.8090071723537,
+            "R2_promedio_folds": -4.739667300445385,
+            "MAE_global": 44.19144202350185,
+            "RMSE_global": 386.0514674572625,
+            "R2_global": -5.145585514287716
         },
         "RF 3 variables": {
-            "MAE_promedio_folds": 20.515982962174043,
-            "MAE_desviacion_folds": 1.1628849998835538,
-            "RMSE_promedio_folds": 29.133246362465833,
-            "R2_promedio_folds": 0.7341987998167468,
-            "MAE_global": 20.515982962174043,
-            "RMSE_global": 29.20574468873503,
-            "R2_global": 0.7342022821738904
+            "MAE_promedio_folds": 35.78810663957937,
+            "MAE_desviacion_folds": 5.068677041654875,
+            "RMSE_promedio_folds": 68.0679041997018,
+            "R2_promedio_folds": 0.8075081199436243,
+            "MAE_global": 35.78810663957937,
+            "RMSE_global": 68.58488138285861,
+            "R2_global": 0.8060322024137127
         },
         "RF 4 variables": {
-            "MAE_promedio_folds": 16.640441567596397,
-            "MAE_desviacion_folds": 1.7111488521603455,
-            "RMSE_promedio_folds": 24.194151216596758,
-            "R2_promedio_folds": 0.8161739067638543,
-            "MAE_global": 16.640441567596397,
-            "RMSE_global": 24.372719658640975,
-            "R2_global": 0.8148930754628122
+            "MAE_promedio_folds": 33.11264166613468,
+            "MAE_desviacion_folds": 5.166674448115591,
+            "RMSE_promedio_folds": 64.76957744096144,
+            "R2_promedio_folds": 0.8250399327641647,
+            "MAE_global": 33.112641666134685,
+            "RMSE_global": 65.36847279490979,
+            "R2_global": 0.8237985296340218
         },
         "RF ampliado": {
-            "MAE_promedio_folds": 15.444031789233737,
-            "MAE_desviacion_folds": 1.9832426010863722,
-            "RMSE_promedio_folds": 22.98494236292778,
-            "R2_promedio_folds": 0.8333537827165542,
-            "MAE_global": 15.444031789233732,
-            "RMSE_global": 23.243810126644856,
-            "R2_global": 0.8316437214633151
+            "MAE_promedio_folds": 29.302127881238352,
+            "MAE_desviacion_folds": 4.47807020925573,
+            "RMSE_promedio_folds": 58.26971599839793,
+            "R2_promedio_folds": 0.8584737038407905,
+            "MAE_global": 29.302127881238352,
+            "RMSE_global": 58.82482198331677,
+            "R2_global": 0.8573098172931182
         },
         "Hibrido RF ampliado": {
-            "MAE_promedio_folds": 15.344193233885298,
-            "MAE_desviacion_folds": 2.2992559718721153,
-            "RMSE_promedio_folds": 22.8067513266189,
-            "R2_promedio_folds": 0.8351228552098509,
-            "MAE_global": 15.3441932338853,
-            "RMSE_global": 23.07964202328794,
-            "R2_global": 0.834013481528278
+            "MAE_promedio_folds": 38.04078215011299,
+            "MAE_desviacion_folds": 22.022585074909188,
+            "RMSE_promedio_folds": 197.1026335221781,
+            "R2_promedio_folds": -3.682994682529489,
+            "MAE_global": 38.04078215011299,
+            "RMSE_global": 348.9848903960545,
+            "R2_global": -4.022108593943408
         }
     },
     "seleccion": {
         "modelo_seleccionado": "RF ampliado",
         "supera_consistentemente": false,
-        "mejora_mae_cronologica_pct": -2.860889079818928,
-        "mejora_mae_groupkfold_pct": -1.0836143021403768,
+        "mejora_mae_cronologica_pct": -5.96793922086092,
+        "mejora_mae_groupkfold_pct": 33.6927546612873,
         "conclusion": "El RF ampliado no supera consistentemente la referencia matemática. Se selecciona como modelo ML final por ser la alternativa ampliada evaluada, pero la referencia matemática mantiene el mejor desempeño en al menos una de las evaluaciones. No se debe afirmar que el ML es más preciso."
     },
     "advertencia": "Modelo entrenado exclusivamente con datos sintéticos. Las métricas no representan validación con datos reales de Ecoterra."
