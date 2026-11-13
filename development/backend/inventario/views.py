@@ -146,7 +146,9 @@ class MovimientoListView(ListCreateAPIView):
         tipo = request.data.get("tipo_movimiento")
         cantidad_raw = request.data.get("cantidad_movimiento")
         id_inventario = request.data.get("id_inventario")
-        id_usuario = request.data.get("id_usuario")
+        # El responsable es siempre el usuario autenticado: un id_usuario
+        # enviado en la petición se ignora para que no se pueda suplantar.
+        id_usuario = request.user.pk
 
         # ---------- Validaciones básicas ----------
         if tipo not in ("Entrada", "Salida", "Ajuste"):
