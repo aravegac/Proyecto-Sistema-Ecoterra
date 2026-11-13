@@ -78,6 +78,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
             "stock_anterior",
             "stock_posterior",
         ]
+        # Lo asigna el backend con el usuario autenticado.
+        read_only_fields = ["id_usuario"]
 
 
 class ProductoSerializer(serializers.ModelSerializer):

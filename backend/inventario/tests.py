@@ -89,3 +89,18 @@ class LoteTests(APITestCase):
         lote.refresh_from_db()
         self.assertEqual(lote.cantidad, 200)
         self.assertEqual(Movimiento.objects.get().stock_posterior, 200)
+
+    def test_movimiento_registra_usuario_autenticado_no_el_enviado(self):
+        lote = Inventario.objects.create(**self.datos)
+        response = self.client.post(
+            "/api/movimientos/",
+            {
+                "id_inventario": lote.pk,
+                "id_usuario": 999,  # intento de suplantar a otro usuario
+                "tipo_movimiento": "Entrada",
+                "cantidad_movimiento": 10,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Movimiento.objects.get().id_usuario, 1)

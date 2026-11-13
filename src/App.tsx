@@ -999,7 +999,7 @@ export default function App() {
       headers: authHeaders(authUser),
       body: JSON.stringify({
         id_inventario: input.id_inventario,
-        id_usuario: input.id_usuario,
+        // id_usuario no se envía: el backend usa el usuario autenticado.
         tipo_movimiento: input.tipo,
         cantidad_movimiento: input.cantidad_movimiento,
         referencia: input.referencia || null,
