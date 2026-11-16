@@ -238,5 +238,4 @@ Proyecto-Sistema-Ecoterra/
 │                         Dockerfile, requirements.txt)
 ├── scripts/              scripts SQL de cambios de esquema en Supabase
 ├── tests/                datos de prueba y pruebas de rendimiento por sprint
-└── docs/06_despliegue/   manual_tecnico.pdf
 ```
