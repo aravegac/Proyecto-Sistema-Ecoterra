@@ -30,8 +30,6 @@
 
 Este proyecto corresponde a un **Sistema de Gestión de Inventario, Cotizaciones, Facturación y Predicciones con IA**, diseñado para centralizar la operación logística y comercial, permitiendo una toma de decisiones informada basada en modelos analíticos.
 
-> **Proyecto APT — Capstone**, Ingeniería en Informática. Este README es la versión breve del [manual técnico](docs/06_despliegue/manual_tecnico.pdf).
-
 ---
 
 ## ✨ Módulos y Funcionalidades
