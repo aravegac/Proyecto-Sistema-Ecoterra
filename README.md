@@ -19,9 +19,6 @@
 [✨ Módulos](#-módulos-y-funcionalidades) •
 [🤖 IA](#-modelos-de-inteligencia-artificial) •
 [🏗️ Arquitectura](#️-arquitectura-del-sistema) •
-[🚀 Instalación](#-instalación-y-configuración) •
-[🧪 Pruebas](#-ejecución-de-pruebas) •
-[🛟 Problemas](#-solución-de-problemas)
 
 ---
 
