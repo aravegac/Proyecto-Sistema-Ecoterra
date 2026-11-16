@@ -237,5 +237,5 @@ Proyecto-Sistema-Ecoterra/
 │                         cotizaciones/, facturacion/, ventas/, predicciones/,
 │                         Dockerfile, requirements.txt)
 ├── scripts/              scripts SQL de cambios de esquema en Supabase
-├── tests/                datos de prueba y pruebas de rendimiento por sprint
+├── datos_prueba/                datos de prueba utilizados en módulos específicos
 ```
