@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/imports/logo_ecoterra.png" alt="EcoTerra Logo" width="320" />
+<img src="logo_Ecoterra.png" alt="EcoTerra Logo" width="320" />
 
 # 🌍 EcoTerra — Sistema de Gestión Operativa, Facturación e Inteligencia Artificial
 
