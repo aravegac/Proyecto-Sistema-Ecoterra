@@ -18,7 +18,7 @@
 [📌 Descripción](#-descripción-general) •
 [✨ Módulos](#-módulos-y-funcionalidades) •
 [🤖 IA](#-modelos-de-inteligencia-artificial) •
-[🏗️ Arquitectura](#️-arquitectura-del-sistema) •
+[🏗️ Arquitectura](#️-arquitectura-del-sistema)
 
 ---
 
