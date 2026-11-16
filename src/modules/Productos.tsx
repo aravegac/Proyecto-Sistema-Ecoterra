@@ -1,7 +1,7 @@
 // client/src/modules/Productos.tsx
 
 import React, { useState } from "react"
-import { Badge, fmt, I, Ico, PageTitle, Product } from "../shared"
+import { AuthUser, Badge, can, fmt, I, Ico, PageTitle, Product } from "../shared"
 
 export type ProductInput = {
   codigo: string
@@ -15,6 +15,8 @@ export type ProductInput = {
 
 type ProductProps = {
   productos: Product[]
+  loadError?: string
+  authUser: AuthUser | null
   onCreate: (input: ProductInput) => Promise<Product>
   onUpdate: (product: Product, input: ProductInput) => Promise<Product>
   onDelete: (product: Product) => Promise<void>
@@ -30,7 +32,15 @@ const emptyProduct: ProductInput = {
   estado: "Activo",
 }
 
-export default function Productos({ productos, onCreate, onUpdate, onDelete }: ProductProps) {
+// Muestra y filtra productos y gestiona sus formularios de creación, edición y eliminación.
+export default function Productos({
+  productos,
+  loadError,
+  authUser,
+  onCreate,
+  onUpdate,
+  onDelete,
+}: ProductProps) {
   const [tipo, setTipo] = useState("")
   const [estado, setEstado] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -39,20 +49,22 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
   const [form, setForm] = useState<ProductInput>(emptyProduct)
   const [error, setError] = useState("")
 
-  const tipos = [...new Set(productos.map((product) => product.tipo))]
-  const estados = [...new Set(productos.map((product) => product.estado))]
+  const tipos = [...new Set(productos.map(/* Transforma cada elemento de la lista devolviendo product.tipo. */ (product) => product.tipo))]
+  const estados = [...new Set(productos.map(/* Transforma cada elemento de la lista devolviendo product.estado. */ (product) => product.estado))]
   const filtered = productos.filter(
-    (product) =>
+    /* Comprueba qué elementos cumplen la condición evaluando (!tipo || product.tipo === tipo) && (!estado || product.estado === estado). */ (product) =>
       (!tipo || product.tipo === tipo) &&
       (!estado || product.estado === estado),
   )
 
+  // Cierra el formulario de producto, borra la selección de edición y limpia el error.
   const closeModal = () => {
     setShowModal(false)
     setEditingProduct(null)
     setError("")
   }
 
+  // Valida código, nombre y stock mínimo y solicita crear o actualizar el producto.
   const saveProduct = async () => {
     // Validaciones
     if (!form.codigo.trim() || !form.nombre.trim()) {
@@ -86,141 +98,167 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
             setForm(emptyProduct)
             setShowModal(true)
           }}
+          disabled={!can(authUser, "productos", "Crear")}
         >
           <Ico p={I.plus ?? "M12 5v14M5 12h14"} size={14} /> Nuevo producto
         </button>
       </PageTitle>
-      <div className="panel">
-        <div className="panel-header">
-          <div className="productos-filter-row">
-            <select
-              className="select productos-filter-a"
-              value={tipo}
-              onChange={(event) => setTipo(event.target.value)}
-            >
-              <option value="">Todos los tipos</option>
-              {tipos.map((productType) => (
-                <option key={productType} value={productType}>
-                  {productType}
-                </option>
-              ))}
-            </select>
-            <select
-              className="select productos-filter-b"
-              value={estado}
-              onChange={(event) => setEstado(event.target.value)}
-            >
-              <option value="">Todos los estados</option>
-              {estados.map((productStatus) => (
-                <option key={productStatus} value={productStatus}>
-                  {productStatus}
-                </option>
-              ))}
-            </select>
+      {loadError && <p className="panel" role="alert" style={{ padding: 16, color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>}
+      {can(authUser, "productos", "Consultar") ? (
+        <div className="panel">
+          <div className="panel-header">
+            <div className="productos-filter-row">
+              <select
+                className="select productos-filter-a"
+                value={tipo}
+                onChange={(event) => setTipo(event.target.value)}
+              >
+                <option value="">Todos los tipos</option>
+                {tipos.map((productType) => (
+                  <option key={productType} value={productType}>
+                    {productType}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="select productos-filter-b"
+                value={estado}
+                onChange={(event) => setEstado(event.target.value)}
+              >
+                <option value="">Todos los estados</option>
+                {estados.map((productStatus) => (
+                  <option key={productStatus} value={productStatus}>
+                    {productStatus}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <span className="productos-count">{filtered.length} productos</span>
           </div>
-          <span className="productos-count">{filtered.length} productos</span>
+
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre</th>
+                  <th>Tipo</th>
+                  <th>Unidad</th>
+                  <th>Stock mín.</th>
+                  <th>Stock disp.</th>
+                  <th>Stock total</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filtered.map((product) => (
+                  <tr key={product.id}>
+                    <td className="productos-code">{product.codigo}</td>
+
+                    <td>
+                      <div className="productos-name">{product.nombre}</div>
+                      <div className="productos-desc">{product.desc}</div>
+                    </td>
+
+                    <td>
+                      <Badge t="info">{product.tipo}</Badge>
+                    </td>
+
+                    <td className="productos-unit">{product.unidad}</td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockMin)} L
+                    </td>
+
+                    <td className="productos-meta">
+                      <span
+                        style={{
+                          color:
+                            product.stock === 0
+                              ? "#DC2626"
+                              : product.stock < product.stockMin
+                                ? "#D97706"
+                                : "#00995A",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {fmt(product.stock)} L
+                      </span>
+                    </td>
+
+                    <td className="productos-meta" style={{ color: "#64748b" }}>
+                      {fmt(product.stockTotal)} L
+                    </td>
+
+                    <td>
+                      <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
+                        {product.estado}
+                      </Badge>
+                    </td>
+
+                    <td>
+                      <div className="productos-actions">
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          title="Editar producto"
+                          aria-label="Editar producto"
+                          onClick={() => {
+                            setEditingProduct(product)
+                            setForm({
+                              codigo: product.codigo,
+                              nombre: product.nombre,
+                              descripcion: product.desc,
+                              tipo: product.tipo,
+                              unidad: product.unidad,
+                              stockMinimo: product.stockMin,
+                              estado: product.estado,
+                            })
+                            setShowModal(true)
+                          }}
+                          disabled={!can(authUser, "productos", "Editar")}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-delete-btn"
+                          title="Eliminar producto"
+                          aria-label="Eliminar producto"
+                          onClick={() => setDeletingProduct(product)}
+                          disabled={!can(authUser, "productos", "Eliminar")}
+                        >
+                          <Ico p={I.trash} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: "center", padding: 24 }}>
+                      No hay productos que coincidan con los filtros seleccionados.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>Código</th>
-              <th>Nombre</th>
-              <th>Tipo</th>
-              <th>Unidad</th>
-              <th>Stock mín.</th>
-              <th>Stock disp.</th>
-              <th>Stock total</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((product) => (
-              <tr key={product.id}>
-                <td className="productos-code">{product.codigo}</td>
-                <td>
-                  <div className="productos-name">{product.nombre}</div>
-                  <div className="productos-desc">{product.desc}</div>
-                </td>
-                <td>
-                  <Badge t="info">{product.tipo}</Badge>
-                </td>
-                <td className="productos-unit">{product.unidad}</td>
-
-                {/* Stock mínimo */}
-                <td className="productos-meta" style={{ color: "#64748b" }}>
-                  {fmt(product.stockMin)} L
-                </td>
-
-                {/* Stock disponible (con color según nivel) */}
-                <td className="productos-meta">
-                  <span
-                    style={{
-                      color:
-                        product.stock === 0
-                          ? "#DC2626"
-                          : product.stock < product.stockMin
-                            ? "#D97706"
-                            : "#00995A",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {fmt(product.stock)} L
-                  </span>
-                </td>
-
-                {/* Stock total */}
-                <td className="productos-meta" style={{ color: "#64748b" }}>
-                  {fmt(product.stockTotal)} L
-                </td>
-
-                <td>
-                  <Badge t={product.estado === "Activo" ? "ok" : "neutral"}>
-                    {product.estado}
-                  </Badge>
-                </td>
-                <td>
-                  <div className="productos-actions">
-                    <button
-                      className="btn btn-ghost btn-sm productos-edit-btn"
-                      title="Editar producto"
-                      aria-label="Editar producto"
-                      onClick={() => {
-                        setEditingProduct(product)
-                        setForm({
-                          codigo: product.codigo,
-                          nombre: product.nombre,
-                          descripcion: product.desc,
-                          tipo: product.tipo,
-                          unidad: product.unidad,
-                          stockMinimo: product.stockMin,
-                          estado: product.estado,
-                        })
-                        setShowModal(true)
-                      }}
-                    >
-                      <Ico p={I.edit} size={13} />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm productos-delete-btn"
-                      title="Eliminar producto"
-                      aria-label="Eliminar producto"
-                      onClick={() => setDeletingProduct(product)}
-                    >
-                      <Ico p={I.trash} size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      ) : (
+        <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+          No tienes permisos para consultar los productos.
+        </div>
+      )}
       {showModal && (
         <div className="modal-backdrop">
           <div
             className="modal productos-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
             key={editingProduct?.id ?? "new"}
           >
             <div className="productos-modal-header">
@@ -243,8 +281,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Código"
                   value={form.codigo}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, codigo: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, codigo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, codigo: e.target.value }). */ (current) => ({ ...current, codigo: e.target.value }))
                   }
                 />
               </div>
@@ -256,8 +294,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Nombre"
                   value={form.nombre}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, nombre: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, nombre: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, nombre: e.target.value }). */ (current) => ({ ...current, nombre: e.target.value }))
                   }
                 />
               </div>
@@ -269,22 +307,25 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Descripción"
                   value={form.descripcion}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, descripcion: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, descripcion: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, descripcion: e.target.value }). */ (current) => ({ ...current, descripcion: e.target.value }))
                   }
                 />
               </div>
 
-              {/* Tipo */}
+              {/* Stock Mínimo (min=0) */}
               <div className="field productos-span-1">
-                <label className="label">Tipo</label>
+                <label className="label">Stock Mínimo</label>
                 <input
                   className="input"
-                  placeholder="Tipo"
-                  value={form.tipo}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, tipo: e.target.value }))
-                  }
+                  type="number"
+                  min={0}
+                  value={form.stockMinimo}
+                  onChange={/* Actualiza el stock mínimo del formulario solo si el valor no es negativo. */ (e) => {
+                    const val = Number(e.target.value)
+                    if (val < 0) return
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, stockMinimo: val }). */ (current) => ({ ...current, stockMinimo: val }))
+                  }}
                 />
               </div>
 
@@ -300,21 +341,19 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                 />
               </div>
 
-              {/* Stock Mínimo (min=0) */}
+              {/* Tipo */}
               <div className="field productos-span-1">
-                <label className="label">Stock Mínimo</label>
+                <label className="label">Tipo</label>
                 <input
                   className="input"
-                  type="number"
-                  min={0}
-                  value={form.stockMinimo}
-                  onChange={(e) => {
-                    const val = Number(e.target.value)
-                    if (val < 0) return
-                    setForm((current) => ({ ...current, stockMinimo: val }))
-                  }}
+                  placeholder="Tipo"
+                  value={form.tipo}
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
+                  }
                 />
               </div>
+
 
               {/* Estado */}
               <div className="field productos-span-1">
@@ -322,8 +361,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                 <select
                   className="input"
                   value={form.estado}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, estado: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, estado: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, estado: e.target.value }). */ (current) => ({ ...current, estado: e.target.value }))
                   }
                 >
                   <option value="Activo">Activo</option>
@@ -336,6 +375,11 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
               <button
                 className="btn btn-primary productos-save"
                 onClick={saveProduct}
+                disabled={
+                  editingProduct
+                    ? !can(authUser, "productos", "Editar")
+                    : !can(authUser, "productos", "Crear")
+                }
               >
                 <Ico p={I.check} size={14} /> Guardar
               </button>
@@ -351,7 +395,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
         <div className="modal-backdrop">
           <div
             className="modal productos-delete-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >
             <div className="productos-delete-header">
               <h2 className="productos-delete-title">Eliminar producto</h2>
@@ -374,12 +418,13 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                     )
                   }
                 }}
+                disabled={!can(authUser, "productos", "Eliminar")}
               >
                 Eliminar
               </button>
               <button
                 className="btn btn-ghost"
-                onClick={() => setDeletingProduct(null)}
+                onClick={/* Ejecuta setDeletingProduct(null) al invocarse este callback. */ () => setDeletingProduct(null)}
               >
                 Cancelar
               </button>

@@ -1,10 +1,19 @@
+# clientes/serializers.py
 import re
 
 from rest_framework import serializers
 
 from .models import Cliente, Direccion
 
+RUT_NO_POSEE = "No Posee"
 
+
+class RutDocumentoField(serializers.CharField):
+    def to_representation(self, value):
+        return "" if value == RUT_NO_POSEE else super().to_representation(value)
+
+
+# Limpia el RUT, comprueba su dígito verificador y devuelve el formato cuerpo-guion-verificador.
 def normalize_rut(value):
     cleaned = re.sub(r"[.\s-]", "", value).upper()
     if not re.fullmatch(r"\d{7,8}[0-9K]", cleaned):
@@ -26,9 +35,11 @@ def normalize_rut(value):
 
 
 class EstadoClienteField(serializers.Field):
+    # Convierte el estado booleano del cliente en Activo o Inactivo.
     def to_representation(self, value):
         return "Activo" if value else "Inactivo"
 
+    # Convierte un booleano o el texto Activo/Inactivo en el estado booleano del cliente.
     def to_internal_value(self, value):
         if isinstance(value, bool):
             return value
@@ -38,6 +49,7 @@ class EstadoClienteField(serializers.Field):
 
 
 class DireccionSerializer(serializers.ModelSerializer):
+    # Impide asignar una segunda dirección principal al mismo cliente.
     def validate(self, attrs):
         cliente = self.instance.cliente if self.instance else self.context.get("cliente")
         principal = attrs.get("principal", self.instance.principal if self.instance else False)
@@ -74,9 +86,23 @@ class DireccionSerializer(serializers.ModelSerializer):
 class ClienteSerializer(serializers.ModelSerializer):
     direcciones = DireccionSerializer(many=True, read_only=True)
     estado = EstadoClienteField(required=False, default=True)
+    rut = serializers.CharField(max_length=12, required=False, allow_blank=True)
 
+    # Valida y normaliza el RUT del cliente antes de guardarlo.
     def validate_rut(self, value):
-        return normalize_rut(value)
+        return normalize_rut(value) if value and value != RUT_NO_POSEE else RUT_NO_POSEE
+
+    def validate(self, attrs):
+        pais = attrs.get("pais", self.instance.pais if self.instance else "")
+        rut = attrs.get("rut", self.instance.rut if self.instance else "")
+        if not rut.strip() or rut == RUT_NO_POSEE:
+            if pais.strip().lower() in {"", "chile"}:
+                raise serializers.ValidationError(
+                    {"rut": "Ingresa el RUT del cliente para Chile."}
+                )
+            if self.instance is None:
+                attrs["rut"] = RUT_NO_POSEE
+        return attrs
 
     class Meta:
         model = Cliente
@@ -85,6 +111,8 @@ class ClienteSerializer(serializers.ModelSerializer):
             "rut",
             "razon_social",
             "nombre_fantasia",
+            "pais",
+            "region",
             "ciudad",
             "telefono",
             "email",

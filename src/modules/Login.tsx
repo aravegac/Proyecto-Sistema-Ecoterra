@@ -5,12 +5,14 @@ type Props = {
   onEnter: (user: AuthUser) => void
 }
 
+// Muestra el formulario de acceso y gestiona sus campos, carga y mensajes de error.
 export default function Login({ onEnter }: Props) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // Valida correo y contraseña, consulta el login de la API y entrega la sesión autenticada al componente superior.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
@@ -29,7 +31,7 @@ export default function Login({ onEnter }: Props) {
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null)
+        const data = await res.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
         throw new Error(data?.detail || "Credenciales inválidas.")
       }
 
@@ -65,7 +67,7 @@ export default function Login({ onEnter }: Props) {
               type="email"
               placeholder="usuario@ecoterra.cl"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={/* Ejecuta setEmail(e.target.value) al invocarse este callback. */ (e) => setEmail(e.target.value)}
               autoComplete="email"
               disabled={loading}
             />
@@ -77,7 +79,7 @@ export default function Login({ onEnter }: Props) {
               type="password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={/* Ejecuta setPassword(e.target.value) al invocarse este callback. */ (e) => setPassword(e.target.value)}
               autoComplete="current-password"
               disabled={loading}
             />

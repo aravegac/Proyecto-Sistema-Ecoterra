@@ -1,5 +1,10 @@
+# backend/clientes/views.py
+from django.db import IntegrityError
+from django.db.models import ProtectedError, RestrictedError
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.response import Response
+from rest_framework import status
 
 from .models import Cliente, Direccion
 from .serializers import ClienteSerializer, DireccionSerializer
@@ -29,6 +34,17 @@ class ClienteDetailView(RetrieveUpdateDestroyAPIView):
         "DELETE": ("clientes", "Eliminar"),
     }
 
+    #  CAPTURAMOS TODOS LOS POSIBLES ERRORES DE INTEGRIDAD
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except (IntegrityError, ProtectedError, RestrictedError, ValidationError) as e:
+            return Response(
+                {"error": "No se pudo eliminar cliente: Ya está asociado a documentos existentes."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
 
 class DireccionListCreateView(ListCreateAPIView):
     serializer_class = DireccionSerializer
@@ -46,6 +62,7 @@ class DireccionListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         return Direccion.objects.filter(cliente_id=self.kwargs["cliente_id"])
+
     def perform_create(self, serializer):
         try:
             cliente = Cliente.objects.get(pk=self.kwargs["cliente_id"])
@@ -53,17 +70,17 @@ class DireccionListCreateView(ListCreateAPIView):
             raise NotFound("Cliente no encontrado") from error
         serializer.save(cliente=cliente)
 
+
 class DireccionDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = DireccionSerializer
     permission_classes = [PermisoModulo]
 
     permisos_por_metodo = {
-    "GET": ("direcciones", "Consultar"),
-    "PUT": ("direcciones", "Editar"),
-    "PATCH": ("direcciones", "Editar"),
-    "DELETE": ("direcciones", "Eliminar"),
+        "GET": ("direcciones", "Consultar"),
+        "PUT": ("direcciones", "Editar"),
+        "PATCH": ("direcciones", "Editar"),
+        "DELETE": ("direcciones", "Eliminar"),
     }
 
     def get_queryset(self):
         return Direccion.objects.filter(cliente_id=self.kwargs["cliente_id"])
-

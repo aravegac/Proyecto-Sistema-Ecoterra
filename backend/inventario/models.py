@@ -28,6 +28,7 @@ class Inventario(models.Model):
         verbose_name = "inventario"
         verbose_name_plural = "inventarios"
 
+    # Devuelve el código de lote o su identificador junto con la cantidad en litros.
     def __str__(self):
         return f"{self.codigo_lote or self.id} ({self.cantidad} L)"
 
@@ -69,6 +70,7 @@ class Movimiento(models.Model):
         verbose_name = "movimiento"
         verbose_name_plural = "movimientos"
 
+    # Devuelve el tipo de movimiento y su cantidad en litros.
     def __str__(self):
         return f"{self.tipo_movimiento} {self.cantidad_movimiento} L"
 
@@ -79,6 +81,7 @@ class Movimiento(models.Model):
         verbose_name = "movimiento"
         verbose_name_plural = "movimientos"
 
+    # Devuelve el tipo de movimiento y su cantidad en litros.
     def __str__(self):
         return f"{self.tipo_movimiento} {self.cantidad_movimiento} L"
 
@@ -111,5 +114,6 @@ class Producto(models.Model):
         verbose_name = "producto"
         verbose_name_plural = "productos"
 
+    # Devuelve el código y el nombre como representación textual del producto.
     def __str__(self):
         return f"{self.codigo} - {self.nombre}"

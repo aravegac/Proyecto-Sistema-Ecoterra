@@ -1,9 +1,9 @@
+# backend/usuarios/serializers.py
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
 from .models import Usuario
-from .permissions import tiene_permiso
-
+from .permissions import tiene_permiso, permisos_efectivos
 
 ROLE_LABEL_TO_ID = {
     "Superusuario / Admin": 1,
@@ -41,7 +41,14 @@ class EstadoUsuarioField(serializers.Field):
             return value.lower() == "activo"
         raise serializers.ValidationError("El estado debe ser Activo o Inactivo.")
 
+
 class UsuarioSerializer(serializers.ModelSerializer):
+    id_rol = serializers.IntegerField(read_only=True)
+    permisos_efectivos = serializers.SerializerMethodField()
+
+    def get_permisos_efectivos(self, obj):
+        return permisos_efectivos(obj)
+
     rol = RolUsuarioField(source="id_rol")
     estado = EstadoUsuarioField(source="activo")
     contrasena = serializers.CharField(
@@ -49,19 +56,17 @@ class UsuarioSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True,
     )
-    permisos = serializers.JSONField(required=False, write_only=True)
+    # Ahora 'permisos' es un campo que se lee y se escribe
+    permisos = serializers.JSONField(required=False)
 
-    
     def validate(self, attrs):
         request = self.context.get("request")
         usuario_solicitante = getattr(request, "user", None)
 
-        # Cambiar el rol o activar/desactivar cuentas es
-        # una operación administrativa independiente.
         modifica_rol = "id_rol" in attrs
         modifica_estado = "activo" in attrs
 
-        if modifica_rol or modifica_estado:
+        if modifica_rol or modifica_estado or "permisos" in attrs:
             if not tiene_permiso(
                 usuario_solicitante,
                 "usuarios_roles",
@@ -75,24 +80,23 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 })
         return attrs
 
-
     def validate_permisos(self, value):
         if value in (None, ""):
             return {}
         if not isinstance(value, dict):
             raise serializers.ValidationError("Los permisos deben ser un objeto JSON.")
+        if any(not isinstance(k, str) or type(v) is not bool for k, v in value.items()):
+            raise serializers.ValidationError("Cada permiso debe tener un valor booleano.")
         return value
 
     def create(self, validated_data):
-        validated_data.pop("permisos", None)
-        # 👇 Hashear la contraseña o usar "temporal" por defecto
+        # 👇 Ya no borramos los permisos
         raw_password = validated_data.pop("contrasena", "") or "temporal"
         validated_data["contrasena"] = make_password(raw_password)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        validated_data.pop("permisos", None)
-        # 👇 Si envían contraseña, hashearla; si no, no la tocan
+        # 👇 Ya no borramos los permisos
         raw_password = validated_data.pop("contrasena", None)
         if raw_password:
             validated_data["contrasena"] = make_password(raw_password)
@@ -105,6 +109,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
             "nombre",
             "email",
             "rol",
+            "id_rol",
+            "permisos_efectivos",
             "estado",
             "contrasena",
             "permisos",

@@ -21,11 +21,13 @@ from django.db.models.functions import Coalesce
 
 from .models import Inventario, Movimiento, Producto
 from .serializers import (
+    CAPACIDAD_ENVASE,
     InventarioSerializer,
     MovimientoSerializer,
     ProductoSerializer,
 )
 # ---------- CÁLCULOS DE STOCK - Productos ----------
+# Anota cada producto con la suma de sus lotes disponibles y la suma de todos sus lotes.
 def productos_con_stock():
     campo_decimal = DecimalField(
         max_digits=12,
@@ -122,6 +124,11 @@ class InventarioDetailView(RetrieveUpdateDestroyAPIView):
     "DELETE": ("lotes", "Eliminar"),
     }
 
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update()
+        return super().update(request, *args, **kwargs)
+
 
 # ---------- Movimientos ----------
 class MovimientoListView(ListCreateAPIView):
@@ -134,11 +141,14 @@ class MovimientoListView(ListCreateAPIView):
     "POST": ("movimientos", "Crear"),
     }
 
+    # Valida el movimiento, bloquea el lote y registra la entrada, salida o ajuste junto con los stocks anterior y posterior.
     def create(self, request, *args, **kwargs):
         tipo = request.data.get("tipo_movimiento")
         cantidad_raw = request.data.get("cantidad_movimiento")
         id_inventario = request.data.get("id_inventario")
-        id_usuario = request.data.get("id_usuario")
+        # El responsable es siempre el usuario autenticado: un id_usuario
+        # enviado en la petición se ignora para que no se pueda suplantar.
+        id_usuario = request.user.pk
 
         # ---------- Validaciones básicas ----------
         if tipo not in ("Entrada", "Salida", "Ajuste"):
@@ -186,7 +196,6 @@ class MovimientoListView(ListCreateAPIView):
                 )
 
             stock_anterior = lote.cantidad
-
             # ---------- Aplicar regla según tipo ----------
             if tipo == "Entrada":
                 lote.cantidad = lote.cantidad + cantidad
@@ -200,9 +209,30 @@ class MovimientoListView(ListCreateAPIView):
                     )
                 lote.cantidad = lote.cantidad - cantidad
             else:  # Ajuste → ESTABLECE la cantidad final
+                # 👇 VALIDACIÓN: El ajuste debe cambiar el stock
+                if cantidad == lote.cantidad:
+                    return Response(
+                        {"detail": "El stock no ha cambiado. El ajuste debe ser diferente al stock actual del lote."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 lote.cantidad = cantidad
 
             stock_posterior = lote.cantidad
+            # ---------- Validar capacidad del contenedor ----------
+            capacidad = CAPACIDAD_ENVASE.get(lote.tipo_envase)
+
+            if capacidad is not None and stock_posterior > capacidad:
+                return Response(
+                    {
+                        "detail": (
+                            f"El stock resultante ({stock_posterior} L) "
+                            f"supera la capacidad de {capacidad} L "
+                            f"del contenedor {lote.tipo_envase}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             lote.save(update_fields=["cantidad"])
 
             # ---------- Enriquecer observación en Ajuste ----------

@@ -1,3 +1,4 @@
+# clientes/models.py
 import sys
 
 from django.db import models
@@ -13,6 +14,8 @@ class Cliente(models.Model):
         blank=True,
         null=True,
     )
+    pais = models.CharField(max_length=100, db_column="pais_cliente", blank=True, default="")
+    region = models.CharField(max_length=100, db_column="region_cliente", blank=True, default="")
     ciudad = models.CharField(max_length=100, db_column="ciudad_cliente")
     telefono = models.CharField(max_length=20, db_column="telefono_cliente")
     email = models.EmailField(max_length=150, db_column="correo_cliente")
@@ -32,7 +35,7 @@ class Cliente(models.Model):
         verbose_name_plural = "clientes"
 
     def __str__(self):
-        return f"{self.razon_social} ({self.rut})"
+        return f"{self.razon_social} ({self.rut})" if self.rut else self.razon_social
 
 
 class Direccion(models.Model):
@@ -82,6 +85,7 @@ class Direccion(models.Model):
         verbose_name = "dirección"
         verbose_name_plural = "direcciones"
 
+    # Devuelve el nombre y la ciudad como representación textual de la dirección.
     def __str__(self):
         return f"{self.nombre} - {self.ciudad}"
 

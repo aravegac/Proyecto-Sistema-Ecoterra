@@ -1,0 +1,80 @@
+{
+    "stock_actual": {
+        "minimo": 0.007681341718381684,
+        "maximo": 1679855.2324937384,
+        "percentil_01": 0.058212889803625226,
+        "percentil_99": 461932.6204175338
+    },
+    "stock_minimo": {
+        "minimo": 0.04738145786695717,
+        "maximo": 287284.5212588456,
+        "percentil_01": 0.25668844705497545,
+        "percentil_99": 146762.338076527
+    },
+    "ventas_promedio_90d": {
+        "minimo": 0.0007295288053484708,
+        "maximo": 3386.316139582024,
+        "percentil_01": 0.004973892994471103,
+        "percentil_99": 2501.200225350157
+    },
+    "cobertura_stock_dias": {
+        "minimo": 2.0010362069225307,
+        "maximo": 17576.477126051523,
+        "percentil_01": 2.118139103798772,
+        "percentil_99": 596.7900236137145
+    },
+    "desviacion_ventas_90d": {
+        "minimo": 0.00493417818815496,
+        "maximo": 3878.9065099544646,
+        "percentil_01": 0.01428532487488719,
+        "percentil_99": 2973.0382381525906
+    },
+    "tendencia_ventas_90d_pct": {
+        "minimo": -1.0,
+        "maximo": 5.0,
+        "percentil_01": -1.0,
+        "percentil_99": 5.0
+    },
+    "ventas_maximas_90d": {
+        "minimo": 0.03929368893516708,
+        "maximo": 17811.098965074234,
+        "percentil_01": 0.08603091605622337,
+        "percentil_99": 12939.019732935307
+    },
+    "dias_con_ventas_90d": {
+        "minimo": 1.0,
+        "maximo": 90.0,
+        "percentil_01": 2.0,
+        "percentil_99": 90.0
+    },
+    "ventas_promedio_30d": {
+        "minimo": 0.0,
+        "maximo": 4527.614745437409,
+        "percentil_01": 0.0,
+        "percentil_99": 2439.670337459057
+    },
+    "ventas_promedio_60d": {
+        "minimo": 0.0,
+        "maximo": 3647.5701426980077,
+        "percentil_01": 0.004020209727552603,
+        "percentil_99": 2456.8409828036715
+    },
+    "variacion_30d_90d": {
+        "minimo": -1.0,
+        "maximo": 2.0000000000000004,
+        "percentil_01": -1.0,
+        "percentil_99": 1.562102656139511
+    },
+    "dias_desde_ultima_venta": {
+        "minimo": 0.0,
+        "maximo": 82.0,
+        "percentil_01": 0.0,
+        "percentil_99": 47.0
+    },
+    "tendencia_ventas_30d_pct": {
+        "minimo": -1.0,
+        "maximo": 5.0,
+        "percentil_01": -1.0,
+        "percentil_99": 5.0
+    }
+}

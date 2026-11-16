@@ -1,7 +1,8 @@
 // client/src/modules/Proveedores.tsx
 
 import React, { useState } from "react"
-import { Badge, I, Ico, PageTitle } from "../shared"
+import { countries } from "../countries"
+import { AuthUser, Badge, can, I, Ico, PageTitle } from "../shared"
 
 // ---------- Tipos exportables ----------
 export type Proveedor = {
@@ -11,7 +12,7 @@ export type Proveedor = {
   contacto: string
   tel: string
   email: string
-  direccion: string
+  // direccion: string
   estado: "Activo" | "Inactivo"
 }
 
@@ -21,7 +22,7 @@ export type ProveedorInput = {
   contacto: string
   tel: string
   email: string
-  direccion: string
+  // direccion: string
   estado: "Activo" | "Inactivo"
 }
 
@@ -29,6 +30,7 @@ export type ProveedorInput = {
 type Props = {
   proveedores: Proveedor[]
   loadError?: string
+  authUser: AuthUser | null
   onCreate: (input: ProveedorInput) => Promise<Proveedor>
   onUpdate: (proveedor: Proveedor, input: ProveedorInput) => Promise<Proveedor>
   onDelete: (proveedor: Proveedor) => Promise<void>
@@ -40,13 +42,15 @@ const EMPTY_FORM: ProveedorInput = {
   contacto: "",
   tel: "",
   email: "",
-  direccion: "",
+  // direccion: "",
   estado: "Activo",
 }
 
+// Muestra y filtra proveedores y gestiona sus formularios de creación, edición y eliminación.
 export default function Proveedores({
   proveedores,
   loadError,
+  authUser,
   onCreate,
   onUpdate,
   onDelete,
@@ -59,6 +63,7 @@ export default function Proveedores({
   const [formError, setFormError] = useState("")
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
+  // Cierra el formulario de proveedor y restablece la selección, los campos y el error.
   const closeModal = () => {
     setShowModal(false)
     setEditingProvider(null)
@@ -66,6 +71,7 @@ export default function Proveedores({
     setFormError("")
   }
 
+  // Limpia la selección y el formulario y abre la creación de un proveedor.
   const openNew = () => {
     setEditingProvider(null)
     setForm(EMPTY_FORM)
@@ -73,6 +79,7 @@ export default function Proveedores({
     setShowModal(true)
   }
 
+  // Carga el proveedor seleccionado en el formulario y abre su edición.
   const openEdit = (provider: Proveedor) => {
     setEditingProvider(provider)
     setForm({
@@ -81,7 +88,7 @@ export default function Proveedores({
       contacto: provider.contacto,
       tel: provider.tel,
       email: provider.email,
-      direccion: provider.direccion,
+      // direccion: provider.direccion,
       estado: provider.estado,
     })
     setFormError("")
@@ -90,6 +97,7 @@ export default function Proveedores({
 
   const PHONE_REGEX = /^[\d\s+\-().]*$/
 
+  // Valida los campos del proveedor y solicita su creación o actualización.
   const handleSave = async () => {
     // Validación mínima
     if (!form.empresa.trim() || !form.email.trim()) {
@@ -121,6 +129,7 @@ export default function Proveedores({
     }
   }
 
+  // Pide confirmación y solicita eliminar el proveedor indicando qué registro se está eliminando.
   const handleDelete = async (provider: Proveedor) => {
     if (!confirm(`¿Eliminar a ${provider.empresa}?`)) return
     setDeletingId(provider.id)
@@ -134,7 +143,7 @@ export default function Proveedores({
   }
 
   // ---------- Filtro de búsqueda ----------
-  const filtered = proveedores.filter((provider) => {
+  const filtered = proveedores.filter(/* Filtra proveedores por el texto de búsqueda en empresa, país, contacto y correo. */ (provider) => {
     const query = search.toLowerCase()
     return (
       provider.empresa.toLowerCase().includes(query) ||
@@ -144,10 +153,11 @@ export default function Proveedores({
   })
 
   // ---------- Campos del formulario ----------
+  // Actualiza únicamente el campo indicado del formulario de proveedor.
   const updateField = <K extends keyof ProveedorInput>(
     key: K,
     value: ProveedorInput[K],
-  ) => setForm((current) => ({ ...current, [key]: value }))
+  ) => setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, [key]: value }). */ (current) => ({ ...current, [key]: value }))
 
   return (
     <div>
@@ -155,7 +165,11 @@ export default function Proveedores({
         title="Proveedores"
         sub="Directorio de proveedores de materias primas"
       >
-        <button className="btn btn-primary" onClick={openNew}>
+        <button
+          className="btn btn-primary"
+          onClick={openNew}
+          disabled={!can(authUser, "proveedores", "Crear")}
+        >
           <Ico p={I.plus} size={14} /> Nuevo proveedor
         </button>
       </PageTitle>
@@ -166,88 +180,106 @@ export default function Proveedores({
         </div>
       )}
 
-      <div className="panel">
-        <div className="panel-header">
-          <div className="proveedores-search-wrap">
-            <span className="proveedores-search-icon">
-              <Ico p={I.search ?? I.clients} size={14} />
+      {can(authUser, "proveedores", "Consultar") ? (
+        <div className="panel">
+          <div className="panel-header">
+            <div className="proveedores-search-wrap">
+              <span className="proveedores-search-icon">
+                <Ico p={I.search ?? I.clients} size={14} />
+              </span>
+              <input
+                className="input proveedores-search-input"
+                placeholder="Buscar por empresa, país o contacto…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <span className="proveedores-count">
+              {filtered.length} proveedores
             </span>
-            <input
-              className="input proveedores-search-input"
-              placeholder="Buscar por empresa, país o contacto…"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
           </div>
-          <span className="proveedores-count">{filtered.length} proveedores</span>
+
+          <div className="table-scroll">
+            <table className="dt w-full">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>País</th>
+                  <th>Contacto</th>
+                  <th>Email</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((provider) => (
+                  <tr key={provider.id}>
+                    <td className="proveedores-name">{provider.empresa}</td>
+                    <td>
+                      <Badge t="info">{provider.pais}</Badge>
+                    </td>
+                    <td>
+                      <div>{provider.contacto}</div>
+                      <div className="proveedores-phone">{provider.tel}</div>
+                    </td>
+                    <td className="proveedores-email">{provider.email}</td>
+                    <td>
+                      <Badge t={provider.estado === "Activo" ? "ok" : "neutral"}>
+                        {provider.estado}
+                      </Badge>
+                    </td>
+                    <td>
+                      <div className="proveedores-actions">
+                        <button
+                          className="btn btn-ghost btn-sm productos-edit-btn"
+                          title="Editar proveedor"
+                          aria-label="Editar proveedor"
+                          onClick={() => openEdit(provider)}
+                          disabled={!can(authUser, "proveedores", "Editar")}
+                        >
+                          <Ico p={I.edit} size={13} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost btn-sm productos-delete-btn"
+                          title="Eliminar proveedor"
+                          aria-label="Eliminar proveedor"
+                          onClick={() => handleDelete(provider)}
+                          disabled={
+                            deletingId === provider.id ||
+                            !can(authUser, "proveedores", "Eliminar")
+                          }
+                        >
+                          <Ico p={I.trash} size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: "center", padding: 24 }}>
+                      No hay proveedores que coincidan con la búsqueda.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>Empresa</th>
-              <th>País</th>
-              <th>Contacto</th>
-              <th>Email</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((provider) => (
-              <tr key={provider.id}>
-                <td className="proveedores-name">{provider.empresa}</td>
-                <td>
-                  <Badge t="info">{provider.pais}</Badge>
-                </td>
-                <td>
-                  <div>{provider.contacto}</div>
-                  <div className="proveedores-phone">{provider.tel}</div>
-                </td>
-                <td className="proveedores-email">{provider.email}</td>
-                <td>
-                  <Badge t={provider.estado === "Activo" ? "ok" : "neutral"}>
-                    {provider.estado}
-                  </Badge>
-                </td>
-                <td>
-                  <div className="proveedores-actions">
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      title="Editar proveedor"
-                      aria-label="Editar proveedor"
-                      onClick={() => openEdit(provider)}
-                    >
-                      <Ico p={I.edit} size={13} />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      title="Eliminar proveedor"
-                      aria-label="Eliminar proveedor"
-                      onClick={() => handleDelete(provider)}
-                      disabled={deletingId === provider.id}
-                    >
-                      <Ico p={I.trash} size={13} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ textAlign: "center", padding: 24 }}>
-                  No hay proveedores que coincidan con la búsqueda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      ) : (
+        <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+          No tienes permisos para consultar los proveedores.
+        </div>
+      )}
 
       {showModal && (
         <div className="modal-backdrop">
           <div
             className="modal proveedores-modal"
-            onClick={(event) => event.stopPropagation()}
+            style={{ width: 600, padding: 24 }}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
             key={editingProvider?.id ?? "new"}
           >
             <div className="proveedores-modal-header">
@@ -272,18 +304,26 @@ export default function Proveedores({
                   className="input"
                   placeholder="Nombre Empresa"
                   value={form.empresa}
-                  onChange={(e) => updateField("empresa", e.target.value)}
+                  onChange={/* Ejecuta updateField("empresa", e.target.value) al invocarse este callback. */ (e) => updateField("empresa", e.target.value)}
                 />
               </div>
 
               <div className="field proveedores-field-span-1">
-                <label className="label">País</label>
-                <input
-                  className="input"
-                  placeholder="País"
+                <label className="label" htmlFor="proveedor-pais">País</label>
+                <select
+                  className="select"
+                  id="proveedor-pais"
                   value={form.pais}
                   onChange={(e) => updateField("pais", e.target.value)}
-                />
+                >
+                  <option value="">Seleccionar país…</option>
+                  {form.pais && !countries.some(({ name }) => name === form.pais) && (
+                    <option value={form.pais}>{form.pais}</option>
+                  )}
+                  {countries.map(({ code, name, flag }) => (
+                    <option key={code} value={name}>{flag} {name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="field proveedores-field-span-1">
@@ -292,7 +332,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="Contacto"
                   value={form.contacto}
-                  onChange={(e) => updateField("contacto", e.target.value)}
+                  onChange={/* Ejecuta updateField("contacto", e.target.value) al invocarse este callback. */ (e) => updateField("contacto", e.target.value)}
                 />
               </div>
 
@@ -302,37 +342,27 @@ export default function Proveedores({
                   className="input"
                   placeholder="Teléfono"
                   value={form.tel}
-                  onChange={(e) => updateField("tel", e.target.value)}
+                  onChange={/* Ejecuta updateField("tel", e.target.value) al invocarse este callback. */ (e) => updateField("tel", e.target.value)}
                 />
               </div>
 
-              <div className="field proveedores-field-span-2">
+              <div className="field proveedores-field-span-1">
                 <label className="label">Email</label>
                 <input
                   className="input"
                   placeholder="Email"
                   type="email"
                   value={form.email}
-                  onChange={(e) => updateField("email", e.target.value)}
+                  onChange={/* Ejecuta updateField("email", e.target.value) al invocarse este callback. */ (e) => updateField("email", e.target.value)}
                 />
               </div>
 
               <div className="field proveedores-field-span-2">
-                <label className="label">Dirección proveedor</label>
-                <input
-                  className="input"
-                  placeholder="Dirección proveedor"
-                  value={form.direccion}
-                  onChange={(e) => updateField("direccion", e.target.value)}
-                />
-              </div>
-
-              <div className="field proveedores-field-span-1">
                 <label className="label">Estado</label>
                 <select
                   className="input"
                   value={form.estado}
-                  onChange={(e) =>
+                  onChange={/* Ejecuta updateField("estado", e.target.value as "Activo" | "Inactivo") al invocarse este callback. */ (e) =>
                     updateField("estado", e.target.value as "Activo" | "Inactivo")
                   }
                 >
@@ -346,7 +376,12 @@ export default function Proveedores({
               <button
                 className="btn btn-primary proveedores-save"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={
+                  saving ||
+                  (editingProvider
+                    ? !can(authUser, "proveedores", "Editar")
+                    : !can(authUser, "proveedores", "Crear"))
+                }
               >
                 <Ico p={I.check} size={14} />{" "}
                 {saving ? "Guardando…" : "Guardar"}

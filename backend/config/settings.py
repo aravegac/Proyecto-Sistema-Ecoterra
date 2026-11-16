@@ -8,14 +8,29 @@ from dotenv import load_dotenv
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR.parent / ".env.local")
+load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     raise ImproperlyConfigured(
         "Debes configurar la variable de entorno DJANGO_SECRET_KEY. Pregunta a Araceli Vega por alguna duda. :-S"
     )
-DEBUG = True
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "0.0.0.0", "testserver", "backend", "*"]
+
+
+def _lista_env(nombre):
+    """Lee una variable de entorno con valores separados por comas."""
+    return [v.strip() for v in os.environ.get(nombre, "").split(",") if v.strip()]
+
+
+# Seguro por defecto: DEBUG solo se activa si el .env lo indica (DEBUG=True).
+# En producción debe quedar desactivado para no exponer detalles internos.
+DEBUG = os.environ.get("DEBUG", "False").strip().lower() in ("1", "true", "yes", "si", "sí")
+
+# Hosts locales y de Docker; los dominios de despliegue se agregan con
+# DJANGO_ALLOWED_HOSTS=dominio1,dominio2 en el .env.
+ALLOWED_HOSTS = [
+    "localhost", "127.0.0.1", "0.0.0.0", "testserver", "backend",
+    *_lista_env("DJANGO_ALLOWED_HOSTS"),
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -28,7 +43,11 @@ INSTALLED_APPS = [
     "corsheaders",
     "clientes",
     "inventario",
+    "facturacion",
     "proveedores", 
+    "cotizaciones",
+    "ventas",
+    "predicciones",
     "usuarios.apps.UsuariosConfig",
 ]
 
@@ -129,11 +148,15 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:4173",
     "http://127.0.0.1:4173",
-    "http://localhost:8443",
-    "http://127.0.0.1:8443",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    # Orígenes adicionales (p. ej. el frontend desplegado) se agregan con
+    # DJANGO_CORS_ALLOWED_ORIGINS=https://app.ejemplo.cl en el .env.
+    *_lista_env("DJANGO_CORS_ALLOWED_ORIGINS"),
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Solo se aceptan los orígenes de la lista anterior.
+CORS_ALLOW_ALL_ORIGINS = False
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

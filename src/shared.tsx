@@ -1,6 +1,7 @@
 // shared.tsx
 import React, { ReactNode } from "react"
 
+// Renderiza un icono SVG con la ruta, el tamaño, el color y el grosor recibidos.
 export function Ico({
   p,
   size = 16,
@@ -59,6 +60,9 @@ export const I = {
 
   link: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71 M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
 
+  unlink:
+    "M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71 M5.17 11.75l-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71 M8 2v3 M2 8h3 M16 22v-3 M22 16h-3",
+
   edit: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
 
   trash:
@@ -68,9 +72,12 @@ export const I = {
 
   check: "M20 6L9 17l-5-5",
 
+  send: "M22 2L11 13 M22 2l-7 20-4-9-9-4z",
+
   search: "M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0",
 
   chevR: "M9 18l6-6-6-6",
+  chevD: "M6 9l6 6 6-6",
 
   mail: "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6",
 
@@ -109,18 +116,42 @@ export type Product = {
 
 export type BadgeType = "ok" | "warn" | "danger" | "info" | "neutral" | "purple"
 
+// Renderiza una etiqueta visual con la variante de estilo y el contenido recibidos.
 export function Badge({ t, children }: { t: BadgeType; children: ReactNode }) {
   return <span className={`badge badge-${t}`}>{children}</span>
 }
 
+// Formatea un número con los separadores de la configuración regional de Chile.
 export function fmt(n: number) {
   return n.toLocaleString("es-CL")
 }
 
+// Formatea un número con separadores chilenos y el símbolo de peso.
 export function fmtCLP(n: number) {
   return `$${n.toLocaleString("es-CL")}`
 }
 
+export type Currency = "CLP" | "USD"
+
+export function formatMoney(value: number, currency: Currency = "CLP") {
+  return new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency,
+    currencyDisplay: "code",
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+// Usa la regla de Decimal del API: redondeo a centavos con mitad al par.
+export function redondearImporte(valor: number): number {
+  const centavos = Math.abs(valor) * 100
+  const inferior = Math.floor(centavos)
+  const mitad = Math.abs(centavos - inferior - 0.5) <= Number.EPSILON * Math.max(1, centavos) * 2
+  const redondeado = mitad ? inferior + inferior % 2 : Math.round(centavos)
+  return Math.sign(valor) * redondeado / 100
+}
+
+// Renderiza el título de página, el subtítulo y las acciones recibidas.
 export function PageTitle({
   title,
   sub,
@@ -180,6 +211,7 @@ export type AuthUser = {
  * Verifica si el usuario tiene un permiso específico.
  * Los administradores (id_rol === 1) siempre tienen acceso total.
  */
+// Comprueba el permiso modulo:accion del usuario concediendo acceso directo al administrador.
 export function can(
   user: AuthUser | null,
   modulo: string,
@@ -194,6 +226,7 @@ export function can(
  * Verifica si el usuario puede ver el módulo completo.
  * Es true si tiene AL MENOS UN permiso del módulo.
  */
+// Permite módulos públicos y comprueba si el usuario es administrador o tiene algún permiso del módulo.
 export function canAccessModule(
   user: AuthUser | null,
   moduleId?: string,
@@ -202,7 +235,7 @@ export function canAccessModule(
   if (!user) return false
   if (user.id_rol === 1) return true
   const prefix = `${moduleId}:`
-  return Object.keys(user.permisos ?? {}).some((key) => key.startsWith(prefix))
+  return Object.entries(user.permisos ?? {}).some(([key, enabled]) => enabled === true && key.startsWith(prefix))
 }
 
 // ---------- Mapeo screen → módulo de permisos ----------
@@ -226,6 +259,7 @@ export const SCREEN_TO_MODULE: Record<Screen, string | undefined> = {
  * Headers para peticiones autenticadas.
  * El token permite verificar la identidad en el backend.
  */
+// Construye los encabezados JSON y añade el token Bearer cuando la sesión lo incluye.
 export function authHeaders(
   user: AuthUser | null,
 ): HeadersInit {
