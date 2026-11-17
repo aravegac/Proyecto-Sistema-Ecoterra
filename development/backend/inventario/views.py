@@ -8,41 +8,134 @@ from rest_framework import status
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
 
+from usuarios.permissions import PermisoModulo
+
+from django.db.models import (
+    OuterRef,
+    Subquery,
+    Sum,
+    DecimalField,
+    Value,
+)
+from django.db.models.functions import Coalesce
+
 from .models import Inventario, Movimiento, Producto
 from .serializers import (
     InventarioSerializer,
     MovimientoSerializer,
     ProductoSerializer,
 )
+# ---------- CÁLCULOS DE STOCK - Productos ----------
+# Anota cada producto con la suma de sus lotes disponibles y la suma de todos sus lotes.
+def productos_con_stock():
+    campo_decimal = DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
 
+    stock_disponible = (
+        Inventario.objects
+        .filter(
+            id_producto=OuterRef("id"),
+            estado="Disponible",
+        )
+        .order_by()
+        .values("id_producto")
+        .annotate(total=Sum("cantidad"))
+        .values("total")[:1]
+    )
+
+    stock_total = (
+        Inventario.objects
+        .filter(id_producto=OuterRef("id"))
+        .order_by()
+        .values("id_producto")
+        .annotate(total=Sum("cantidad"))
+        .values("total")[:1]
+    )
+
+    return Producto.objects.annotate(
+        stock_disponible_calculado=Coalesce(
+            Subquery(
+                stock_disponible,
+                output_field=campo_decimal,
+            ),
+            Value(Decimal("0.00")),
+            output_field=campo_decimal,
+        ),
+        stock_total_calculado=Coalesce(
+            Subquery(
+                stock_total,
+                output_field=campo_decimal,
+            ),
+            Value(Decimal("0.00")),
+            output_field=campo_decimal,
+        ),
+    )
 
 # ---------- Productos ----------
 class ProductoListView(ListCreateAPIView):
-    queryset = Producto.objects.all()
+    queryset = productos_con_stock()
     serializer_class = ProductoSerializer
+    permission_classes = [PermisoModulo]
+
+    permisos_por_metodo = {
+    "GET": ("productos", "Consultar"),
+    "POST": ("productos", "Crear"),
+}
 
 
 class ProductoDetailView(RetrieveUpdateDestroyAPIView):
-    queryset = Producto.objects.all()
+    queryset = productos_con_stock()
     serializer_class = ProductoSerializer
+    permission_classes = [PermisoModulo]
+
+    permisos_por_metodo = {
+    "GET": ("productos", "Consultar"),
+    "PUT": ("productos", "Editar"),
+    "PATCH": ("productos", "Editar"),
+    "DELETE": ("productos", "Eliminar"),
+    }
+
 
 
 # ---------- Inventario (Lotes) ----------
 class InventarioListView(ListCreateAPIView):
     queryset = Inventario.objects.all()
     serializer_class = InventarioSerializer
+    permission_classes = [PermisoModulo]
+
+    permisos_por_metodo = {
+    "GET": ("lotes", "Consultar"),
+    "POST": ("lotes", "Crear"),
+    }
 
 
 class InventarioDetailView(RetrieveUpdateDestroyAPIView):
     queryset = Inventario.objects.all()
     serializer_class = InventarioSerializer
+    permission_classes = [PermisoModulo]
+
+    permisos_por_metodo = {
+    "GET": ("lotes", "Consultar"),
+    "PUT": ("lotes", "Editar"),
+    "PATCH": ("lotes", "Editar"),
+    "DELETE": ("lotes", "Eliminar"),
+    }
 
 
 # ---------- Movimientos ----------
 class MovimientoListView(ListCreateAPIView):
     queryset = Movimiento.objects.all()
     serializer_class = MovimientoSerializer
+    permission_classes = [PermisoModulo]
 
+    permisos_por_metodo = {
+    "GET": ("movimientos", "Consultar"),
+    "POST": ("movimientos", "Crear"),
+    }
+
+    # Valida el movimiento, bloquea el lote y registra la entrada, salida o ajuste junto con los stocks anterior y posterior.
     def create(self, request, *args, **kwargs):
         tipo = request.data.get("tipo_movimiento")
         cantidad_raw = request.data.get("cantidad_movimiento")

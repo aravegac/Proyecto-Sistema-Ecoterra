@@ -30,6 +30,7 @@ const emptyProduct: ProductInput = {
   estado: "Activo",
 }
 
+// Muestra y filtra productos y gestiona sus formularios de creación, edición y eliminación.
 export default function Productos({ productos, onCreate, onUpdate, onDelete }: ProductProps) {
   const [tipo, setTipo] = useState("")
   const [estado, setEstado] = useState("")
@@ -39,20 +40,22 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
   const [form, setForm] = useState<ProductInput>(emptyProduct)
   const [error, setError] = useState("")
 
-  const tipos = [...new Set(productos.map((product) => product.tipo))]
-  const estados = [...new Set(productos.map((product) => product.estado))]
+  const tipos = [...new Set(productos.map(/* Transforma cada elemento de la lista devolviendo product.tipo. */ (product) => product.tipo))]
+  const estados = [...new Set(productos.map(/* Transforma cada elemento de la lista devolviendo product.estado. */ (product) => product.estado))]
   const filtered = productos.filter(
-    (product) =>
+    /* Comprueba qué elementos cumplen la condición evaluando (!tipo || product.tipo === tipo) && (!estado || product.estado === estado). */ (product) =>
       (!tipo || product.tipo === tipo) &&
       (!estado || product.estado === estado),
   )
 
+  // Cierra el formulario de producto, borra la selección de edición y limpia el error.
   const closeModal = () => {
     setShowModal(false)
     setEditingProduct(null)
     setError("")
   }
 
+  // Valida código, nombre y stock mínimo y solicita crear o actualizar el producto.
   const saveProduct = async () => {
     // Validaciones
     if (!form.codigo.trim() || !form.nombre.trim()) {
@@ -81,7 +84,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
       >
         <button
           className="btn btn-primary"
-          onClick={() => {
+          onClick={/* Limpia la selección y abre el formulario de creación de productos. */ () => {
             setEditingProduct(null)
             setForm(emptyProduct)
             setShowModal(true)
@@ -96,10 +99,10 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
             <select
               className="select productos-filter-a"
               value={tipo}
-              onChange={(event) => setTipo(event.target.value)}
+              onChange={/* Ejecuta setTipo(event.target.value) al invocarse este callback. */ (event) => setTipo(event.target.value)}
             >
               <option value="">Todos los tipos</option>
-              {tipos.map((productType) => (
+              {tipos.map(/* Renderiza el contenido de cada elemento de tipos. */ (productType) => (
                 <option key={productType} value={productType}>
                   {productType}
                 </option>
@@ -108,10 +111,10 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
             <select
               className="select productos-filter-b"
               value={estado}
-              onChange={(event) => setEstado(event.target.value)}
+              onChange={/* Ejecuta setEstado(event.target.value) al invocarse este callback. */ (event) => setEstado(event.target.value)}
             >
               <option value="">Todos los estados</option>
-              {estados.map((productStatus) => (
+              {estados.map(/* Renderiza el contenido de cada elemento de estados. */ (productStatus) => (
                 <option key={productStatus} value={productStatus}>
                   {productStatus}
                 </option>
@@ -135,7 +138,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
             </tr>
           </thead>
           <tbody>
-            {filtered.map((product) => (
+            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (product) => (
               <tr key={product.id}>
                 <td className="productos-code">{product.codigo}</td>
                 <td>
@@ -185,7 +188,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                       className="btn btn-ghost btn-sm productos-edit-btn"
                       title="Editar producto"
                       aria-label="Editar producto"
-                      onClick={() => {
+                      onClick={/* Carga los campos del producto seleccionado y abre su formulario de edición. */ () => {
                         setEditingProduct(product)
                         setForm({
                           codigo: product.codigo,
@@ -205,7 +208,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                       className="btn btn-ghost btn-sm productos-delete-btn"
                       title="Eliminar producto"
                       aria-label="Eliminar producto"
-                      onClick={() => setDeletingProduct(product)}
+                      onClick={/* Ejecuta setDeletingProduct(product) al invocarse este callback. */ () => setDeletingProduct(product)}
                     >
                       <Ico p={I.trash} size={13} />
                     </button>
@@ -220,7 +223,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
         <div className="modal-backdrop">
           <div
             className="modal productos-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
             key={editingProduct?.id ?? "new"}
           >
             <div className="productos-modal-header">
@@ -243,8 +246,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Código"
                   value={form.codigo}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, codigo: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, codigo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, codigo: e.target.value }). */ (current) => ({ ...current, codigo: e.target.value }))
                   }
                 />
               </div>
@@ -256,8 +259,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Nombre"
                   value={form.nombre}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, nombre: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, nombre: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, nombre: e.target.value }). */ (current) => ({ ...current, nombre: e.target.value }))
                   }
                 />
               </div>
@@ -269,8 +272,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Descripción"
                   value={form.descripcion}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, descripcion: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, descripcion: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, descripcion: e.target.value }). */ (current) => ({ ...current, descripcion: e.target.value }))
                   }
                 />
               </div>
@@ -282,8 +285,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   className="input"
                   placeholder="Tipo"
                   value={form.tipo}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, tipo: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
                   }
                 />
               </div>
@@ -308,10 +311,10 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   type="number"
                   min={0}
                   value={form.stockMinimo}
-                  onChange={(e) => {
+                  onChange={/* Actualiza el stock mínimo del formulario solo si el valor no es negativo. */ (e) => {
                     const val = Number(e.target.value)
                     if (val < 0) return
-                    setForm((current) => ({ ...current, stockMinimo: val }))
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, stockMinimo: val }). */ (current) => ({ ...current, stockMinimo: val }))
                   }}
                 />
               </div>
@@ -322,8 +325,8 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                 <select
                   className="input"
                   value={form.estado}
-                  onChange={(e) =>
-                    setForm((current) => ({ ...current, estado: e.target.value }))
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, estado: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, estado: e.target.value }). */ (current) => ({ ...current, estado: e.target.value }))
                   }
                 >
                   <option value="Activo">Activo</option>
@@ -351,7 +354,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
         <div className="modal-backdrop">
           <div
             className="modal productos-delete-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
           >
             <div className="productos-delete-header">
               <h2 className="productos-delete-title">Eliminar producto</h2>
@@ -362,7 +365,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
             <div className="productos-delete-actions">
               <button
                 className="btn btn-danger productos-delete-confirm"
-                onClick={async () => {
+                onClick={/* Solicita eliminar el producto seleccionado y cierra la confirmación al completarse. */ async () => {
                   try {
                     await onDelete(deletingProduct)
                     setDeletingProduct(null)
@@ -379,7 +382,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
               </button>
               <button
                 className="btn btn-ghost"
-                onClick={() => setDeletingProduct(null)}
+                onClick={/* Ejecuta setDeletingProduct(null) al invocarse este callback. */ () => setDeletingProduct(null)}
               >
                 Cancelar
               </button>

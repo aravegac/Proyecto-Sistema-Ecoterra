@@ -1,8 +1,10 @@
 // cotizaciones.tsx
 import React, { useState, useEffect } from "react"
+import { getDocumentPdfUrl } from "../documentPdf"
 import { AuthUser, authHeaders, Badge, fmtCLP, I, Ico, PageTitle, Product } from "../shared"
 
 export type Quote = {
+  idCotizacion: number
   id: string
   cliente: string
   fecha: string
@@ -15,7 +17,9 @@ export type Quote = {
 }
 
 export type PurchaseOrder = {
+  idOc: number
   id: string
+  cotizacionId: number | null
   cot: string
   cliente: string
   fecha: string
@@ -81,20 +85,37 @@ type QuoteDetail = {
   detalles: QuoteDetailLine[]
 }
 
+
 export default function Cotizaciones({
-  authUser, // 👈 NUEVA PROP
+  authUser,
   ordenes,
   facturas,
   clientes: clientesProp,
   productos,
+  onOrdenesChange,
 }: {
-  authUser: AuthUser | null // 👈 TIPO
+  authUser: AuthUser | null
   ordenes: PurchaseOrder[]
   facturas: Invoice[]
   clientes: Client[]
   productos: Product[]
+  onOrdenesChange: () => Promise<void>
 }) {
+
   const [show, setShow] = useState(false)
+  
+  const downloadQuotePdf = async (quote: Quote) => {
+    const tab = window.open("about:blank", "_blank")
+    if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
+    tab.opener = null
+    tab.document.body.textContent = "Consultando documento..."
+    try {
+      tab.location.href = await getDocumentPdfUrl(`/api/cotizaciones/${quote.idCotizacion}`, authUser)
+    } catch (error) {
+      tab.close()
+      alert(error instanceof Error ? error.message : "No se pudo abrir el PDF.")
+    }
+  }
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [preview, setPreview] = useState<Quote | null>(null)
   const [detail, setDetail] = useState<QuoteDetail | null>(null)
@@ -114,9 +135,7 @@ export default function Cotizaciones({
     { productId: "", quantity: "", unitPrice: "" },
   ])
 
-  // Estado para saber si estamos editando (guarda el ID interno)
   const [editQuoteId, setEditQuoteId] = useState<number | null>(null)
-
   const [clientes, setClientes] = useState<Client[]>(clientesProp || [])
 
   useEffect(() => {
@@ -129,7 +148,7 @@ export default function Cotizaciones({
 
   const loadClientes = async () => {
     try {
-      const response = await fetch("/api/clientes/", { headers: authHeaders(authUser) }) // 👈 TOKEN
+      const response = await fetch("/api/clientes/", { headers: authHeaders(authUser) })
       if (!response.ok) return
       const data = await response.json()
       const items = data.value || data
@@ -144,41 +163,55 @@ export default function Cotizaciones({
     }
   }
 
-  const reloadCotizaciones = async () => {
-    try {
-      const response = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) }) // 👈 TOKEN
-      if (!response.ok) return
-      const data = await response.json()
-      const items = data.value || data
-      const mapped: Quote[] = items.map((item: any) => ({
-        id: item.numero_cotizacion,
-        cliente: item.cliente_nombre || "",
-        fecha: item.fecha_cotizacion,
-        vigencia: item.vigencia_cotizacion,
-        subtotal: Number(item.subtotal_cotizacion),
-        iva: Number(item.iva_cotizacion),
-        total: Number(item.total_cotizacion),
-        observacion: item.observacion_cotizacion || "",
-        estado: item.estado_cotizacion,
-      }))
-      setQuotes(mapped)
-    } catch (error) {
-      console.error("Error recargando cotizaciones:", error)
+const reloadCotizaciones = async () => {
+  try {
+    const response = await fetch("/api/cotizaciones/", {
+      headers: authHeaders(authUser),
+    })
+
+    if (!response.ok) {
+      console.error(
+        "Error al cargar cotizaciones:",
+        response.status,
+        await response.text(),
+      )
+      return
     }
+
+    const data = await response.json()
+    const items = data.value || data
+
+    const mapped: Quote[] = items.map((item: any) => ({
+      idCotizacion: Number(item.id_cotizacion),
+      id: item.numero_cotizacion,
+      cliente: item.cliente_nombre || "",
+      fecha: item.fecha_cotizacion,
+      vigencia: item.vigencia_cotizacion,
+      subtotal: Number(item.subtotal_cotizacion),
+      iva: Number(item.iva_cotizacion),
+      total: Number(item.total_cotizacion),
+      observacion: item.observacion_cotizacion || "",
+      estado: item.estado_cotizacion,
+    }))
+
+    setQuotes(mapped)
+  } catch (error) {
+    console.error("Error recargando cotizaciones:", error)
   }
+}
 
   const openPreview = async (quote: Quote) => {
     setPreview(quote)
     setDetail(null)
     setIsLoadingDetail(true)
     try {
-      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) }) // 👈 TOKEN
+      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) })
       const listData = await listResp.json()
       const items = listData.value || listData
       const match = items.find((c: any) => c.numero_cotizacion === quote.id)
       
       if (match) {
-        const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) }) // 👈 TOKEN
+        const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) })
         if (detailResp.ok) {
           const detailData = await detailResp.json()
           setDetail(detailData)
@@ -191,22 +224,20 @@ export default function Cotizaciones({
     }
   }
 
-  // Función para abrir el modal en modo edición
   const openEdit = async (quote: Quote) => {
     try {
-      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) }) // 👈 TOKEN
+      const listResp = await fetch("/api/cotizaciones/", { headers: authHeaders(authUser) })
       const listData = await listResp.json()
       const items = listData.value || listData
       const match = items.find((c: any) => c.numero_cotizacion === quote.id)
       
       if (!match) return
 
-      const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) }) // 👈 TOKEN
+      const detailResp = await fetch(`/api/cotizaciones/${match.id_cotizacion}/`, { headers: authHeaders(authUser) })
       if (!detailResp.ok) return
       
       const data = await detailResp.json()
       
-      // Precargar el formulario
       setEditQuoteId(data.id_cotizacion)
       setQuoteClient(data.cliente_nombre)
       setQuoteAddress(data.cliente_direcciones?.[0]?.ciudad || "")
@@ -216,7 +247,6 @@ export default function Cotizaciones({
       setQuoteStatus(data.estado_cotizacion)
       setQuoteObservation(data.observacion_cotizacion || "")
       
-      // Precargar líneas de productos
       setQuoteLines(
         data.detalles.map((d: any) => ({
           productId: String(d.id_producto),
@@ -238,8 +268,13 @@ export default function Cotizaciones({
 
   const getPurchaseOrder = (quote: Quote) =>
     ordenes.find(
-      (order) => order.cot === quote.id || linkedOrders[quote.id] === order.id,
-    ) ?? null
+      (order) => order.cotizacionId === quote.idCotizacion,
+    ) ??
+    ordenes.find(
+      (order) => linkedOrders[quote.id] === order.id,
+    ) ??
+    null
+
 
   const getInvoice = (quote: Quote) => {
     const order = getPurchaseOrder(quote)
@@ -248,27 +283,98 @@ export default function Cotizaciones({
       : null
   }
 
-  const linkOrder = () => {
-    const order = ordenes.find((purchaseOrder) => purchaseOrder.id === selectedOrder)
-    if (!quoteToLink || !order) return
+const linkOrder = async () => {
+  if (!quoteToLink) return
 
-    setLinkedOrders((current) => ({ ...current, [quoteToLink.id]: order.id }))
+  const order = ordenes.find(
+    (purchaseOrder) => purchaseOrder.id === selectedOrder,
+  )
+
+  if (!order) {
+    alert("Selecciona una orden de compra válida.")
+    return
+  }
+
+  if (
+    !Number.isInteger(quoteToLink.idCotizacion) ||
+    !Number.isInteger(order.idOc) ||
+    order.idOc <= 0
+  ) {
+    alert(
+      "No se encontraron los identificadores reales de la cotización o la orden.",
+    )
+    return
+  }
+
+  const existingOrder = ordenes.find(
+    (purchaseOrder) =>
+      purchaseOrder.cotizacionId === quoteToLink.idCotizacion &&
+      purchaseOrder.idOc !== order.idOc,
+  )
+
+  if (existingOrder) {
+    alert(
+      `Esta cotización ya está asociada a la orden ${existingOrder.id}.`,
+    )
+    return
+  }
+
+  try {
+    const response = await fetch(
+      `/api/ordenes-compra/${order.idOc}/asociar-cotizacion/`,
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(authUser),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id_cotizacion: quoteToLink.idCotizacion,
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      let message = "No se pudo asociar la cotización."
+
+      try {
+        const errorData = await response.json()
+        message =
+          errorData.error ||
+          errorData.detail ||
+          JSON.stringify(errorData)
+      } catch {
+        // Conserva el mensaje predeterminado si la respuesta no es JSON.
+      }
+
+      alert(message)
+      return
+    }
+
+    try {
+      await onOrdenesChange()
+    } catch (refreshError) {
+      console.error(
+        "La asociación se guardó, pero no se pudieron actualizar las órdenes:",
+        refreshError,
+      )
+    }
+
     setQuotes((current) =>
       current.map((quote) =>
-        quote.id === quoteToLink.id ? { ...quote, estado: "Convertida" } : quote,
+        quote.idCotizacion === quoteToLink.idCotizacion
+          ? { ...quote, estado: "Convertida" }
+          : quote,
       ),
     )
+
     setQuoteToLink(null)
     setSelectedOrder("")
+  } catch (error) {
+    console.error("Error asociando cotización:", error)
+    alert("No se pudo conectar con el servidor. Revisa tu conexión.")
   }
-
-  const sendByEmail = (quote: Quote) => {
-    const subject = encodeURIComponent(`Cotización ${quote.id} · Ecoterra`)
-    const body = encodeURIComponent(
-      `Estimado cliente, adjuntamos la cotización ${quote.id} por ${fmtCLP(quote.total)}.`,
-    )
-    window.location.href = `mailto:?subject=${subject}&body=${body}`
-  }
+}
 
   const selectedClient = clientes.find((client) => client.razon === quoteClient)
   const lineSubtotal = quoteLines.reduce(
@@ -342,7 +448,7 @@ export default function Cotizaciones({
 
       const response = await fetch(url, {
         method,
-        headers: authHeaders(authUser), // 👈 TOKEN (incluye Content-Type)
+        headers: authHeaders(authUser),
         body: JSON.stringify(payload),
       })
 
@@ -358,6 +464,7 @@ export default function Cotizaciones({
 
       await reloadCotizaciones()
       closeQuoteForm()
+      return result
     } catch (error) {
       console.error("Error de red:", error)
       alert("No se pudo conectar con el backend.")
@@ -478,21 +585,11 @@ export default function Cotizaciones({
                             className="btn btn-ghost btn-sm"
                             title="Descargar PDF"
                             aria-label={`Descargar PDF ${quote.id}`}
-                            onClick={async () => {
-                              await openPreview(quote)
-                              window.setTimeout(() => window.print(), 500)
-                            }}
+                            onClick={() => downloadQuotePdf(quote)}
                           >
                             <Ico p={I.download} size={13} />
                           </button>
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            title="Enviar por correo"
-                            aria-label={`Enviar ${quote.id} por correo`}
-                            onClick={() => sendByEmail(quote)}
-                          >
-                            <Ico p={I.mail} size={13} />
-                          </button>
+                          {/* BOTÓN DE CORREO ELIMINADO */}
                           <button
                             className="btn btn-ghost btn-sm"
                             title="Asociar a orden de compra"
@@ -744,18 +841,23 @@ export default function Cotizaciones({
               >
                 <Ico p={I.check} size={14} /> {editQuoteId ? "Guardar cambios" : "Guardar borrador"}
               </button>
-              <button className="btn btn-ghost" onClick={() => window.print()}>
+              <button className="btn btn-ghost" onClick={async () => {
+                const tab = window.open("about:blank", "_blank")
+                if (!tab) { alert("Permite las ventanas emergentes para abrir el PDF."); return }
+                tab.opener = null
+                tab.document.body.textContent = "Guardando cotización y generando PDF..."
+                try {
+                  const saved = await saveQuote()
+                  if (!saved) { tab.close(); return }
+                  tab.location.href = await getDocumentPdfUrl(`/api/cotizaciones/${saved.id_cotizacion}`, authUser)
+                } catch (error) {
+                  tab.close()
+                  alert(error instanceof Error ? error.message : "No se pudo abrir el PDF.")
+                }
+              }}>
                 <Ico p={I.download} size={14} /> Exportar PDF
               </button>
-              <button
-                className="btn btn-ghost"
-                onClick={() => {
-                  const subject = encodeURIComponent("Nueva cotización Ecoterra")
-                  window.location.href = `mailto:?subject=${subject}`
-                }}
-              >
-                <Ico p={I.mail} size={14} /> Enviar por correo
-              </button>
+              {/* BOTÓN DE CORREO ELIMINADO */}
               <button
                 className="btn btn-navy"
                 disabled={
@@ -786,7 +888,7 @@ export default function Cotizaciones({
                 </h2>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>
+                <button className="btn btn-ghost btn-sm" onClick={() => downloadQuotePdf(preview)}>
                   <Ico p={I.download} size={14} /> Imprimir / PDF
                 </button>
                 <button onClick={() => setPreview(null)} className="cotizaciones-modal-close" style={{ position: "static" }}>

@@ -26,6 +26,7 @@ class Cotizacion(models.Model):
         db_table = "cotizacion"
         managed = False
 
+    # Devuelve el número de cotización como representación textual.
     def __str__(self):
         return self.numero_cotizacion
 
@@ -52,5 +53,6 @@ class DetalleCotizacion(models.Model):
         db_table = "detalle_cotizacion"
         managed = False
 
+    # Devuelve el identificador del detalle y el número de su cotización.
     def __str__(self):
         return f"Detalle {self.id_dc} - {self.id_cotizacion.numero_cotizacion}"

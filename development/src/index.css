@@ -197,6 +197,15 @@ body,
   text-align: right;
 }
 
+/* 👇 EXCEPCIÓN PARA LA TABLA DE MOVIMIENTOS */
+/* Anulamos el comportamiento de "última columna" en la tabla de movimientos */
+.mov-table tbody td:last-child,
+.mov-table thead th:last-child {
+  width: auto;
+  white-space: normal;
+  text-align: left;
+}
+
 /* ── Badges ──────────────────────────────── */
 .badge {
   display: inline-flex;

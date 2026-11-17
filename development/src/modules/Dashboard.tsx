@@ -3,6 +3,7 @@ import React from "react"
 import logoEcoterra from "@/imports/logo_ecoterra.png"
 import { Badge, fmt, I, Ico, Product, Screen } from "../shared"
 
+// Muestra los indicadores del panel y las alertas de productos con stock inferior al mínimo.
 export default function Dashboard({
   productos,
   onNav,
@@ -11,7 +12,7 @@ export default function Dashboard({
   onNav: (screen: Screen) => void
 }) {
   const stockAlerts = productos.filter(
-    (product) => product.stock < product.stockMin,
+    /* Comprueba qué elementos cumplen la condición evaluando product.stock < product.stockMin. */ (product) => product.stock < product.stockMin,
   )
   const today = new Date().toLocaleDateString("es-CL", {
     weekday: "long",
@@ -66,7 +67,7 @@ export default function Dashboard({
           {stockAlerts.length > 0 && (
             <button
               className="dashboard-hero-kpi dashboard-hero-kpi-alert"
-              onClick={() => onNav("ia")}
+              onClick={/* Ejecuta onNav("ia") al invocarse este callback. */ () => onNav("ia")}
             >
               <span>Alertas stock</span>
               <strong>{stockAlerts.length}</strong>
@@ -95,11 +96,11 @@ export default function Dashboard({
             </span>
             <Badge t="danger">{stockAlerts.length}</Badge>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => onNav("ia")}>
+          <button className="btn btn-ghost btn-sm" onClick={/* Ejecuta onNav("ia") al invocarse este callback. */ () => onNav("ia")}>
             Ver panel IA →
           </button>
         </div>
-        {stockAlerts.map((product) => {
+        {stockAlerts.map(/* Renderiza la alerta del producto y calcula el porcentaje de stock respecto al mínimo. */ (product) => {
           const pct = Math.min(100, (product.stock / product.stockMin) * 100)
           return (
             <div key={product.id} className="dashboard-alert-item">
@@ -137,7 +138,7 @@ export default function Dashboard({
                 <div style={{ marginTop: 8 }}>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => onNav("ia")}
+                    onClick={/* Ejecuta onNav("ia") al invocarse este callback. */ () => onNav("ia")}
                   >
                     Consultar IA
                   </button>
@@ -156,12 +157,12 @@ export default function Dashboard({
           </span>
           <button
             className="btn btn-ghost btn-sm"
-            onClick={() => onNav("productos")}
+            onClick={/* Ejecuta onNav("productos") al invocarse este callback. */ () => onNav("productos")}
           >
             Ver catálogo →
           </button>
         </div>
-        {productos.map((product) => {
+        {productos.map(/* Renderiza el indicador de stock del producto evitando dividir por un mínimo igual a cero. */ (product) => {
           const pct =
             product.stockMin === 0
               ? 100
@@ -204,7 +205,7 @@ export default function Dashboard({
         <div className="panel-header">
           <span className="dashboard-activity-title">Actividad reciente</span>
         </div>
-        {activity.map((item, index) => (
+        {activity.map(/* Renderiza el contenido de cada elemento de activity. */ (item, index) => (
           <div
             key={index}
             className="dashboard-activity-item"

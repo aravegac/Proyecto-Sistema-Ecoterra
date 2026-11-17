@@ -41,6 +41,7 @@ const EMPTY_FORM: LoteInput = {
   estado: "Disponible",
 }
 
+// Muestra y filtra lotes y gestiona su creación, eliminación y alertas de vencimiento.
 export default function Lotes({
   lotes,
   productos,
@@ -56,23 +57,26 @@ export default function Lotes({
   const [formError, setFormError] = useState("")
 
   const filtered = lotes.filter(
-    (lot) =>
+    /* Comprueba qué elementos cumplen la condición evaluando (!envase || lot.envase === envase) && (!estado || lot.estado === estado). */ (lot) =>
       (!envase || lot.envase === envase) && (!estado || lot.estado === estado),
   )
 
-  const maxQty = Math.max(...lotes.map((lot) => lot.qty), 1)
+  const maxQty = Math.max(...lotes.map(/* Transforma cada elemento de la lista devolviendo lot.qty. */ (lot) => lot.qty), 1)
 
+  // Indica si la fecha de vencimiento es futura y está a menos de 180 días.
   const expiringSoon = (date: string) => {
     const ms = new Date(date).getTime() - Date.now()
     return ms > 0 && ms < 1000 * 60 * 60 * 24 * 180
   }
 
+  // Reinicia los campos y errores y abre el formulario de creación de lotes.
   const openNew = () => {
     setForm(EMPTY_FORM)
     setFormError("")
     setShowModal(true)
   }
 
+  // Exige producto, cantidad y fechas, solicita la creación del lote y muestra los errores.
   const handleSave = async () => {
     if (!form.prod || !form.qty || !form.fabr || !form.venc) {
       setFormError("Producto, cantidad, fabricación y vencimiento son obligatorios.")
@@ -114,25 +118,25 @@ export default function Lotes({
         <div className="kpi">
           <div className="kpi-label">Lotes activos</div>
           <div className="kpi-value tabular">
-            {lotes.filter((lot) => lot.qty > 0).length}
+            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando lot.qty > 0. */ (lot) => lot.qty > 0).length}
           </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Litros en bodega</div>
           <div className="kpi-value tabular">
-            {fmt(lotes.reduce((sum, lot) => sum + lot.qty, 0))} L
+            {fmt(lotes.reduce(/* Acumula el resultado de la lista mediante sum + lot.qty. */ (sum, lot) => sum + lot.qty, 0))} L
           </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Sin stock</div>
           <div className="kpi-value tabular lotes-danger-value">
-            {lotes.filter((lot) => lot.qty === 0).length}
+            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando lot.qty === 0. */ (lot) => lot.qty === 0).length}
           </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Próx. a vencer</div>
           <div className="kpi-value tabular lotes-warn-value">
-            {lotes.filter((lot) => expiringSoon(lot.venc)).length}
+            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando expiringSoon(lot.venc). */ (lot) => expiringSoon(lot.venc)).length}
           </div>
         </div>
       </div>
@@ -143,7 +147,7 @@ export default function Lotes({
             <select
               className="select lotes-filter-a"
               value={envase}
-              onChange={(e) => setEnvase(e.target.value)}
+              onChange={/* Ejecuta setEnvase(e.target.value) al invocarse este callback. */ (e) => setEnvase(e.target.value)}
             >
               <option value="">Todos los envases</option>
               <option>Tambor 200 L</option>
@@ -152,7 +156,7 @@ export default function Lotes({
             <select
               className="select lotes-filter-b"
               value={estado}
-              onChange={(e) => setEstado(e.target.value)}
+              onChange={/* Ejecuta setEstado(e.target.value) al invocarse este callback. */ (e) => setEstado(e.target.value)}
             >
               <option value="">Todos los estados</option>
               <option>Disponible</option>
@@ -176,7 +180,7 @@ export default function Lotes({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((lot) => (
+            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (lot) => (
               <tr key={lot.id}>
                 <td className="lotes-id">{lot.id}</td>
                 <td className="lotes-prod">{lot.prod}</td>
@@ -217,7 +221,7 @@ export default function Lotes({
                 <td>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={async () => {
+                    onClick={/* Confirma la eliminación del lote, la solicita y muestra el error si falla. */ async () => {
                       if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
                       try {
                         await onDelete(lot)
@@ -239,12 +243,12 @@ export default function Lotes({
         <div className="modal-backdrop">
           <div
             className="modal lotes-modal"
-            onClick={(e) => e.stopPropagation()}
+            onClick={/* Ejecuta e.stopPropagation() al invocarse este callback. */ (e) => e.stopPropagation()}
           >
             <div className="lotes-modal-header">
               <h2 className="lotes-modal-title">Registrar lote</h2>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={/* Ejecuta setShowModal(false) al invocarse este callback. */ () => setShowModal(false)}
                 aria-label="Cerrar"
                 className="lotes-modal-close"
               >
@@ -264,10 +268,10 @@ export default function Lotes({
                 <select
                   className="input"
                   value={form.prod}
-                  onChange={(e) => setForm({ ...form, prod: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, prod: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, prod: e.target.value })}
                 >
                   <option value="">Seleccionar…</option>
-                  {productos.map((p) => (
+                  {productos.map(/* Renderiza el contenido de cada elemento de productos. */ (p) => (
                     <option key={p.id} value={p.codigo}>
                       {p.codigo} — {p.nombre}
                     </option>
@@ -281,7 +285,7 @@ export default function Lotes({
                   type="number"
                   min={0}
                   value={form.qty || ""}
-                  onChange={(e) =>
+                  onChange={/* Ejecuta setForm({ ...form, qty: Number(e.target.value) }) al invocarse este callback. */ (e) =>
                     setForm({ ...form, qty: Number(e.target.value) })
                   }
                 />
@@ -291,7 +295,7 @@ export default function Lotes({
                 <select
                   className="input"
                   value={form.envase}
-                  onChange={(e) => setForm({ ...form, envase: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, envase: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, envase: e.target.value })}
                 >
                   <option value="">Seleccionar…</option>
                   <option>Tambor 200 L</option>
@@ -304,7 +308,7 @@ export default function Lotes({
                   className="input"
                   type="date"
                   value={form.fabr}
-                  onChange={(e) => setForm({ ...form, fabr: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, fabr: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, fabr: e.target.value })}
                 />
               </div>
               <div className="field lotes-span-1">
@@ -313,7 +317,7 @@ export default function Lotes({
                   className="input"
                   type="date"
                   value={form.venc}
-                  onChange={(e) => setForm({ ...form, venc: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, venc: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, venc: e.target.value })}
                 />
               </div>
               <div className="field lotes-span-1">
@@ -321,7 +325,7 @@ export default function Lotes({
                 <input
                   className="input"
                   value={form.ubic}
-                  onChange={(e) => setForm({ ...form, ubic: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, ubic: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, ubic: e.target.value })}
                 />
               </div>
               <div className="field lotes-span-1">
@@ -329,7 +333,7 @@ export default function Lotes({
                 <select
                   className="input"
                   value={form.estado}
-                  onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                  onChange={/* Ejecuta setForm({ ...form, estado: e.target.value }) al invocarse este callback. */ (e) => setForm({ ...form, estado: e.target.value })}
                 >
                   <option value="Disponible">Disponible</option>
                   <option value="Reservado">Reservado</option>
@@ -346,7 +350,7 @@ export default function Lotes({
               </button>
               <button
                 className="btn btn-ghost"
-                onClick={() => setShowModal(false)}
+                onClick={/* Ejecuta setShowModal(false) al invocarse este callback. */ () => setShowModal(false)}
                 disabled={saving}
               >
                 Cancelar

@@ -58,14 +58,16 @@ const NAV: NavGroup[] = [
   },
 ]
 
+// Obtiene hasta dos iniciales en mayúsculas del nombre o un signo de interrogación si está vacío.
 const getInitials = (nombre: string) =>
   nombre
     .split(" ")
-    .map((n) => n[0])
+    .map(/* Transforma cada elemento de la lista devolviendo n[0]. */ (n) => n[0])
     .join("")
     .slice(0, 2)
     .toUpperCase() || "?"
 
+// Muestra el menú lateral con los módulos autorizados, la opción de contraerlo y los datos de la sesión.
 function Sidebar({
   cur,
   onNav,
@@ -174,9 +176,9 @@ function Sidebar({
       </div>
 
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px 8px 16px" }}>
-        {NAV.map((group, groupIndex) => {
+        {NAV.map(/* Renderiza cada grupo del menú únicamente con sus módulos autorizados y oculta los grupos vacíos. */ (group, groupIndex) => {
           // Filtrar items por permisos
-          const visibleItems = group.items.filter((item) =>
+          const visibleItems = group.items.filter(/* Comprueba qué elementos cumplen la condición evaluando canAccessModule(user, item.moduleId). */ (item) =>
             canAccessModule(user, item.moduleId),
           )
 
@@ -189,11 +191,11 @@ function Sidebar({
                 <div className="nav-section">{group.label}</div>
               )}
               {collapsed && group.label && <div style={{ height: 10 }} />}
-              {visibleItems.map((item) => (
+              {visibleItems.map(/* Renderiza el contenido de cada elemento de visibleItems. */ (item) => (
                 <div
                   key={item.id}
                   className={`nav-item ${cur === item.id ? "active" : ""}`}
-                  onClick={() => onNav(item.id)}
+                  onClick={/* Ejecuta onNav(item.id) al invocarse este callback. */ () => onNav(item.id)}
                   title={collapsed ? item.label : undefined}
                 >
                   <span className="nav-icon">
@@ -275,11 +277,11 @@ function Sidebar({
               alignItems: "center",
               borderRadius: 6,
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={/* Actualiza el color y el fondo del botón según el evento del puntero. */ (e) => {
               e.currentTarget.style.color = "#DC2626"
               e.currentTarget.style.background = "#1E293B"
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={/* Actualiza el color y el fondo del botón según el evento del puntero. */ (e) => {
               e.currentTarget.style.color = "#94A3B8"
               e.currentTarget.style.background = "none"
             }}
@@ -292,6 +294,7 @@ function Sidebar({
   )
 }
 
+// Muestra el módulo actual, la fecha, las notificaciones y los controles del usuario.
 function Topbar({
   screen,
   user,
@@ -302,7 +305,7 @@ function Topbar({
   onLogout: () => void
 }) {
   const label =
-    NAV.flatMap((group) => group.items).find((item) => item.id === screen)
+    NAV.flatMap(/* Devuelve group.items al invocarse este callback. */ (group) => group.items).find(/* Identifica el elemento buscado evaluando item.id === screen. */ (item) => item.id === screen)
       ?.label ?? ""
 
   return (
@@ -410,6 +413,7 @@ function Topbar({
   )
 }
 
+// Organiza el menú lateral, la barra superior y el contenido de la pantalla seleccionada.
 export default function AppLayout({
   screen,
   onNav,
@@ -438,7 +442,7 @@ export default function AppLayout({
         cur={screen}
         onNav={onNav}
         collapsed={collapsed}
-        toggle={() => setCollapsed(!collapsed)}
+        toggle={/* Ejecuta setCollapsed(!collapsed) al invocarse este callback. */ () => setCollapsed(!collapsed)}
         user={user}
         onLogout={onLogout}
       />

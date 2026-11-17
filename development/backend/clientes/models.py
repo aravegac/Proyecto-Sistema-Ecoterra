@@ -32,6 +32,7 @@ class Cliente(models.Model):
         verbose_name = "cliente"
         verbose_name_plural = "clientes"
 
+    # Devuelve la razón social y el RUT como representación textual del cliente.
     def __str__(self):
         return f"{self.razon_social} ({self.rut})"
 
@@ -83,6 +84,7 @@ class Direccion(models.Model):
         verbose_name = "dirección"
         verbose_name_plural = "direcciones"
 
+    # Devuelve el nombre y la ciudad como representación textual de la dirección.
     def __str__(self):
         return f"{self.nombre} - {self.ciudad}"
 

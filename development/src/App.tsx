@@ -7,9 +7,11 @@ import Proveedores, { Proveedor, ProveedorInput } from "./modules/Proveedores"
 import Productos, { ProductInput } from "./modules/Productos"
 import Lotes, { Lote, LoteInput } from "./modules/Lotes"
 import Movimientos, { Movimiento, MovimientoInput } from "./modules/Movimientos"
-import Cotizaciones, { PurchaseOrder, Invoice } from "./modules/Cotizaciones"
-import OrdenesCompra from "./modules/OrdenesCompra"
-import Facturacion from "./modules/Facturacion"
+import Cotizaciones from "./modules/Cotizaciones" // 👈 Quitamos { Invoice } de aquí
+import OrdenesCompra, {
+  type PurchaseOrder,
+} from "./modules/OrdenesCompra"
+import Facturacion, { Invoice } from "./modules/Facturacion" // 👈 Solo una vez, y trae el Invoice correcto
 import NotasCredito from "./modules/NotasCredito"
 import IaPanel from "./modules/IaPanel"
 import Usuarios, { User, UserInput } from "./modules/Usuarios"
@@ -21,8 +23,10 @@ import {
   Screen,
 } from "./shared"
 import Login from "./modules/Login"
+import { clearSession, readSession, saveSession } from "./session"
 
 // ---------- Mappers API -> UI ----------
+// Adapta un cliente de la API y sus direcciones al formato utilizado por la interfaz.
 const mapClientFromApi = (item: any) => ({
   id: item.id,
   rut: item.rut,
@@ -36,6 +40,7 @@ const mapClientFromApi = (item: any) => ({
   dirs: Array.isArray(item.direcciones) ? item.direcciones : [],
 })
 
+// Adapta los campos del producto y convierte sus existencias al formato numérico de la interfaz.
 const mapProductFromApi = (item: any) => ({
   id: item.id,
   codigo: item.codigo,
@@ -49,6 +54,7 @@ const mapProductFromApi = (item: any) => ({
   estado: item.estado ? "Activo" : "Inactivo",
 })
 
+// Adapta el usuario de la API y normaliza su rol, estado y permisos para la interfaz.
 const mapUserFromApi = (item: any): User => ({
   id: item.id,
   nombre: item.nombre,
@@ -62,6 +68,7 @@ const mapUserFromApi = (item: any): User => ({
       : undefined,
 })
 
+// Adapta los datos del proveedor y completa los campos opcionales para mostrarlos en la interfaz.
 const mapProveedorFromApi = (item: any): Proveedor => ({
   id: item.id,
   empresa: item.nombre_empresa,
@@ -76,8 +83,9 @@ const mapProveedorFromApi = (item: any): Proveedor => ({
       : "Activo",
 })
 
+// Adapta el lote de inventario y obtiene el código del producto asociado.
 const mapLoteFromApi = (item: any, productos: any[]): Lote => {
-  const producto = productos.find((p) => Number(p.id) === Number(item.id_producto))
+  const producto = productos.find(/* Identifica el elemento buscado evaluando Number(p.id) === Number(item.id_producto). */ (p) => Number(p.id) === Number(item.id_producto))
   return {
     id: item.id,
     prod: producto?.codigo || String(item.id_producto),
@@ -90,13 +98,14 @@ const mapLoteFromApi = (item: any, productos: any[]): Lote => {
   }
 }
 
+// Adapta un movimiento y resuelve su lote, usuario, fecha y cantidades para la interfaz.
 const mapMovimientoFromApi = (
   item: any,
   lotes: any[],
   usuarios: any[],
 ): Movimiento => {
-  const lote = lotes.find((l) => Number(l.id) === Number(item.id_inventario))
-  const usuario = usuarios.find((u) => Number(u.id) === Number(item.id_usuario))
+  const lote = lotes.find(/* Identifica el elemento buscado evaluando Number(l.id) === Number(item.id_inventario). */ (l) => Number(l.id) === Number(item.id_inventario))
+  const usuario = usuarios.find(/* Identifica el elemento buscado evaluando Number(u.id) === Number(item.id_usuario). */ (u) => Number(u.id) === Number(item.id_usuario))
   const fecha = item.fecha_movimiento
     ? new Date(item.fecha_movimiento).toISOString().slice(0, 16).replace("T", " ")
     : ""
@@ -117,8 +126,10 @@ const mapMovimientoFromApi = (
   }
 }
 
+// Adapta la factura de la API y convierte sus identificadores e importes al formato de la interfaz.
 const mapFacturaFromApi = (item: any): Invoice => ({
   id: item.numero_factura,
+  id_interno: Number(item.id_factura ?? item.id),
   oc: item.oc_numero || "",
   cliente: item.cliente_nombre || "",
   fecha: item.fecha_factura,
@@ -129,12 +140,19 @@ const mapFacturaFromApi = (item: any): Invoice => ({
   estado: item.estado_factura,
 })
 
+// Adapta la orden y su cotización asociada al formato utilizado por la interfaz.
 const mapOrdenFromApi = (item: any): PurchaseOrder => ({
+  idOc: Number(item.id_oc),
   id: item.numero_oc,
+  clienteId: Number(item.id_cliente),
+  cotizacionId:
+    item.id_cotizacion == null
+      ? null
+      : Number(item.id_cotizacion),
   cot: item.cotizacion_numero || "",
   cliente: item.cliente_nombre || "",
   fecha: item.fecha_oc,
-  total: 0,
+  total: Number(item.cotizacion_detalle?.total_cotizacion ?? 0),
   estado: "Pendiente",
   factura: null,
 })
@@ -204,9 +222,10 @@ const initialProductos = [
 ]
 
 // ---------- App ----------
+// Gestiona la sesión, carga los datos de la API y conecta la navegación con las operaciones de cada módulo.
 export default function App() {
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
-  const [screen, setScreen] = useState<Screen>("login")
+  const [authUser, setAuthUser] = useState<AuthUser | null>(readSession)
+  const [screen, setScreen] = useState<Screen>(() => authUser ? "dashboard" : "login")
   const [productos, setProductos] = useState(initialProductos)
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
@@ -222,20 +241,42 @@ export default function App() {
   const [movimientosError, setMovimientosError] = useState("")
   const [facturas, setFacturas] = useState<Invoice[]>([])
   const [ordenes, setOrdenes] = useState<PurchaseOrder[]>([])
+  // Recarga las órdenes de compra con el token del usuario y actualiza su estado en la aplicación.
+  const reloadOrdenes = async () => {
+    if (!authUser) return
+
+    const response = await fetch("/api/ordenes-compra/", {
+      headers: authHeaders(authUser),
+    })
+
+    if (!response.ok) {
+      throw new Error("No se pudieron actualizar las órdenes de compra.")
+    }
+
+    const data = await response.json()
+    const items = Array.isArray(data) ? data : data.value || []
+
+    setOrdenes(items.map(mapOrdenFromApi))
+  }
+
 
   // ---------- Auth ----------
+  // Guarda el usuario autenticado y abre el dashboard.
   const handleLogin = (user: AuthUser) => {
+    saveSession(user)
     setAuthUser(user)
     setScreen("dashboard")
   }
 
+  // Borra la sesión guardada y en memoria y vuelve a la pantalla de acceso.
   const handleLogout = () => {
+    clearSession()
     setAuthUser(null)
     setScreen("login")
   }
 
   // Bloquear navegación a módulos sin permiso (redirige al dashboard)
-  useEffect(() => {
+  useEffect(/* Vuelve al dashboard si la sesión no tiene acceso al módulo de la pantalla actual. */ () => {
     if (!authUser) return
     const currentModule = SCREEN_TO_MODULE[screen]
     if (currentModule && !canAccessModule(authUser, currentModule)) {
@@ -244,19 +285,19 @@ export default function App() {
   }, [screen, authUser])
 
   // ---------- Cargas iniciales (solo si hay sesión) ----------
-  useEffect(() => {
+  useEffect(/* Carga los clientes cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
     fetch("/api/clientes/", { headers: authHeaders(authUser) })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar clientes")
         return r.json()
       })
-      .then((data) => {
+      .then(/* Procesa la respuesta actualizando setClientes, setClientesError. */ (data) => {
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setClientes(data.map(mapClientFromApi))
         setClientesError("")
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setProductos, setClientes, setClientesError. */ (error) => {
         setProductos(initialProductos)
         setClientes([])
         setClientesError(
@@ -267,19 +308,19 @@ export default function App() {
       })
   }, [authUser])
 
-  useEffect(() => {
+  useEffect(/* Carga los usuarios cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
     fetch("/api/usuarios/", { headers: authHeaders(authUser) })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar usuarios")
         return r.json()
       })
-      .then((data) => {
+      .then(/* Procesa la respuesta actualizando setUsuarios, setUsuariosError. */ (data) => {
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setUsuarios(data.map(mapUserFromApi))
         setUsuariosError("")
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setUsuarios, setUsuariosError. */ (error) => {
         setUsuarios([])
         setUsuariosError(
           error instanceof Error
@@ -289,19 +330,19 @@ export default function App() {
       })
   }, [authUser])
 
-  useEffect(() => {
+  useEffect(/* Carga los proveedores cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
     fetch("/api/proveedores/", { headers: authHeaders(authUser) })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar proveedores")
         return r.json()
       })
-      .then((data) => {
+      .then(/* Procesa la respuesta actualizando setProveedores, setProveedoresError. */ (data) => {
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setProveedores(data.map(mapProveedorFromApi))
         setProveedoresError("")
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setProveedores, setProveedoresError. */ (error) => {
         setProveedores([])
         setProveedoresError(
           error instanceof Error
@@ -312,31 +353,31 @@ export default function App() {
   }, [authUser])
 
   // Cargar productos + lotes (en cadena porque lotes dependen de productos)
-  useEffect(() => {
+  useEffect(/* Carga productos y después sus lotes de inventario para la sesión actual. */ () => {
     if (!authUser) return
     fetch("/api/productos/", { headers: authHeaders(authUser) })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar productos")
         return r.json()
       })
-      .then((productosData) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (productosData) => {
         const mappedProductos = Array.isArray(productosData)
           ? productosData.map(mapProductFromApi)
           : initialProductos
         setProductos(mappedProductos)
 
         return fetch("/api/inventario/", { headers: authHeaders(authUser) })
-          .then((r) => {
+          .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
             if (!r.ok) throw new Error("No se pudo cargar inventario")
             return r.json()
           })
-          .then((lotesData) => {
+          .then(/* Procesa la respuesta actualizando setLotes, setLotesError. */ (lotesData) => {
             if (!Array.isArray(lotesData)) throw new Error("Formato inválido")
-            setLotes(lotesData.map((l: any) => mapLoteFromApi(l, mappedProductos)))
+            setLotes(lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, mappedProductos). */ (l: any) => mapLoteFromApi(l, mappedProductos)))
             setLotesError("")
           })
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setProductos, setLotes, setLotesError. */ (error) => {
         setProductos(initialProductos)
         setLotes([])
         setLotesError(
@@ -348,20 +389,20 @@ export default function App() {
   }, [authUser])
 
   // Cargar movimientos (depende de lotes y usuarios para enriquecer)
-  useEffect(() => {
+  useEffect(/* Carga los movimientos y resuelve sus lotes y usuarios cuando cambian las dependencias del efecto. */ () => {
     if (!authUser) return
 
     fetch("/api/movimientos/", { headers: authHeaders(authUser) })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar movimientos")
         return r.json()
       })
-      .then((data) => {
+      .then(/* Procesa la respuesta actualizando setMovimientos, setMovimientosError. */ (data) => {
         if (!Array.isArray(data)) throw new Error("Formato inválido")
-        setMovimientos(data.map((m: any) => mapMovimientoFromApi(m, lotes, usuarios)))
+        setMovimientos(data.map(/* Transforma cada elemento de la lista devolviendo mapMovimientoFromApi(m, lotes, usuarios). */ (m: any) => mapMovimientoFromApi(m, lotes, usuarios)))
         setMovimientosError("")
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setMovimientos, setMovimientosError. */ (error) => {
         setMovimientos([])
         setMovimientosError(
           error instanceof Error
@@ -372,42 +413,37 @@ export default function App() {
   }, [authUser, lotes, usuarios])
 
   // Cargar facturas desde el backend
-  useEffect(() => {
+  useEffect(/* Carga las facturas de la sesión actual y vacía el listado si falla la consulta. */ () => {
     if (!authUser) return
     fetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar facturas")
         return r.json()
       })
-      .then((data) => {
+      .then(/* Procesa la respuesta actualizando setFacturas. */ (data) => {
         const items = Array.isArray(data) ? data : data.value || []
         setFacturas(items.map(mapFacturaFromApi))
       })
-      .catch((error) => {
+      .catch(/* Gestiona el error actualizando setFacturas. */ (error) => {
         console.error("Error cargando facturas:", error)
         setFacturas([])
       })
   }, [authUser])
 
   // Cargar órdenes de compra desde el backend
-  useEffect(() => {
+  
+  useEffect(/* Recarga las órdenes al cambiar la sesión y limpia el listado si falla la carga. */ () => {
     if (!authUser) return
-    fetch("/api/ordenes-compra/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
-      .then((r) => {
-        if (!r.ok) throw new Error("No se pudo cargar órdenes")
-        return r.json()
-      })
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data.value || []
-        setOrdenes(items.map(mapOrdenFromApi))
-      })
-      .catch((error) => {
-        console.error("Error cargando órdenes:", error)
-        setOrdenes([])
-      })
+
+    reloadOrdenes().catch(/* Gestiona el error actualizando setOrdenes. */ (error) => {
+      console.error("Error cargando órdenes:", error)
+      setOrdenes([])
+    })
   }, [authUser])
 
+
   // ---------- Handlers Usuarios ----------
+  // Crea un usuario mediante la API y lo añade a la lista local.
   const createUser = async (input: UserInput) => {
     const response = await fetch("/api/usuarios/", {
       method: "POST",
@@ -421,7 +457,7 @@ export default function App() {
       }),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -429,22 +465,32 @@ export default function App() {
       )
     }
     const created = mapUserFromApi(await response.json())
-    setUsuarios((current) => [...current, created])
+    setUsuarios(/* Calcula el nuevo valor de Usuarios devolviendo [...current, created]. */ (current) => [...current, created])
     return created
   }
 
+  // Actualiza el usuario mediante la API y reemplaza sus datos en la lista local.
   const updateUser = async (user: User, input: UserInput) => {
+    // 1. Armamos el body base con los campos que siempre se envían
+    const bodyData: any = {
+      nombre: input.nombre,
+      email: input.email,
+      rol: input.rol,
+      estado: input.estado,
+      permisos: input.permisos ?? {},
+    }
+
+    // 2. Si el usuario escribió una nueva contraseña, la agregamos al body
+    if (input.contrasena && input.contrasena.trim() !== "") {
+      bodyData.contrasena = input.contrasena
+    }
+
     const response = await fetch(`/api/usuarios/${user.id}/`, {
       method: "PATCH",
       headers: authHeaders(authUser),
-      body: JSON.stringify({
-        nombre: input.nombre,
-        email: input.email,
-        rol: input.rol,
-        estado: input.estado,
-        permisos: input.permisos ?? {},
-      }),
+      body: JSON.stringify(bodyData), //  Enviamos el body modificado
     })
+    
     if (!response.ok) {
       const errorData = await response.json().catch(() => null)
       throw new Error(
@@ -460,16 +506,18 @@ export default function App() {
     return updated
   }
 
+  // Elimina el usuario mediante la API y lo retira de la lista local.
   const deleteUser = async (user: User) => {
     const response = await fetch(`/api/usuarios/${user.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
     if (!response.ok) throw new Error("No se pudo eliminar el usuario")
-    setUsuarios((current) => current.filter((item) => item.id !== user.id))
+    setUsuarios(/* Calcula el nuevo valor de Usuarios devolviendo current.filter((item) => item.id !== user.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== user.id. */ (item) => item.id !== user.id))
   }
 
   // ---------- Handlers Proveedores ----------
+  // Convierte el formulario de proveedor a los nombres de campos esperados por la API.
   const proveedorPayload = (input: ProveedorInput) => ({
     nombre_empresa: input.empresa,
     pais: input.pais,
@@ -480,6 +528,7 @@ export default function App() {
     estado: input.estado,
   })
 
+  // Crea un proveedor mediante la API y lo añade a la lista local.
   const createProveedor = async (input: ProveedorInput) => {
     const response = await fetch("/api/proveedores/", {
       method: "POST",
@@ -487,7 +536,7 @@ export default function App() {
       body: JSON.stringify(proveedorPayload(input)),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -495,10 +544,11 @@ export default function App() {
       )
     }
     const created = mapProveedorFromApi(await response.json())
-    setProveedores((current) => [...current, created])
+    setProveedores(/* Calcula el nuevo valor de Proveedores devolviendo [...current, created]. */ (current) => [...current, created])
     return created
   }
 
+  // Actualiza el proveedor mediante la API y reemplaza sus datos en la lista local.
   const updateProveedor = async (proveedor: Proveedor, input: ProveedorInput) => {
     const response = await fetch(`/api/proveedores/${proveedor.id}/`, {
       method: "PATCH",
@@ -506,7 +556,7 @@ export default function App() {
       body: JSON.stringify(proveedorPayload(input)),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -514,22 +564,24 @@ export default function App() {
       )
     }
     const updated = mapProveedorFromApi(await response.json())
-    setProveedores((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
+    setProveedores(/* Calcula el nuevo valor de Proveedores devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
     return updated
   }
 
+  // Elimina el proveedor mediante la API y lo retira de la lista local.
   const deleteProveedor = async (proveedor: Proveedor) => {
     const response = await fetch(`/api/proveedores/${proveedor.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
     if (!response.ok) throw new Error("No se pudo eliminar el proveedor")
-    setProveedores((current) => current.filter((item) => item.id !== proveedor.id))
+    setProveedores(/* Calcula el nuevo valor de Proveedores devolviendo current.filter((item) => item.id !== proveedor.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== proveedor.id. */ (item) => item.id !== proveedor.id))
   }
 
   // ---------- Handlers Clientes ----------
+  // Crea un cliente mediante la API y lo añade a la lista local.
   const createClient = async (input: NewClientInput) => {
     const response = await fetch("/api/clientes/", {
       method: "POST",
@@ -546,7 +598,7 @@ export default function App() {
       }),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -554,10 +606,11 @@ export default function App() {
       )
     }
     const created = mapClientFromApi(await response.json())
-    setClientes((current) => [...current, created])
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo [...current, created]. */ (current) => [...current, created])
     return created
   }
 
+  // Actualiza el cliente mediante la API y reemplaza sus datos en la lista local.
   const updateClient = async (client: Client, input: NewClientInput) => {
     const response = await fetch(`/api/clientes/${client.id}/`, {
       method: "PATCH",
@@ -574,7 +627,7 @@ export default function App() {
       }),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -582,12 +635,13 @@ export default function App() {
       )
     }
     const updated = mapClientFromApi(await response.json())
-    setClientes((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
     return updated
   }
 
+  // Elimina el cliente mediante la API y lo retira de la lista local.
   const deleteClient = async (
     client: React.ComponentProps<typeof Clientes>["clientes"][number],
   ) => {
@@ -596,9 +650,10 @@ export default function App() {
       headers: authHeaders(authUser),
     })
     if (!response.ok) throw new Error("No se pudo eliminar el cliente")
-    setClientes((current) => current.filter((item) => item.id !== client.id))
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.filter((item) => item.id !== client.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== client.id. */ (item) => item.id !== client.id))
   }
 
+  // Crea una dirección del cliente mediante la API y actualiza sus direcciones locales.
   const createAddress = async (client: Client, input: AddressInput) => {
     const response = await fetch(`/api/clientes/${client.id}/direcciones/`, {
       method: "POST",
@@ -606,7 +661,7 @@ export default function App() {
       body: JSON.stringify(input),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -614,14 +669,15 @@ export default function App() {
       )
     }
     const created = (await response.json()) as Address
-    setClientes((current) =>
-      current.map((item) =>
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.map((item) => item.id === client.id ? { ...item, dirs: [...item.dirs, created] } : item, ). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo item.id === client.id ? { ...item, dirs: [...item.dirs, created] } : item. */ (item) =>
         item.id === client.id ? { ...item, dirs: [...item.dirs, created] } : item,
       ),
     )
     return created
   }
 
+  // Actualiza una dirección mediante la API y reemplaza sus datos en el cliente local.
   const updateAddress = async (client: Client, address: Address, input: AddressInput) => {
     const response = await fetch(
       `/api/clientes/${client.id}/direcciones/${address.id}/`,
@@ -632,7 +688,7 @@ export default function App() {
       },
     )
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -640,12 +696,12 @@ export default function App() {
       )
     }
     const updated = (await response.json()) as Address
-    setClientes((current) =>
-      current.map((item) =>
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.map((item) => item.id === client.id ? { ...item, dirs: item.dirs.map((a) => (a.id === updated.id ? updated : a)), } : item, ). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo item.id === client.id ? { ...item, dirs: item.dirs.map((a) => (a.id === updated.id ? updated : a)), } : item. */ (item) =>
         item.id === client.id
           ? {
               ...item,
-              dirs: item.dirs.map((a) => (a.id === updated.id ? updated : a)),
+              dirs: item.dirs.map(/* Transforma cada elemento de la lista devolviendo (a.id === updated.id ? updated : a). */ (a) => (a.id === updated.id ? updated : a)),
             }
           : item,
       ),
@@ -653,22 +709,24 @@ export default function App() {
     return updated
   }
 
+  // Elimina una dirección mediante la API y la retira de las direcciones del cliente local.
   const deleteAddress = async (client: Client, address: Address) => {
     const response = await fetch(
       `/api/clientes/${client.id}/direcciones/${address.id}/`,
       { method: "DELETE", headers: authHeaders(authUser) },
     )
     if (!response.ok) throw new Error("No se pudo eliminar la dirección")
-    setClientes((current) =>
-      current.map((item) =>
+    setClientes(/* Calcula el nuevo valor de Clientes devolviendo current.map((item) => item.id === client.id ? { ...item, dirs: item.dirs.filter((a) => a.id !== address.id) } : item, ). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo item.id === client.id ? { ...item, dirs: item.dirs.filter((a) => a.id !== address.id) } : item. */ (item) =>
         item.id === client.id
-          ? { ...item, dirs: item.dirs.filter((a) => a.id !== address.id) }
+          ? { ...item, dirs: item.dirs.filter(/* Comprueba qué elementos cumplen la condición evaluando a.id !== address.id. */ (a) => a.id !== address.id) }
           : item,
       ),
     )
   }
 
   // ---------- Handlers Productos ----------
+  // Convierte el formulario de producto a los nombres de campos esperados por la API.
   const productPayload = (input: ProductInput) => ({
     codigo: input.codigo,
     nombre: input.nombre,
@@ -679,6 +737,7 @@ export default function App() {
     estado: input.estado === "Activo",
   })
 
+  // Crea un producto mediante la API y lo añade a la lista local.
   const createProduct = async (input: ProductInput) => {
     const response = await fetch("/api/productos/", {
       method: "POST",
@@ -686,7 +745,7 @@ export default function App() {
       body: JSON.stringify(productPayload(input)),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -694,10 +753,11 @@ export default function App() {
       )
     }
     const created = mapProductFromApi(await response.json())
-    setProductos((current) => [...current, created])
+    setProductos(/* Calcula el nuevo valor de Productos devolviendo [...current, created]. */ (current) => [...current, created])
     return created
   }
 
+  // Actualiza el producto mediante la API y reemplaza sus datos en la lista local.
   const updateProduct = async (
     product: React.ComponentProps<typeof Productos>["productos"][number],
     input: ProductInput,
@@ -708,7 +768,7 @@ export default function App() {
       body: JSON.stringify(productPayload(input)),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -716,12 +776,13 @@ export default function App() {
       )
     }
     const updated = mapProductFromApi(await response.json())
-    setProductos((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
+    setProductos(/* Calcula el nuevo valor de Productos devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
+      current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
     return updated
   }
 
+  // Elimina el producto mediante la API y lo retira de la lista local.
   const deleteProduct = async (
     product: React.ComponentProps<typeof Productos>["productos"][number],
   ) => {
@@ -730,19 +791,20 @@ export default function App() {
       headers: authHeaders(authUser),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
           : "No se pudo eliminar el producto",
       )
     }
-    setProductos((current) => current.filter((item) => item.id !== product.id))
+    setProductos(/* Calcula el nuevo valor de Productos devolviendo current.filter((item) => item.id !== product.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== product.id. */ (item) => item.id !== product.id))
   }
 
   // ---------- Handlers Lotes ----------
+  // Resuelve el producto, crea el lote mediante la API y lo añade al inventario local.
   const createLote = async (input: LoteInput) => {
-    const producto = productos.find((p: any) => p.codigo === input.prod)
+    const producto = productos.find(/* Identifica el elemento buscado evaluando p.codigo === input.prod. */ (p: any) => p.codigo === input.prod)
     if (!producto) throw new Error("Producto no encontrado")
 
     const response = await fetch("/api/inventario/", {
@@ -759,7 +821,7 @@ export default function App() {
       }),
     })
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData
           ? Object.values(errorData).flat().join(" ")
@@ -767,20 +829,22 @@ export default function App() {
       )
     }
     const created = mapLoteFromApi(await response.json(), productos)
-    setLotes((current) => [...current, created])
+    setLotes(/* Calcula el nuevo valor de Lotes devolviendo [...current, created]. */ (current) => [...current, created])
     return created
   }
 
+  // Elimina el lote mediante la API y lo retira del inventario local.
   const deleteLote = async (lote: Lote) => {
     const response = await fetch(`/api/inventario/${lote.id}/`, {
       method: "DELETE",
       headers: authHeaders(authUser),
     })
     if (!response.ok) throw new Error("No se pudo eliminar el lote")
-    setLotes((current) => current.filter((item) => item.id !== lote.id))
+    setLotes(/* Calcula el nuevo valor de Lotes devolviendo current.filter((item) => item.id !== lote.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== lote.id. */ (item) => item.id !== lote.id))
   }
 
   // ---------- Handlers Movimientos ----------
+  // Registra el movimiento mediante la API, lo añade a la lista local y recarga el inventario.
   const createMovimiento = async (input: MovimientoInput) => {
     const response = await fetch("/api/movimientos/", {
       method: "POST",
@@ -796,7 +860,7 @@ export default function App() {
     })
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null)
+      const errorData = await response.json().catch(/* Devuelve null cuando falla la operación anterior. */ () => null)
       throw new Error(
         errorData?.detail ||
           (errorData
@@ -808,25 +872,25 @@ export default function App() {
     const raw = await response.json()
     const created = mapMovimientoFromApi(raw, lotes, usuarios)
 
-    setMovimientos((current) => [created, ...current])
+    setMovimientos(/* Calcula el nuevo valor de Movimientos devolviendo [created, ...current]. */ (current) => [created, ...current])
 
     fetch("/api/inventario/", {
       headers: authHeaders(authUser),
     })
-      .then((r) => {
+      .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) {
           throw new Error("No se pudo actualizar el inventario")
         }
         return r.json()
       })
-      .then((lotesData) => {
+      .then(/* Procesa la respuesta actualizando setLotes. */ (lotesData) => {
         if (Array.isArray(lotesData)) {
           setLotes(
-            lotesData.map((l: any) => mapLoteFromApi(l, productos))
+            lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, productos). */ (l: any) => mapLoteFromApi(l, productos))
           )
         }
       })
-      .catch(() => {})
+      .catch(/* Finaliza el callback sin realizar operaciones adicionales. */ () => {})
 
     return created
   }
@@ -883,6 +947,7 @@ export default function App() {
         onCreate={createMovimiento}
       />
     ),
+    
     cotizaciones: (
       <Cotizaciones
         authUser={authUser}
@@ -890,11 +955,26 @@ export default function App() {
         facturas={facturas}
         clientes={clientes}
         productos={productos}
+        onOrdenesChange={reloadOrdenes}
       />
     ),
-    oc: <OrdenesCompra ordenes={ordenes} facturas={facturas} />,
-    facturacion: <Facturacion facturas={facturas} />,
-    nc: <NotasCredito facturas={facturas} />,
+
+    
+    oc: (
+      <OrdenesCompra
+        ordenes={ordenes}
+        facturas={facturas}
+        authUser={authUser}
+        onOrdenesChange={reloadOrdenes}
+      />
+    ),
+    facturacion: <Facturacion facturas={facturas} authUser={authUser} onCreated={/* Incorpora la factura creada al listado local calculando el total y evitando duplicados. */ (invoice) => {
+      setFacturas(/* Calcula el nuevo valor de Facturas devolviendo [ { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha }, ...current.filter((item) => item.id !== invoice.id), ]. */ (current) => [
+        { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha },
+        ...current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== invoice.id. */ (item) => item.id !== invoice.id),
+      ])
+    }} />,
+    nc: <NotasCredito facturas={facturas} authUser={authUser} />,
     ia: <IaPanel productos={productos} />,
     usuarios: (
       <Usuarios

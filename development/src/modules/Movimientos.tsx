@@ -136,7 +136,7 @@ export default function Movimientos({
                     }}
                     onClick={() => {
                       setType(value)
-                      setQty("")   // Limpiar cantidad al cambiar tipo
+                      setQty("")
                       setError("")
                     }}
                   >
@@ -186,7 +186,6 @@ export default function Movimientos({
                   </select>
                 </div>
 
-                {/* Input de cantidad con label dinámico */}
                 <div className="field">
                   <label className="label">
                     {type === "Ajuste"
@@ -200,7 +199,7 @@ export default function Movimientos({
                     value={qty}
                     onChange={(e) => setQty(e.target.value)}
                   />
-                  {type === "Ajuste" && selectedLote && (
+                  {selectedLote && (
                     <p
                       style={{
                         fontSize: "0.75rem",
@@ -208,25 +207,50 @@ export default function Movimientos({
                         marginTop: 4,
                       }}
                     >
-                      Stock actual en el lote:{" "}
+                      {type === "Ajuste" ? "Stock actual en el lote:" : "Stock final en el lote:"}{" "}
+                      
                       <strong style={{ color: "#0F172A" }}>
-                        {fmt(selectedLote.qty)} L
+                        {qty !== "" && type !== "Ajuste" 
+                          ? fmt(
+                              type === "Entrada" 
+                                ? selectedLote.qty + Number(qty)
+                                : selectedLote.qty - Number(qty)
+                            )
+                          : fmt(selectedLote.qty)
+                        } L
                       </strong>
+
                       {qty !== "" && (
                         <span
                           style={{
                             marginLeft: 8,
                             color:
-                              Number(qty) - selectedLote.qty === 0
-                                ? "#64748B"
-                                : Number(qty) > selectedLote.qty
+                              type === "Ajuste"
+                                ? Number(qty) - selectedLote.qty === 0
+                                  ? "#64748B"
+                                  : Number(qty) > selectedLote.qty
+                                    ? "#00995A"
+                                    : "#DC2626"
+                                : type === "Entrada"
                                   ? "#00995A"
                                   : "#DC2626",
                             fontWeight: 600,
                           }}
                         >
-                          ({Number(qty) > selectedLote.qty ? "+" : ""}
-                          {fmt(Number(qty) - selectedLote.qty)} L)
+                          {type === "Ajuste" ? (
+                            <>
+                              ({Number(qty) > selectedLote.qty ? "+" : ""}
+                              {fmt(Number(qty) - selectedLote.qty)} L)
+                            </>
+                          ) : type === "Entrada" ? (
+                            <>
+                              (+{fmt(Number(qty))} L)
+                            </>
+                          ) : (
+                            <>
+                              (-{fmt(Number(qty))} L)
+                            </>
+                          )}
                         </span>
                       )}
                     </p>
@@ -274,7 +298,7 @@ export default function Movimientos({
         {/* Historial */}
         <div className="panel">
           <div className="panel-header">Historial de Movimientos</div>
-          <table className="dt w-full">
+          <table className="dt mov-table" style={{ tableLayout: "auto" }}>
             <thead>
               <tr>
                 <th>ID</th>
@@ -312,17 +336,16 @@ export default function Movimientos({
                     <td>{movement.prod}</td>
                     <td
                       className={
-                        movement.qty < 0
+                        movement.tipo === "Salida"
                           ? "mov-history-qty-negative"
                           : "mov-history-qty-positive"
                       }
                     >
-                      {movement.qty > 0 ? "+" : ""}
+                      {movement.tipo === "Entrada" ? "+" : movement.tipo === "Salida" ? "-" : ""}
                       {fmt(movement.qty)} L
                     </td>
                     <td style={{ fontSize: "0.75rem" }}>
-                      {isAjuste &&
-                      movement.stockAnterior != null &&
+                      {movement.stockAnterior != null &&
                       movement.stockPosterior != null ? (
                         <span>
                           <span style={{ color: "#64748B" }}>
@@ -350,7 +373,7 @@ export default function Movimientos({
                     </td>
                     <td>{movement.lote}</td>
                     <td>{movement.ref}</td>
-                    <td style={{ maxWidth: 200, fontSize: "0.75rem" }}>
+                    <td style={{ fontSize: "0.75rem", maxWidth: "250px", whiteSpace: "normal", wordBreak: "break-word" }}>
                       {movement.observacion || "—"}
                     </td>
                     <td>{movement.user}</td>

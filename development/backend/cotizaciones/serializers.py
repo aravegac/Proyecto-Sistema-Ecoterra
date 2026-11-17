@@ -58,6 +58,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id_cotizacion", "numero_cotizacion", "ruta_pdf_cotizacion"]
 
+    # Devuelve los datos de las direcciones del cliente asociado a la cotización.
     def get_cliente_direcciones(self, obj):
         direcciones = obj.id_cliente.direcciones.all()
         return [
@@ -73,6 +74,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
             for d in direcciones
         ]
 
+    # Genera el número de cotización y guarda su cabecera junto con sus detalles.
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         ultimo = Cotizacion.objects.order_by("-id_cotizacion").first()
@@ -87,6 +89,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
 
         return cotizacion
 
+    # Actualiza la cabecera de la cotización y reemplaza sus detalles cuando se envían.
     def update(self, instance, validated_data):
         """
         Permite actualizar la cotización y reemplazar sus detalles (productos).
@@ -106,6 +109,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
 
         return instance
 
+    # Añade los detalles de productos a la representación de salida de la cotización.
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data["detalles"] = DetalleCotizacionSerializer(

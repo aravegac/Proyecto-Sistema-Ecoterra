@@ -44,6 +44,7 @@ const EMPTY_FORM: ProveedorInput = {
   estado: "Activo",
 }
 
+// Muestra y filtra proveedores y gestiona sus formularios de creación, edición y eliminación.
 export default function Proveedores({
   proveedores,
   loadError,
@@ -59,6 +60,7 @@ export default function Proveedores({
   const [formError, setFormError] = useState("")
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
+  // Cierra el formulario de proveedor y restablece la selección, los campos y el error.
   const closeModal = () => {
     setShowModal(false)
     setEditingProvider(null)
@@ -66,6 +68,7 @@ export default function Proveedores({
     setFormError("")
   }
 
+  // Limpia la selección y el formulario y abre la creación de un proveedor.
   const openNew = () => {
     setEditingProvider(null)
     setForm(EMPTY_FORM)
@@ -73,6 +76,7 @@ export default function Proveedores({
     setShowModal(true)
   }
 
+  // Carga el proveedor seleccionado en el formulario y abre su edición.
   const openEdit = (provider: Proveedor) => {
     setEditingProvider(provider)
     setForm({
@@ -90,6 +94,7 @@ export default function Proveedores({
 
   const PHONE_REGEX = /^[\d\s+\-().]*$/
 
+  // Valida los campos del proveedor y solicita su creación o actualización.
   const handleSave = async () => {
     // Validación mínima
     if (!form.empresa.trim() || !form.email.trim()) {
@@ -121,6 +126,7 @@ export default function Proveedores({
     }
   }
 
+  // Pide confirmación y solicita eliminar el proveedor indicando qué registro se está eliminando.
   const handleDelete = async (provider: Proveedor) => {
     if (!confirm(`¿Eliminar a ${provider.empresa}?`)) return
     setDeletingId(provider.id)
@@ -134,7 +140,7 @@ export default function Proveedores({
   }
 
   // ---------- Filtro de búsqueda ----------
-  const filtered = proveedores.filter((provider) => {
+  const filtered = proveedores.filter(/* Filtra proveedores por el texto de búsqueda en empresa, país, contacto y correo. */ (provider) => {
     const query = search.toLowerCase()
     return (
       provider.empresa.toLowerCase().includes(query) ||
@@ -144,10 +150,11 @@ export default function Proveedores({
   })
 
   // ---------- Campos del formulario ----------
+  // Actualiza únicamente el campo indicado del formulario de proveedor.
   const updateField = <K extends keyof ProveedorInput>(
     key: K,
     value: ProveedorInput[K],
-  ) => setForm((current) => ({ ...current, [key]: value }))
+  ) => setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, [key]: value }). */ (current) => ({ ...current, [key]: value }))
 
   return (
     <div>
@@ -176,7 +183,7 @@ export default function Proveedores({
               className="input proveedores-search-input"
               placeholder="Buscar por empresa, país o contacto…"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={/* Ejecuta setSearch(event.target.value) al invocarse este callback. */ (event) => setSearch(event.target.value)}
             />
           </div>
           <span className="proveedores-count">{filtered.length} proveedores</span>
@@ -193,7 +200,7 @@ export default function Proveedores({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((provider) => (
+            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (provider) => (
               <tr key={provider.id}>
                 <td className="proveedores-name">{provider.empresa}</td>
                 <td>
@@ -215,7 +222,7 @@ export default function Proveedores({
                       className="btn btn-ghost btn-sm"
                       title="Editar proveedor"
                       aria-label="Editar proveedor"
-                      onClick={() => openEdit(provider)}
+                      onClick={/* Ejecuta openEdit(provider) al invocarse este callback. */ () => openEdit(provider)}
                     >
                       <Ico p={I.edit} size={13} />
                     </button>
@@ -223,7 +230,7 @@ export default function Proveedores({
                       className="btn btn-ghost btn-sm"
                       title="Eliminar proveedor"
                       aria-label="Eliminar proveedor"
-                      onClick={() => handleDelete(provider)}
+                      onClick={/* Ejecuta handleDelete(provider) al invocarse este callback. */ () => handleDelete(provider)}
                       disabled={deletingId === provider.id}
                     >
                       <Ico p={I.trash} size={13} />
@@ -247,7 +254,7 @@ export default function Proveedores({
         <div className="modal-backdrop">
           <div
             className="modal proveedores-modal"
-            onClick={(event) => event.stopPropagation()}
+            onClick={/* Ejecuta event.stopPropagation() al invocarse este callback. */ (event) => event.stopPropagation()}
             key={editingProvider?.id ?? "new"}
           >
             <div className="proveedores-modal-header">
@@ -272,7 +279,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="Nombre Empresa"
                   value={form.empresa}
-                  onChange={(e) => updateField("empresa", e.target.value)}
+                  onChange={/* Ejecuta updateField("empresa", e.target.value) al invocarse este callback. */ (e) => updateField("empresa", e.target.value)}
                 />
               </div>
 
@@ -282,7 +289,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="País"
                   value={form.pais}
-                  onChange={(e) => updateField("pais", e.target.value)}
+                  onChange={/* Ejecuta updateField("pais", e.target.value) al invocarse este callback. */ (e) => updateField("pais", e.target.value)}
                 />
               </div>
 
@@ -292,7 +299,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="Contacto"
                   value={form.contacto}
-                  onChange={(e) => updateField("contacto", e.target.value)}
+                  onChange={/* Ejecuta updateField("contacto", e.target.value) al invocarse este callback. */ (e) => updateField("contacto", e.target.value)}
                 />
               </div>
 
@@ -302,7 +309,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="Teléfono"
                   value={form.tel}
-                  onChange={(e) => updateField("tel", e.target.value)}
+                  onChange={/* Ejecuta updateField("tel", e.target.value) al invocarse este callback. */ (e) => updateField("tel", e.target.value)}
                 />
               </div>
 
@@ -313,7 +320,7 @@ export default function Proveedores({
                   placeholder="Email"
                   type="email"
                   value={form.email}
-                  onChange={(e) => updateField("email", e.target.value)}
+                  onChange={/* Ejecuta updateField("email", e.target.value) al invocarse este callback. */ (e) => updateField("email", e.target.value)}
                 />
               </div>
 
@@ -323,7 +330,7 @@ export default function Proveedores({
                   className="input"
                   placeholder="Dirección proveedor"
                   value={form.direccion}
-                  onChange={(e) => updateField("direccion", e.target.value)}
+                  onChange={/* Ejecuta updateField("direccion", e.target.value) al invocarse este callback. */ (e) => updateField("direccion", e.target.value)}
                 />
               </div>
 
@@ -332,7 +339,7 @@ export default function Proveedores({
                 <select
                   className="input"
                   value={form.estado}
-                  onChange={(e) =>
+                  onChange={/* Ejecuta updateField("estado", e.target.value as "Activo" | "Inactivo") al invocarse este callback. */ (e) =>
                     updateField("estado", e.target.value as "Activo" | "Inactivo")
                   }
                 >
@@ -344,7 +351,6 @@ export default function Proveedores({
 
             <div className="proveedores-form-actions">
               <button
-                className="btn btn-primary"
                 className="btn btn-primary proveedores-save"
                 onClick={handleSave}
                 disabled={saving}

@@ -1,6 +1,7 @@
 // shared.tsx
 import React, { ReactNode } from "react"
 
+// Renderiza un icono SVG con la ruta, el tamaño, el color y el grosor recibidos.
 export function Ico({
   p,
   size = 16,
@@ -38,7 +39,7 @@ export const I = {
   lots: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
 
   quotes:
-    "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2 M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2 9 5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2 M12 12h4 M12 16h4 M8 12h.01 M8 16h.01",
+    "M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z M14 2v5h5 M9 13h6 M9 17h6",
 
   invoice: "M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
 
@@ -109,18 +110,22 @@ export type Product = {
 
 export type BadgeType = "ok" | "warn" | "danger" | "info" | "neutral" | "purple"
 
+// Renderiza una etiqueta visual con la variante de estilo y el contenido recibidos.
 export function Badge({ t, children }: { t: BadgeType; children: ReactNode }) {
   return <span className={`badge badge-${t}`}>{children}</span>
 }
 
+// Formatea un número con los separadores de la configuración regional de Chile.
 export function fmt(n: number) {
   return n.toLocaleString("es-CL")
 }
 
+// Formatea un número con separadores chilenos y el símbolo de peso.
 export function fmtCLP(n: number) {
   return `$${n.toLocaleString("es-CL")}`
 }
 
+// Renderiza el título de página, el subtítulo y las acciones recibidas.
 export function PageTitle({
   title,
   sub,
@@ -173,12 +178,14 @@ export type AuthUser = {
   id_rol: number
   estado: string
   permisos: PermissionMap
+  token: string
 }
 
 /**
  * Verifica si el usuario tiene un permiso específico.
  * Los administradores (id_rol === 1) siempre tienen acceso total.
  */
+// Comprueba el permiso modulo:accion del usuario concediendo acceso directo al administrador.
 export function can(
   user: AuthUser | null,
   modulo: string,
@@ -193,6 +200,7 @@ export function can(
  * Verifica si el usuario puede ver el módulo completo.
  * Es true si tiene AL MENOS UN permiso del módulo.
  */
+// Permite módulos públicos y comprueba si el usuario es administrador o tiene algún permiso del módulo.
 export function canAccessModule(
   user: AuthUser | null,
   moduleId?: string,
@@ -201,7 +209,7 @@ export function canAccessModule(
   if (!user) return false
   if (user.id_rol === 1) return true
   const prefix = `${moduleId}:`
-  return Object.keys(user.permisos ?? {}).some((key) => key.startsWith(prefix))
+  return Object.keys(user.permisos ?? {}).some(/* Comprueba qué elementos cumplen la condición evaluando key.startsWith(prefix). */ (key) => key.startsWith(prefix))
 }
 
 // ---------- Mapeo screen → módulo de permisos ----------
@@ -222,12 +230,17 @@ export const SCREEN_TO_MODULE: Record<Screen, string | undefined> = {
 }
 
 /**
- * Headers estándar para peticiones autenticadas.
- * Envía el id_rol del usuario en X-User-Role para validación en el backend.
+ * Headers para peticiones autenticadas.
+ * El token permite verificar la identidad en el backend.
  */
-export function authHeaders(user: AuthUser | null): HeadersInit {
+// Construye los encabezados JSON y añade el token Bearer cuando la sesión lo incluye.
+export function authHeaders(
+  user: AuthUser | null,
+): HeadersInit {
   return {
     "Content-Type": "application/json",
-    "X-User-Role": String(user?.id_rol ?? 0),
+    ...(user?.token
+      ? { Authorization: `Bearer ${user.token}` }
+      : {}),
   }
 }
