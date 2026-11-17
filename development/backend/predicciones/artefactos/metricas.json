@@ -1,0 +1,36 @@
+{
+  "llegada": {
+    "mae": 1.71,
+    "mae_base": 5.41,
+    "min_samples_leaf": 3,
+    "ajuste": [
+      {
+        "mae_validacion": 1.69,
+        "min_samples_leaf": 3
+      },
+      {
+        "mae_validacion": 1.79,
+        "min_samples_leaf": 8
+      }
+    ],
+    "entrenamiento": 1200,
+    "prueba": 300
+  },
+  "precio": {
+    "mae": 1141.61,
+    "mae_base": 9474.76,
+    "min_samples_leaf": 3,
+    "ajuste": [
+      {
+        "mae_validacion": 1306.23,
+        "min_samples_leaf": 3
+      },
+      {
+        "mae_validacion": 1480.8,
+        "min_samples_leaf": 8
+      }
+    ],
+    "entrenamiento": 1200,
+    "prueba": 300
+  }
+}

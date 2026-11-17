@@ -960,7 +960,7 @@ export default function App() {
       ])
     }} />,
     nc: <NotasCredito facturas={facturas} authUser={authUser} />,
-    ia: <IaPanel productos={productos} />,
+    ia: <IaPanel productos={productos} usuario={authUser} />,
     usuarios: (
       <Usuarios
         usuarios={usuarios}

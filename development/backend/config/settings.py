@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "proveedores", 
     "cotizaciones",
     "ventas",
+    "predicciones",
     "usuarios.apps.UsuariosConfig",
 ]
 
