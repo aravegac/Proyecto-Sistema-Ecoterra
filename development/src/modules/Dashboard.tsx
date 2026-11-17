@@ -201,19 +201,19 @@ export default function Dashboard({
       {canReadAlerts && (
         <div
           className={`panel dashboard-scroll-panel dashboard-alert-panel ${
-            loadingPredicciones ? "is-loading" : ""
+            loadingPredicciones || errorPredicciones || stockAlerts.length === 0 ? "is-loading" : ""
           }`}
         >
-          <div className="panel-header">
+          <div className="panel-header flex-wrap gap-3">
             <div className="dashboard-section-title-row">
-              <span className="dashboard-alert-icon">
+              <span className={!loadingPredicciones && !errorPredicciones && stockAlerts.length > 0 ? "dashboard-alert-icon" : "text-slate-500"}>
                 <Ico p={I.alert} size={15} />
               </span>
               <span className="dashboard-section-title">
-                Alertas IA · Stockout
+                Alertas IA · Inventario
               </span>
               {!loadingPredicciones && !errorPredicciones && (
-                <Badge t="danger">{stockAlerts.length}</Badge>
+                <Badge t={stockAlerts.length > 0 ? "danger" : "neutral"}>{stockAlerts.length}</Badge>
               )}
             </div>
 
@@ -247,19 +247,14 @@ export default function Dashboard({
                 </span>
               </div>
             ) : stockAlerts.length === 0 ? (
-              <div
-                className="ia-empty-state ia-info-stock"
-                style={{ padding: 20 }}
-              >
-                <Ico p={I.check} size={18} />
-
-                <p style={{ marginTop: 8 }}>
-                  No hay productos que requieran reposición.
-                </p>
-
-                <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                  Todos los productos tienen stock por encima de su mínimo establecido.
+              <div className="m-4 flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                  <Ico p={I.check} size={18} />
                 </span>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-950">Stock en niveles adecuados</p>
+                  <p className="mt-0.5 text-xs text-slate-600">Ningún producto requiere reposición en este momento.</p>
+                </div>
               </div>
             ) : (
               stockAlerts.map(product => {
@@ -351,7 +346,7 @@ export default function Dashboard({
         </div>
       )}
 
-      
+
       {/* ============ STOCK Y ACTIVIDAD RECIENTE ============ */}
       <div className="dashboard-bottom-grid">
 
