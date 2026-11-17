@@ -206,6 +206,43 @@ body,
   text-align: left;
 }
 
+/* ── Scroll vertical para tablas ───────────── */
+
+.table-scroll {
+  width: 100%;
+  max-height: 580px;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+}
+
+/* Mantener encabezados visibles al desplazarse */
+.table-scroll .dt thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* Scrollbar */
+.table-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.table-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 /* ── Badges ──────────────────────────────── */
 .badge {
   display: inline-flex;
@@ -983,6 +1020,93 @@ body,
   flex-shrink: 0;
   font-family: "JetBrains Mono", monospace;
 }
+
+
+/* ── Dashboard: distribución de paneles ───────── */
+
+/* Dos columnas para stock y actividad reciente */
+.dashboard-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+/* Altura uniforme para las ventanas del dashboard */
+.dashboard-scroll-panel {
+  display: flex;
+  flex-direction: column;
+  height: 300px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* El encabezado permanece visible */
+.dashboard-scroll-panel > .panel-header {
+  flex-shrink: 0;
+}
+
+/* Contenido con scrollbar vertical independiente */
+.dashboard-scroll-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Scrollbar para navegadores basados en Chromium */
+.dashboard-scroll-content::-webkit-scrollbar {
+  width: 7px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 10px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.dashboard-scroll-content::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Ajustes para pantallas pequeñas */
+@media (max-width: 768px) {
+  .dashboard-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-scroll-panel {
+    height: 340px;
+  }
+}
+
+
+/* ── Dashboard: Alertas IA · Stockout ───────── */
+
+/* Durante la carga, el panel se adapta al contenido */
+.dashboard-alert-panel.is-loading {
+  height: auto;
+  min-height: 0;
+}
+
+/* Una vez cargadas las alertas, conserva la altura original */
+.dashboard-alert-panel:not(.is-loading) {
+  height: 300px;
+}
+
+/* Mantener el comportamiento responsive */
+@media (max-width: 768px) {
+  .dashboard-alert-panel:not(.is-loading) {
+    height: 340px;
+  }
+}
+
+
 
 /* ── Cotizaciones ───────────────────────── */
 .cotizaciones-kpi-grid {
@@ -2330,7 +2454,6 @@ body,
   flex-shrink: 0;
   padding: 8px 14px;
   border-radius: 10px;
-  background: #fff;
 }
 .dashboard-hero-logo svg {
   display: block;
@@ -2476,10 +2599,7 @@ button.dashboard-hero-kpi:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  border: 1px solid #d1fae5;
   border-radius: 7px;
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.06);
 }
 .topbar-logo svg {
   display: block;

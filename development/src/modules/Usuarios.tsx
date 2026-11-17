@@ -314,47 +314,49 @@ export default function Usuarios({
       )}
 
       <div className="panel usuarios-table">
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>Usuario</th>
-              <th>Correo</th>
-              <th>Rol</th>
-              <th>Estado</th>
-              {isAdmin && <th></th>}
-            </tr>
-          </thead>
-          <tbody>
-            {usuarios.map((user) => (
-              <tr key={user.id}>
-                <td style={{ fontWeight: 600 }}>{user.nombre}</td>
-                <td>{user.email}</td>
-                <td>
-                  <Badge t={user.rol === "Superusuario / Admin" ? "danger" : user.rol === "Usuario con privilegios" ? "info" : "neutral"}>
-                    {user.rol}
-                  </Badge>
-                </td>
-                <td><Badge t="ok">{user.estado}</Badge></td>
-                {isAdmin && (
-                  <td><div className="usuarios-row-actions">
-                    <button className="btn btn-ghost btn-sm productos-edit-btn" title="Editar" aria-label={`Editar ${user.nombre}`} onClick={() => openEditUser(user)}>
-                      <Ico p={I.edit} size={13} />
-                    </button>
-                    <button className="btn btn-ghost btn-sm" title="Permisos" aria-label={`Permisos de ${user.nombre}`} disabled={saving} onClick={() => openEditPermissions(user)}>
-                      <Ico p={I.lock} size={13} />
-                    </button>
-                    <button className="btn btn-ghost btn-sm productos-delete-btn" title="Eliminar" aria-label={`Eliminar ${user.nombre}`} onClick={async () => {
-                      if (!window.confirm(`¿Eliminar a ${user.nombre}?`)) return
-                      await onDelete(user)
-                    }}>
-                      <Ico p={I.trash} size={13} />
-                    </button>
-                  </div></td>
-                )}
+        <div className="table-scroll">
+          <table className="dt w-full">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Correo</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                {isAdmin && <th></th>}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {usuarios.map((user) => (
+                <tr key={user.id}>
+                  <td style={{ fontWeight: 600 }}>{user.nombre}</td>
+                  <td>{user.email}</td>
+                  <td>
+                    <Badge t={user.rol === "Superusuario / Admin" ? "danger" : user.rol === "Usuario con privilegios" ? "info" : "neutral"}>
+                      {user.rol}
+                    </Badge>
+                  </td>
+                  <td><Badge t="ok">{user.estado}</Badge></td>
+                  {isAdmin && (
+                    <td><div className="usuarios-row-actions">
+                      <button className="btn btn-ghost btn-sm productos-edit-btn" title="Editar" aria-label={`Editar ${user.nombre}`} onClick={() => openEditUser(user)}>
+                        <Ico p={I.edit} size={13} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm" title="Permisos" aria-label={`Permisos de ${user.nombre}`} disabled={saving} onClick={() => openEditPermissions(user)}>
+                        <Ico p={I.lock} size={13} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm productos-delete-btn" title="Eliminar" aria-label={`Eliminar ${user.nombre}`} onClick={async () => {
+                        if (!window.confirm(`¿Eliminar a ${user.nombre}?`)) return
+                        await onDelete(user)
+                      }}>
+                        <Ico p={I.trash} size={13} />
+                      </button>
+                    </div></td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isAdmin && (

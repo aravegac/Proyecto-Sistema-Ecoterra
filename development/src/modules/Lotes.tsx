@@ -1,6 +1,6 @@
 // client/src/modules/Lotes.tsx
 import React, { useState } from "react"
-import { Badge, fmt, I, Ico, PageTitle, Product } from "../shared"
+import { AuthUser, Badge, can, fmt, I, Ico, PageTitle, Product } from "../shared"
 
 export type Lote = {
   id: number
@@ -27,6 +27,7 @@ type Props = {
   lotes: Lote[]
   productos: Product[]
   loadError?: string
+  authUser: AuthUser | null
   onCreate: (input: LoteInput, id?: number) => Promise<Lote>
   onDelete: (lote: Lote) => Promise<void>
 }
@@ -48,6 +49,7 @@ export default function Lotes({
   lotes,
   productos,
   loadError,
+  authUser,
   onCreate,
   onDelete,
 }: Props) {
@@ -116,7 +118,11 @@ export default function Lotes({
         title="Control de Lotes"
         sub="Trazabilidad de inventario físico por lote"
       >
-        <button className="btn btn-primary" onClick={openNew}>
+        <button
+          className="btn btn-primary"
+          onClick={openNew}
+          disabled={!can(authUser, "lotes", "Crear")}
+        >
           <Ico p={I.plus} size={14} /> Registrar lote
         </button>
       </PageTitle>
@@ -127,145 +133,198 @@ export default function Lotes({
         </div>
       )}
 
-      <div className="lotes-kpi-grid">
-        <div className="kpi">
-          <div className="kpi-label">Lotes activos</div>
-          <div className="kpi-value tabular">
-            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando lot.qty > 0. */ (lot) => lot.qty > 0).length}
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Litros en bodega</div>
-          <div className="kpi-value tabular">
-            {fmt(lotes.reduce(/* Acumula el resultado de la lista mediante sum + lot.qty. */ (sum, lot) => sum + lot.qty, 0))} L
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Sin stock</div>
-          <div className="kpi-value tabular lotes-danger-value">
-            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando lot.qty === 0. */ (lot) => lot.qty === 0).length}
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">Próx. a vencer</div>
-          <div className="kpi-value tabular lotes-warn-value">
-            {lotes.filter(/* Comprueba qué elementos cumplen la condición evaluando expiringSoon(lot.venc). */ (lot) => expiringSoon(lot.venc)).length}
-          </div>
-        </div>
-      </div>
+      
+      {can(authUser, "lotes", "Consultar") ? (
+        <>
+          <div className="lotes-kpi-grid">
+            <div className="kpi">
+              <div className="kpi-label">Lotes activos</div>
+              <div className="kpi-value tabular">
+                {lotes.filter((lot) => lot.qty > 0).length}
+              </div>
+            </div>
 
-      <div className="panel">
-        <div className="panel-header">
-          <div className="lotes-filter-row">
-            <select
-              className="select lotes-filter-a"
-              value={envase}
-              onChange={/* Ejecuta setEnvase(e.target.value) al invocarse este callback. */ (e) => setEnvase(e.target.value)}
-            >
-              <option value="">Todos los envases</option>
-              <option>Tambor 200 L</option>
-              <option>IBC 1000 L</option>
-            </select>
-            <select
-              className="select lotes-filter-b"
-              value={estado}
-              onChange={/* Ejecuta setEstado(e.target.value) al invocarse este callback. */ (e) => setEstado(e.target.value)}
-            >
-              <option value="">Todos los estados</option>
-              <option>Disponible</option>
-              <option>Reservado</option>
-            </select>
+            <div className="kpi">
+              <div className="kpi-label">Litros en bodega</div>
+              <div className="kpi-value tabular">
+                {fmt(lotes.reduce((sum, lot) => sum + lot.qty, 0))} L
+              </div>
+            </div>
+
+            <div className="kpi">
+              <div className="kpi-label">Sin stock</div>
+              <div className="kpi-value tabular lotes-danger-value">
+                {lotes.filter((lot) => lot.qty === 0).length}
+              </div>
+            </div>
+
+            <div className="kpi">
+              <div className="kpi-label">Próx. a vencer</div>
+              <div className="kpi-value tabular lotes-warn-value">
+                {lotes.filter((lot) => expiringSoon(lot.venc)).length}
+              </div>
+            </div>
           </div>
-          <span className="lotes-count">{filtered.length} lotes</span>
+
+          <div className="panel">
+            <div className="panel-header">
+              <div className="lotes-filter-row">
+                <select
+                  className="select lotes-filter-a"
+                  value={envase}
+                  onChange={(e) => setEnvase(e.target.value)}
+                >
+                  <option value="">Todos los envases</option>
+                  <option>Tambor 200 L</option>
+                  <option>IBC 1000 L</option>
+                </select>
+
+                <select
+                  className="select lotes-filter-b"
+                  value={estado}
+                  onChange={(e) => setEstado(e.target.value)}
+                >
+                  <option value="">Todos los estados</option>
+                  <option>Disponible</option>
+                  <option>Reservado</option>
+                </select>
+              </div>
+
+              <span className="lotes-count">{filtered.length} lotes</span>
+            </div>
+
+            <div className="table-scroll">
+              <table className="dt w-full">
+                <thead>
+                  <tr>
+                    <th>ID Lote</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Envase</th>
+                    <th>Fabricación</th>
+                    <th>Vencimiento</th>
+                    <th>Ubicación</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filtered.map((lot) => {
+                    const capacidad = CAPACIDAD_ENVASE[lot.envase]
+                    const ocupacion = capacidad
+                      ? Math.min(100, Math.max(0, 100 * lot.qty / capacidad))
+                      : 0
+
+                    return (
+                      <tr key={lot.id}>
+                        <td className="lotes-id">{lot.id}</td>
+                        <td className="lotes-prod">{lot.prod}</td>
+
+                        <td
+                          className={`lotes-qty ${lot.qty === 0 ? "lotes-qty-danger" : "lotes-qty-normal"}`}
+                        >
+                          <div className="lotes-qty-stack">
+                            <span>{fmt(lot.qty)} L</span>
+                            <div className="progress lotes-progress">
+                              <div
+                                className="progress-fill"
+                                style={{
+                                  width: `${ocupacion}%`,
+                                  background:
+                                    ocupacion >= 100
+                                      ? "#00995A"
+                                      : ocupacion >= 40
+                                        ? "#D97706"
+                                        : "#DC2626",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+
+                        <td>
+                          <Badge t="neutral">{lot.envase}</Badge>
+                        </td>
+
+                        <td>{lot.fabr}</td>
+
+                        <td
+                          className={
+                            expiringSoon(lot.venc)
+                              ? "lotes-venc-warn"
+                              : "lotes-venc"
+                          }
+                        >
+                          {expiringSoon(lot.venc) && "⚠ "}
+                          {lot.venc}
+                        </td>
+
+                        <td>
+                          <code className="lotes-location">{lot.ubic}</code>
+                        </td>
+
+                        <td>
+                          <Badge t={lot.estado === "Disponible" ? "ok" : "warn"}>
+                            {lot.estado}
+                          </Badge>
+                        </td>
+
+                        <td>
+                          <button
+                            className="btn btn-ghost btn-sm productos-edit-btn"
+                            aria-label={`Editar lote ${lot.id}`}
+                            onClick={() => {
+                              setEditId(lot.id)
+                              setForm({
+                                prod: lot.prod,
+                                qty: lot.qty,
+                                envase: lot.envase,
+                                fabr: lot.fabr,
+                                venc: lot.venc,
+                                ubic: lot.ubic,
+                                estado: lot.estado,
+                              })
+                              setFormError("")
+                              setShowModal(true)
+                            }}
+                            disabled={!can(authUser, "lotes", "Editar")}
+                          >
+                            <Ico p={I.edit} size={13} />
+                          </button>
+
+                          <button
+                            aria-label={`Eliminar lote ${lot.id}`}
+                            className="btn btn-ghost btn-sm productos-delete-btn"
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
+                              try {
+                                await onDelete(lot)
+                              } catch (e) {
+                                alert(
+                                  e instanceof Error ? e.message : "Error al eliminar"
+                                )
+                              }
+                            }}
+                            disabled={!can(authUser, "lotes", "Eliminar")}
+                          >
+                            <Ico p={I.trash} size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+            </table>
+          </div>
         </div>
-        <table className="dt w-full">
-          <thead>
-            <tr>
-              <th>ID Lote</th>
-              <th>Producto</th>
-              <th>Cantidad</th>
-              <th>Envase</th>
-              <th>Fabricación</th>
-              <th>Vencimiento</th>
-              <th>Ubicación</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(/* Renderiza el contenido de cada elemento de filtered. */ (lot) => {
-              const capacidad = CAPACIDAD_ENVASE[lot.envase]
-              const ocupacion = capacidad ? Math.min(100, Math.max(0, 100 * lot.qty / capacidad)) : 0
-              return <tr key={lot.id}>
-                <td className="lotes-id">{lot.id}</td>
-                <td className="lotes-prod">{lot.prod}</td>
-                <td
-                  className={`lotes-qty ${lot.qty === 0 ? "lotes-qty-danger" : "lotes-qty-normal"}`}
-                >
-                  <div className="lotes-qty-stack">
-                    <span>{fmt(lot.qty)} L</span>
-                    <div className="progress lotes-progress">
-                      <div
-                        className="progress-fill"
-                        style={{
-                          width: `${ocupacion}%`,
-                          background: ocupacion >= 100 ? "#00995A" : ocupacion >= 40 ? "#D97706" : "#DC2626",
-                        }}
-                      />
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <Badge t="neutral">{lot.envase}</Badge>
-                </td>
-                <td>{lot.fabr}</td>
-                <td
-                  className={expiringSoon(lot.venc) ? "lotes-venc-warn" : "lotes-venc"}
-                >
-                  {expiringSoon(lot.venc) && "⚠ "}
-                  {lot.venc}
-                </td>
-                <td>
-                  <code className="lotes-location">{lot.ubic}</code>
-                </td>
-                <td>
-                  <Badge t={lot.estado === "Disponible" ? "ok" : "warn"}>
-                    {lot.estado}
-                  </Badge>
-                </td>
-                <td>
-                  <button 
-                    className="btn btn-ghost btn-sm productos-edit-btn" 
-                    aria-label={`Editar lote ${lot.id}`} 
-                    onClick={() => {
-                      setEditId(lot.id)
-                      setForm({ prod: lot.prod, qty: lot.qty, envase: lot.envase, fabr: lot.fabr, venc: lot.venc, ubic: lot.ubic, estado: lot.estado })
-                      setFormError("")
-                      setShowModal(true)
-                    }}
-                  >
-                    <Ico p={I.edit} size={13} />
-                  </button>
-                  <button
-                    aria-label={`Eliminar lote ${lot.id}`}
-                    className="btn btn-ghost btn-sm productos-delete-btn"
-                    onClick={async () => {
-                      if (!confirm(`¿Eliminar lote ${lot.id}?`)) return
-                      try {
-                        await onDelete(lot)
-                      } catch (e) {
-                        alert(e instanceof Error ? e.message : "Error al eliminar")
-                      }
-                    }}
-                  >
-                    <Ico p={I.trash} size={13} />
-                  </button>
-                </td>
-              </tr>
-            })}
-          </tbody>
-        </table>
-      </div>
+        </>
+      ) : (
+        <div className="panel" style={{ padding: 24, textAlign: "center" }}>
+          No tienes permisos para consultar los lotes.
+        </div>
+      )}
+
 
       {showModal && (
         <div className="modal-backdrop">
@@ -374,7 +433,12 @@ export default function Lotes({
               <button
                 className="btn btn-primary lotes-save"
                 onClick={handleSave}
-                disabled={saving}
+                disabled={
+                  saving ||
+                  (editId === undefined
+                    ? !can(authUser, "lotes", "Crear")
+                    : !can(authUser, "lotes", "Editar"))
+                }
               >
                 <Ico p={I.check} size={14} /> {saving ? "Guardando…" : "Guardar"}
               </button>
