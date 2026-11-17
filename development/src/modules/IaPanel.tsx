@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useState } from "react"
 import { apiFetch } from "../api"
 import { authHeaders, AuthUser, Badge, I, Ico, PageTitle, Product } from "../shared"
 
@@ -27,7 +27,7 @@ type PrediccionStock = {
 
   stock_actual: number | string
   stock_minimo: number | string | null
-  ventas_promedio_90d: number | string
+  ventas_promedio_90d: number | string | null
   dias_historial_disponible: number
 
   requiere_reposicion: boolean | null
@@ -36,29 +36,19 @@ type PrediccionStock = {
   estado_reposicion?: string
   mensaje: string
 
+  // Advertencias relacionadas con el modelo predictivo.
+  advertencia_modelo?: boolean
+  tipo_advertencia?: string | null
+  variables_fuera_rango?: string[]
+  variables_atipicas?: string[]
+  mensaje_advertencia?: string | null
+
   unidad_producto?: string
 }
-
-type RespuestaPrediccionesStock = {
-  exito: boolean
-  total_productos: number
-  resultados: PrediccionStock[]
-  mensaje?: string
-  detalle?: string
-}
-
-// =============================================
-// MODO DE PRUEBA VISUAL
-// =============================================
-
-// true: utiliza escenarios ficticios.
-// false: consulta los datos reales del backend Django.
-const USAR_DATOS_DE_PRUEBA = false
 
 // ==================================================
 // CONSTANTES Y FUNCIONES AUXILIARES
 // ==================================================
-
 const puertos = ["Corpus Christi, TX", "Miami, FL", "Los Angeles, CA"]
 const navieras = ["MSC", "Maersk", "CMA CGM"]
 const cargas = ["Exclusiva", "Consolidada"]
@@ -116,6 +106,26 @@ function formatoNumero(valor: number | string | null | undefined) {
   return numero(valor).toLocaleString("es-CL", {
     maximumFractionDigits: 2,
   })
+}
+
+function nombreVariableStock(variable: string): string {
+  const nombres: Record<string, string> = {
+    stock_actual: "Stock actual",
+    stock_minimo: "Stock mínimo",
+    ventas_promedio_90d: "Ventas promedio de 90 días",
+    cobertura_stock_dias: "Cobertura de stock",
+    desviacion_ventas_90d: "Variación de las ventas de 90 días",
+    tendencia_ventas_90d_pct: "Tendencia de ventas de 90 días",
+    ventas_maximas_90d: "Ventas máximas de 90 días",
+    dias_con_ventas_90d: "Días con ventas registradas",
+    ventas_promedio_30d: "Ventas promedio de 30 días",
+    ventas_promedio_60d: "Ventas promedio de 60 días",
+    variacion_30d_90d: "Variación de ventas entre períodos",
+    dias_desde_ultima_venta: "Días desde la última venta",
+    tendencia_ventas_30d_pct: "Tendencia de ventas de 30 días",
+  }
+
+  return nombres[variable] ?? variable
 }
 
 // ==================================================
@@ -492,141 +502,19 @@ function Modelo({
 // ==================================================
 
 function PrediccionesStock({
-  usuario,
+  resultados,
+  cargando,
+  error,
+  onRecargar,
 }: {
-  usuario: AuthUser | null
+  resultados: PrediccionStock[]
+  cargando: boolean
+  error: string
+  onRecargar: () => void
 }) {
-  const [resultados, setResultados] = useState<PrediccionStock[]>([])
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState("")
-  const [actualizacion, setActualizacion] = useState(0)
-
-
-  useEffect(() => {
-    let vigente = true
-
-    async function consultarPredicciones() {
-      setCargando(true)
-      setError("")
-
-      try {
-        let datos: RespuestaPrediccionesStock
-
-        // =============================================
-        // MODO DE PRUEBA VISUAL
-        // =============================================
-
-        if (USAR_DATOS_DE_PRUEBA) {
-          datos = {
-            exito: true,
-            total_productos: 3,
-            resultados: [
-              {
-                id_producto: 7,
-                codigo_producto: "POL-001",
-                nombre_producto: "EcoStab Polímero Estabilizador 500L",
-                stock_actual: 500,
-                stock_minimo: 600,
-                ventas_promedio_90d: 15,
-                dias_historial_disponible: 90,
-                requiere_reposicion: true,
-                prediccion_disponible: true,
-                dias_hasta_agotar_stock: 30,
-                estado_reposicion: "REPOSICION_INMEDIATA",
-                mensaje: "Se recomienda gestionar la reposición del producto.",
-              },
-              {
-                id_producto: 8,
-                codigo_producto: "POL-002",
-                nombre_producto: "EcoDust Control Supresor de Polvo 25L",
-                stock_actual: 1500,
-                stock_minimo: 1000,
-                ventas_promedio_90d: 30.38,
-                dias_historial_disponible: 90,
-                requiere_reposicion: false,
-                prediccion_disponible: true,
-                dias_hasta_agotar_stock: 54.7,
-                estado_reposicion: "STOCK_DENTRO_DEL_MINIMO",
-                mensaje: "El stock se encuentra dentro del nivel establecido.",
-              },
-              {
-                id_producto: 9,
-                codigo_producto: "POL-003",
-                nombre_producto: "EcoMine Heavy Duty 1000L",
-                stock_actual: 1800,
-                stock_minimo: 2000,
-                ventas_promedio_90d: 45.02,
-                dias_historial_disponible: 45,
-                requiere_reposicion: null,
-                prediccion_disponible: false,
-                dias_hasta_agotar_stock: null,
-                estado_reposicion: "PREDICCION_NO_DISPONIBLE",
-                mensaje: "Se requieren al menos 90 días de historial para generar la predicción.",
-              },
-            ],
-          }
-        } else {
-          // =============================================
-          // CONSULTA REAL AL BACKEND
-          // =============================================
-
-          const respuesta = await apiFetch("/api/predicciones/stock/", {
-            method: "GET",
-            headers: authHeaders(usuario),
-          })
-
-          datos = await respuesta.json()
-
-          if (!respuesta.ok) {
-            throw new Error(
-              datos.detalle ||
-              datos.mensaje ||
-              "No se pudieron obtener las predicciones de stock."
-            )
-          }
-        }
-
-        // =============================================
-        // VALIDACIÓN Y ACTUALIZACIÓN DE RESULTADOS
-        // =============================================
-
-        if (!datos.exito) {
-          throw new Error(
-            datos.mensaje ||
-            "El servidor no pudo generar las predicciones."
-          )
-        }
-
-        if (vigente) {
-          setResultados(
-            Array.isArray(datos.resultados) ? datos.resultados : []
-          )
-        }
-      } catch (e) {
-        if (vigente) {
-          setError(
-            e instanceof Error
-              ? e.message
-              : "Ocurrió un error al consultar las predicciones de stock."
-          )
-        }
-      } finally {
-        if (vigente) {
-          setCargando(false)
-        }
-      }
-    }
-
-
-    consultarPredicciones()
-
-    return () => {
-      vigente = false
-    }
-  }, [usuario?.token, actualizacion])
 
   const recargar = () => {
-    setActualizacion(valor => valor + 1)
+    onRecargar()
   }
 
   const cantidadReposicion = resultados.filter(
@@ -635,6 +523,10 @@ function PrediccionesStock({
 
   const cantidadNoDisponibles = resultados.filter(
     p => !p.prediccion_disponible
+  ).length
+
+  const cantidadAdvertencias = resultados.filter(
+    p => p.advertencia_modelo === true
   ).length
 
   return (
@@ -646,9 +538,17 @@ function PrediccionesStock({
           <span>Predicción de Reposición de Stock</span>
 
           {!cargando && !error && (
-            <Badge t={cantidadReposicion > 0 ? "danger" : "ok"}>
-              {cantidadReposicion} por reponer
-            </Badge>
+            <>
+              <Badge t={cantidadReposicion > 0 ? "danger" : "ok"}>
+                {cantidadReposicion} por reponer
+              </Badge>
+
+              {cantidadAdvertencias > 0 && (
+                <Badge t="info">
+                  {cantidadAdvertencias} con advertencias del modelo
+                </Badge>
+              )}
+            </>
           )}
         </div>
 
@@ -707,6 +607,9 @@ function PrediccionesStock({
 
         {!cargando && !error && resultados.map(producto => {
           const stock = numero(producto.stock_actual)
+          // Identificar si el producto ya está agotado.
+          const stockAgotado = stock <= 0
+
           const minimo = producto.stock_minimo == null
             ? null
             : numero(producto.stock_minimo)
@@ -726,6 +629,18 @@ function PrediccionesStock({
 
           const prediccionNoDisponible = !producto.prediccion_disponible
 
+          const tieneAdvertenciaModelo = producto.advertencia_modelo === true
+
+          const variablesFueraRango = producto.variables_fuera_rango ?? []
+          const variablesAtipicas = producto.variables_atipicas ?? []
+
+          const tituloAdvertencia =
+            producto.tipo_advertencia === "METADATOS_NO_DISPONIBLES"
+              ? "No se pudieron verificar los rangos del modelo"
+              : producto.tipo_advertencia === "FUERA_RANGO_ENTRENAMIENTO"
+                ? "Datos fuera de los rangos de entrenamiento"
+                : "Advertencia del modelo"
+
           const porcentaje =
             minimo != null && minimo > 0
               ? Math.max(0, Math.min((stock / minimo) * 100, 100))
@@ -739,13 +654,11 @@ function PrediccionesStock({
 
           const textoBadge = prediccionNoDisponible
             ? "Predicción no disponible"
-            : requiereReposicion
-              ? "Reposición inmediata"
-              : "Stock dentro del mínimo"
-
-          const claseDias = requiereReposicion
-            ? "text-danger"
-            : "text-warn"
+            : stockAgotado
+              ? "Stock agotado"
+              : requiereReposicion
+                ? "Reposición inmediata"
+                : "Stock sobre el mínimo"
 
           return (
             <div key={producto.id_producto} className="ia-alert-item">
@@ -812,13 +725,76 @@ function PrediccionesStock({
                   </div>
                 )}
 
-                {prediccionNoDisponible && (
-                  <p
-                    className="ia-result-note"
-                    style={{ marginTop: 6 }}
+                {/* Mensaje correspondiente al estado de la predicción */}
+                <p
+                  className="ia-result-note"
+                  style={{ marginTop: 6 }}
+                >
+                  {producto.mensaje}
+                </p>
+
+                {/* Advertencia independiente del modelo predictivo */}
+                {tieneAdvertenciaModelo && (
+                  <div
+                    role="note"
+                    className="ia-result-note ia-model-warning"
                   >
-                    {producto.mensaje}
-                  </p>
+                    {/* Información principal de la advertencia */}
+                    <div className="ia-model-warning-header">
+                      <strong>
+                        ⚠️ {tituloAdvertencia}
+                      </strong>
+
+                      <p>
+                        {producto.mensaje_advertencia ||
+                          "La estimación debe interpretarse con precaución."}
+                      </p>
+                    </div>
+
+                    {/* Detalles desplegables */}
+                    {(variablesFueraRango.length > 0 ||
+                      variablesAtipicas.length > 0) && (
+                      <details className="ia-warning-details">
+
+                        <summary>
+                          <span>Ver detalles de la advertencia</span>
+                          <Ico p={I.chevD} size={16} />
+                        </summary>
+
+                        <div className="ia-warning-details-content">
+
+                          {variablesFueraRango.length > 0 && (
+                            <div>
+                              <strong>Variables fuera de rango:</strong>
+
+                              <ul>
+                                {variablesFueraRango.map(variable => (
+                                  <li key={variable}>
+                                    {nombreVariableStock(variable)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {variablesAtipicas.length > 0 && (
+                            <div>
+                              <strong>Variables con valores atípicos:</strong>
+
+                              <ul>
+                                {variablesAtipicas.map(variable => (
+                                  <li key={variable}>
+                                    {nombreVariableStock(variable)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                        </div>
+                      </details>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -830,13 +806,17 @@ function PrediccionesStock({
                         requiereReposicion ? "text-danger" : ""
                       }`}
                     >
-                      {dias.toLocaleString("es-CL", {
-                        maximumFractionDigits: 1,
-                      })}
+                      {stockAgotado
+                        ? "0"
+                        : dias.toLocaleString("es-CL", {
+                            maximumFractionDigits: 1,
+                          })}
                     </div>
 
                     <div className="ia-alert-days-label">
-                      días hasta agotar
+                      {stockAgotado
+                        ? "Stock agotado"
+                        : "días hasta agotar"}
                     </div>
                   </>
                 ) : (
@@ -882,9 +862,17 @@ function PrediccionesStock({
 export default function IaPanel({
   productos,
   usuario,
+  predicciones,
+  loadingPredicciones,
+  errorPredicciones,
+  onRecargarPredicciones,
 }: {
   productos: Product[]
   usuario: AuthUser | null
+  predicciones: PrediccionStock[]
+  loadingPredicciones: boolean
+  errorPredicciones: string
+  onRecargarPredicciones: () => void
 }) {
   return (
     <div>
@@ -907,7 +895,12 @@ export default function IaPanel({
         />
       </div>
 
-      <PrediccionesStock usuario={usuario} />
+      <PrediccionesStock
+        resultados={predicciones}
+        cargando={loadingPredicciones}
+        error={errorPredicciones}
+        onRecargar={onRecargarPredicciones}
+      />
     </div>
   )
 }

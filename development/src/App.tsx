@@ -28,6 +28,41 @@ import {
 import Login from "./modules/Login"
 import { clearSession, readSession, saveSession, sessionExpiresAt } from "./session"
 
+type PrediccionStock = {
+  id_producto: number
+  codigo_producto?: string
+  nombre_producto?: string
+  codigo?: string
+  nombre?: string
+
+  stock_actual: number | string
+  stock_minimo: number | string | null
+  ventas_promedio_90d: number | string | null
+  dias_historial_disponible: number
+
+  requiere_reposicion: boolean | null
+  prediccion_disponible: boolean
+  dias_hasta_agotar_stock?: number | string | null
+  estado_reposicion?: string
+  mensaje: string
+
+  advertencia_modelo?: boolean
+  tipo_advertencia?: string | null
+  variables_fuera_rango?: string[]
+  variables_atipicas?: string[]
+  mensaje_advertencia?: string | null
+
+  unidad_producto?: string
+}
+
+type RespuestaPrediccionesStock = {
+  exito: boolean
+  total_productos: number
+  resultados: PrediccionStock[]
+  mensaje?: string
+  detalle?: string
+}
+
 // ---------- Mappers API -> UI ----------
 // Adapta un cliente de la API y sus direcciones al formato utilizado por la interfaz.
 const mapClientFromApi = (item: any) => ({
@@ -143,6 +178,7 @@ export default function App() {
   })
   const [productos, setProductos] = useState<Product[]>([])
   const [productosError, setProductosError] = useState("")
+  const [productosLoading, setProductosLoading] = useState(true)
   const [clientes, setClientes] = useState<
     React.ComponentProps<typeof Clientes>["clientes"]
   >([])
@@ -155,9 +191,15 @@ export default function App() {
   const [lotesError, setLotesError] = useState("")
   const [movimientos, setMovimientos] = useState<Movimiento[]>([])
   const [movimientosError, setMovimientosError] = useState("")
+  const [movimientosLoading, setMovimientosLoading] = useState(true)
   const [facturas, setFacturas] = useState<Invoice[]>([])
   const [facturasLoading, setFacturasLoading] = useState(true)
+  const [facturasError, setFacturasError] = useState("")
   const [ordenes, setOrdenes] = useState<PurchaseOrder[]>([])
+  const [prediccionesStock, setPrediccionesStock] = useState<PrediccionStock[]>([])
+  const [prediccionesLoading, setPrediccionesLoading] = useState(true)
+  const [prediccionesError, setPrediccionesError] = useState("")
+  const [versionInventario, setVersionInventario] = useState(0)
   // Recarga las órdenes de compra con el token del usuario y actualiza su estado en la aplicación.
   const reloadOrdenes = async () => {
     if (!authUser) return
@@ -256,6 +298,75 @@ export default function App() {
   }, [screen, authUser])
 
   // ---------- Cargas iniciales (solo si hay sesión) ----------
+  // Carga las predicciones de stock para compartirlas entre Dashboard e IA.
+  useEffect(() => {
+    let vigente = true
+
+    const consultarPredicciones = async () => {
+      if (!authUser) {
+        setPrediccionesStock([])
+        setPrediccionesLoading(false)
+        setPrediccionesError("")
+        return
+      }
+
+      setPrediccionesLoading(true)
+      setPrediccionesError("")
+
+      try {
+        const response = await apiFetch("/api/predicciones/stock/", {
+          method: "GET",
+          headers: authHeaders(authUser),
+        })
+
+        const data: RespuestaPrediccionesStock = await response.json()
+
+        if (!response.ok) {
+          throw new Error(
+            data.detalle ||
+            data.mensaje ||
+            "No se pudieron obtener las predicciones de stock."
+          )
+        }
+
+        if (!data.exito || !Array.isArray(data.resultados)) {
+          throw new Error(
+            data.mensaje ||
+            "El servidor devolvió una respuesta de predicciones inválida."
+          )
+        }
+
+        if (vigente) {
+          setPrediccionesStock(data.resultados)
+          setPrediccionesError("")
+        }
+      } catch (error) {
+        if (vigente) {
+          setPrediccionesStock([])
+          setPrediccionesError(
+            error instanceof Error
+              ? error.message
+              : "Ocurrió un error al consultar las predicciones de stock."
+          )
+        }
+      } finally {
+        if (vigente) {
+          setPrediccionesLoading(false)
+        }
+      }
+    }
+
+    consultarPredicciones()
+
+    return () => {
+      vigente = false
+    }
+  }, [authUser?.token, versionInventario])
+
+  const recargarPredicciones = () => {
+    setVersionInventario(current => current + 1)
+  }
+
   useEffect(/* Carga los clientes cuando cambia la sesión y guarda los errores de consulta. */ () => {
     if (!authUser) return
     apiFetch("/api/clientes/", { headers: authHeaders(authUser) })
@@ -325,6 +436,7 @@ export default function App() {
   // Cargar productos + lotes (en cadena porque lotes dependen de productos)
   useEffect(/* Carga productos y después sus lotes de inventario para la sesión actual. */ () => {
     if (!authUser) return
+    setProductosLoading(true)
     apiFetch("/api/productos/", { headers: authHeaders(authUser) })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar productos")
@@ -335,6 +447,7 @@ export default function App() {
         const mappedProductos = productosData.map(mapProductFromApi)
         setProductosError("")
         setProductos(mappedProductos)
+        setProductosLoading(false)
 
         return apiFetch("/api/inventario/", { headers: authHeaders(authUser) })
           .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
@@ -346,9 +459,14 @@ export default function App() {
             setLotes(lotesData.map(/* Transforma cada elemento de la lista devolviendo mapLoteFromApi(l, mappedProductos). */ (l: any) => mapLoteFromApi(l, mappedProductos)))
             setLotesError("")
           })
+          .catch((error) => {
+            setLotes([])
+            setLotesError(error instanceof Error ? error.message : "No se pudieron cargar los lotes.")
+          })
       })
       .catch(/* Gestiona el error actualizando setProductos, setLotes, setLotesError. */ (error) => {
         setProductosError("No se pudieron actualizar los datos de stock. Vuelve a cargar la página.")
+        setProductosLoading(false)
         setLotes([])
         setLotesError(
           error instanceof Error
@@ -361,18 +479,22 @@ export default function App() {
   // Cargar movimientos (depende de lotes y usuarios para enriquecer)
   useEffect(/* Carga los movimientos y resuelve sus lotes y usuarios cuando cambian las dependencias del efecto. */ () => {
     if (!authUser) return
+    const controller = new AbortController()
+    setMovimientosLoading(true)
 
-    apiFetch("/api/movimientos/", { headers: authHeaders(authUser) })
+    apiFetch("/api/movimientos/", { headers: authHeaders(authUser), signal: controller.signal })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar movimientos")
         return r.json()
       })
       .then(/* Procesa la respuesta actualizando setMovimientos, setMovimientosError. */ (data) => {
+        if (controller.signal.aborted) return
         if (!Array.isArray(data)) throw new Error("Formato inválido")
         setMovimientos(data.map(/* Transforma cada elemento de la lista devolviendo mapMovimientoFromApi(m, lotes, usuarios). */ (m: any) => mapMovimientoFromApi(m, lotes, usuarios)))
         setMovimientosError("")
       })
       .catch(/* Gestiona el error actualizando setMovimientos, setMovimientosError. */ (error) => {
+        if (controller.signal.aborted) return
         setMovimientos([])
         setMovimientosError(
           error instanceof Error
@@ -380,26 +502,39 @@ export default function App() {
             : "No se pudieron cargar los movimientos.",
         )
       })
+      .finally(() => {
+        if (!controller.signal.aborted) setMovimientosLoading(false)
+      })
+    return () => controller.abort()
   }, [authUser, lotes, usuarios])
 
   // Cargar facturas desde el backend
   useEffect(/* Carga las facturas de la sesión actual y vacía el listado si falla la consulta. */ () => {
     if (!authUser) return
+    const controller = new AbortController()
     setFacturasLoading(true)
-    apiFetch("/api/facturas/", { headers: authHeaders(authUser) }) // 👈 TOKEN AGREGADO
+    setFacturasError("")
+    apiFetch("/api/facturas/", { headers: authHeaders(authUser), signal: controller.signal })
       .then(/* Comprueba que la respuesta HTTP sea exitosa y devuelve su contenido JSON. */ (r) => {
         if (!r.ok) throw new Error("No se pudo cargar facturas")
         return r.json()
       })
       .then(/* Procesa la respuesta actualizando setFacturas. */ (data) => {
-        const items = Array.isArray(data) ? data : data.value || []
+        if (controller.signal.aborted) return
+        const items = Array.isArray(data) ? data : data.value
+        if (!Array.isArray(items)) throw new Error("Formato de facturas inválido")
         setFacturas(items.map(mapFacturaFromApi))
       })
       .catch(/* Gestiona el error actualizando setFacturas. */ (error) => {
+        if (controller.signal.aborted) return
         console.error("Error cargando facturas:", error)
         setFacturas([])
+        setFacturasError("No se pudieron cargar las facturas.")
       })
-      .finally(() => setFacturasLoading(false))
+      .finally(() => {
+        if (!controller.signal.aborted) setFacturasLoading(false)
+      })
+    return () => controller.abort()
   }, [authUser])
 
   // Cargar órdenes de compra desde el backend
@@ -736,6 +871,7 @@ export default function App() {
     }
     const created = mapProductFromApi(await response.json())
     setProductos(/* Calcula el nuevo valor de Productos devolviendo [...current, created]. */ (current) => [...current, created])
+    setVersionInventario(current => current + 1)
     return created
   }
 
@@ -761,6 +897,7 @@ export default function App() {
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.map((item) => (item.id === updated.id ? updated : item)). */ (current) =>
       current.map(/* Transforma cada elemento de la lista devolviendo (item.id === updated.id ? updated : item). */ (item) => (item.id === updated.id ? updated : item)),
     )
+    setVersionInventario(current => current + 1)
     if (product.codigo !== updated.codigo) {
       setLotes((current) => current.map((lote) => lote.prod === product.codigo ? { ...lote, prod: updated.codigo } : lote))
     }
@@ -784,6 +921,7 @@ export default function App() {
       )
     }
     setProductos(/* Calcula el nuevo valor de Productos devolviendo current.filter((item) => item.id !== product.id). */ (current) => current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== product.id. */ (item) => item.id !== product.id))
+    setVersionInventario(current => current + 1)
   }
 
   // Los saldos de los lotes confirmados por la API alimentan también Productos y Dashboard.
@@ -796,6 +934,7 @@ export default function App() {
         stockTotal: batches.reduce((sum, lote) => sum + lote.qty, 0),
       }
     }))
+    setVersionInventario(current => current + 1)
   }
 
   // ---------- Handlers Lotes ----------
@@ -883,7 +1022,24 @@ export default function App() {
 
   // ---------- Vistas ----------
   const views: Record<Screen, React.ReactNode> = {
-    dashboard: <Dashboard productos={productos} onNav={navigate} />,
+    dashboard: (
+      <Dashboard
+        authUser={authUser}
+        productos={productos}
+        productosError={productosError}
+        productosLoading={productosLoading}
+        facturas={facturas}
+        facturasLoading={facturasLoading}
+        facturasError={facturasError}
+        movimientos={movimientos}
+        movimientosLoading={movimientosLoading}
+        movimientosError={movimientosError}
+        predicciones={prediccionesStock}
+        loadingPredicciones={prediccionesLoading}
+        errorPredicciones={prediccionesError}
+        onNav={navigate}
+      />
+    ),
     clientes: (
       <Clientes
         clientes={clientes}
@@ -960,9 +1116,19 @@ export default function App() {
         { ...invoice, total: invoice.total ?? invoice.subtotal + invoice.iva, venc: invoice.fecha },
         ...current.filter(/* Comprueba qué elementos cumplen la condición evaluando item.id !== invoice.id. */ (item) => item.id !== invoice.id),
       ])
+      setVersionInventario(current => current + 1)
     }} />,
     nc: <NotasCredito facturas={facturas} authUser={authUser} />,
-    ia: <IaPanel productos={productos} usuario={authUser} />,
+    ia: (
+      <IaPanel
+        productos={productos}
+        usuario={authUser}
+        predicciones={prediccionesStock}
+        loadingPredicciones={prediccionesLoading}
+        errorPredicciones={prediccionesError}
+        onRecargarPredicciones={recargarPredicciones}
+      />
+    ),
     usuarios: (
       <Usuarios
         usuarios={usuarios}
@@ -1005,6 +1171,9 @@ export default function App() {
       onNav={navigate}
       user={authUser}
       onLogout={handleLogout}
+      predicciones={prediccionesStock}
+      loadingPredicciones={prediccionesLoading}
+      errorPredicciones={prediccionesError}
     >
       {views[screen]}
     </AppLayout>

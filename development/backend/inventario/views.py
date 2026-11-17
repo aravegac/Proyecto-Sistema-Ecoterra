@@ -216,6 +216,21 @@ class MovimientoListView(ListCreateAPIView):
                 lote.cantidad = cantidad
 
             stock_posterior = lote.cantidad
+            # ---------- Validar capacidad del contenedor ----------
+            capacidad = CAPACIDAD_ENVASE.get(lote.tipo_envase)
+
+            if capacidad is not None and stock_posterior > capacidad:
+                return Response(
+                    {
+                        "detail": (
+                            f"El stock resultante ({stock_posterior} L) "
+                            f"supera la capacidad de {capacidad} L "
+                            f"del contenedor {lote.tipo_envase}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             lote.save(update_fields=["cantidad"])
 
             # ---------- Enriquecer observación en Ajuste ----------
