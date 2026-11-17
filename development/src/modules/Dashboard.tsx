@@ -1,6 +1,6 @@
 // client/src/modules/Dashboard.tsx
 import React from "react"
-import logoEcoterra from "@/imports/logo_ecoterra.png"
+import BrandLogo from "../BrandLogo"
 import { Badge, fmt, I, Ico, Product, Screen } from "../shared"
 
 // Muestra los indicadores del panel y las alertas de productos con stock inferior al mínimo.
@@ -51,7 +51,7 @@ export default function Dashboard({
         <div className="dashboard-hero-orb dashboard-hero-orb-bottom" />
         <div className="dashboard-hero-brand">
           <div className="dashboard-hero-logo">
-            <img src={logoEcoterra} alt="Ecoterra" />
+            <BrandLogo />
           </div>
           <div>
             <div className="dashboard-hero-eyebrow">

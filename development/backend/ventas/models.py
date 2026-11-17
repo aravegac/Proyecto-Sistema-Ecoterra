@@ -1,4 +1,16 @@
+from datetime import timezone as datetime_timezone
+
 from django.db import models
+from django.utils import timezone
+
+
+class FechaRegistroUTC(models.DateTimeField):
+    """La columna histórica creado_en_nc almacena UTC sin zona horaria."""
+
+    def from_db_value(self, value, expression, connection):
+        if value is not None and timezone.is_naive(value):
+            return timezone.make_aware(value, datetime_timezone.utc)
+        return value
 from decimal import Decimal
 
 
@@ -22,6 +34,10 @@ class OrdenCompra(models.Model):
     )
     numero_oc = models.CharField(max_length=50, unique=True, db_column="numero_oc")
     fecha_oc = models.DateField(db_column="fecha_oc")
+    tipo_operacion_oc = models.CharField(
+        max_length=20, default="Nacional",
+        choices=[("Nacional", "Nacional"), ("Internacional", "Internacional")],
+    )
     ruta_documento_oc = models.CharField(max_length=255, db_column="ruta_documento_oc")
 
     class Meta:
@@ -90,7 +106,7 @@ class NotaCredito(models.Model):
     estado = models.CharField(
         max_length=20,
         choices=ESTADO_CHOICES,
-        default="EMITIDA",
+        default="PENDIENTE",
         db_column="estado_nc",
     )
 
@@ -101,10 +117,13 @@ class NotaCredito(models.Model):
         db_column="ruta_pdf_nc",
     )
 
-    creado_en = models.DateTimeField(
+    creado_en = FechaRegistroUTC(
         auto_now_add=True,
         db_column="creado_en_nc",
     )
+    id_usuario_anulacion_nc = models.IntegerField(null=True, blank=True)
+    fecha_anulacion_nc = models.DateTimeField(null=True, blank=True)
+    motivo_anulacion_nc = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = "nota_credito"
@@ -119,16 +138,25 @@ class NotaCredito(models.Model):
     def __str__(self):
         return f"NC {self.numero_nc} - Factura {self.id_factura.numero_factura}"
 
-    # Calcula y asigna subtotal, IVA del 19 % y total de la nota de crédito sin guardarla.
+    @property
+    def moneda(self):
+        return self.id_factura.moneda_factura
+
+    @property
+    def tipo_operacion(self):
+        return self.id_factura.tipo_operacion
+
+    # Calcula los importes con la tasa de la factura de origen.
     def calcular_totales(self, subtotal_bruto):
         """
         Recibe el subtotal ingresado por el usuario (positivo),
-        calcula IVA (19%) y total, y los asigna al modelo.
+        calcula IVA y total según el tipo de operación de la factura.
         Los montos se guardan en positivo; el front los muestra
         con signo negativo si lo desea.
         """
         subtotal = Decimal(str(subtotal_bruto)).quantize(Decimal("0.01"))
-        iva = (subtotal * Decimal("0.19")).quantize(Decimal("0.01"))
+        tasa = Decimal("0") if self.tipo_operacion == "Internacional" else Decimal("0.19")
+        iva = (subtotal * tasa).quantize(Decimal("0.01"))
         self.subtotal = subtotal
         self.iva = iva
         self.total = subtotal + iva

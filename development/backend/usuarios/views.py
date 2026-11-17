@@ -1,5 +1,4 @@
 # backend/usuarios/views.py
-from django.db import connection
 from rest_framework import status
 from rest_framework.decorators import api_view, action
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
@@ -35,55 +34,26 @@ class UsuarioDetailView(RetrieveUpdateDestroyAPIView):
         "DELETE": ("usuarios_roles", "Eliminar usuarios"),
     }
     
-    def update(self, request, *args, **kwargs):
-        print("Datos recibidos para actualizar:", request.data)
-        if "contrasena" in request.data:
-            print("Contraseña recibida:", request.data["contrasena"])
-        return super().update(request, *args, **kwargs)
-
-
-#  NUEVO ENDPOINT FUNCIONAL PARA PERMISOS PERSONALIZADOS
-@api_view(["PUT"])
+# Permisos y rol del usuario se guardan juntos para evitar estados parciales.
+@api_view(["GET", "PUT"])
 def usuario_permisos(request, pk):
-    """Actualiza los permisos personalizados de un usuario específico."""
-    # Verificar que el usuario solicitante sea admin
     if request.user.id_rol != 1:
-        return Response(
-            {"detail": "No tienes permiso para realizar esta acción."}, 
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    try:
-        usuario = Usuario.objects.get(pk=pk)
-    except Usuario.DoesNotExist:
-        return Response(
-            {"detail": "Usuario no encontrado."}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-    # 👇 PRIMERO extraemos los datos
-    data = request.data
-    print(f"Body recibido completo para usuario {pk}: {data}")
-
-    # Intentamos obtener los permisos del body
-    permisos_data = data.get("permisos")
-    
-    # Si no viene en la clave "permisos", asumimos que el body ES el objeto de permisos
-    if permisos_data is None and isinstance(data, dict):
-        permisos_data = data
-
-    if not isinstance(permisos_data, dict):
-        return Response(
-            {"detail": f"Formato inválido. Se esperaba un objeto JSON. Recibido: {data}"}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    usuario.permisos = permisos_data
-    usuario.save(update_fields=["permisos"])
-
-    print(f"Guardado en BD para usuario {pk}: {usuario.permisos}")
-
-    return Response({"detail": "Permisos actualizados correctamente."}, status=status.HTTP_200_OK)
+        return Response({"detail": "No tienes permiso para realizar esta acción."}, status=403)
+    with transaction.atomic():
+        try:
+            usuario = Usuario.objects.select_for_update().get(pk=pk)
+        except Usuario.DoesNotExist:
+            return Response({"detail": "Usuario no encontrado."}, status=404)
+        if request.method == "PUT":
+            if not isinstance(request.data, dict) or "permisos" not in request.data:
+                return Response({"detail": "Se requiere el objeto permisos."}, status=400)
+            payload = {"permisos": request.data["permisos"]}
+            if "rol" in request.data:
+                payload["rol"] = request.data["rol"]
+            serializer = UsuarioSerializer(usuario, data=payload, partial=True, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        return Response(UsuarioSerializer(usuario).data)
 
 
 # ---------- Permisos Globales ----------
@@ -106,22 +76,37 @@ def rol_permisos(request, id_rol):
     if not tiene_permiso(request.user, "usuarios_roles", "Administrar roles y permisos"):
         return Response({"detail": "No tienes permiso para gestionar los permisos."}, status=status.HTTP_403_FORBIDDEN)
     
+    if id_rol not in (1, 2, 3):
+        return Response({"detail": "Rol inválido."}, status=404)
     if request.method == "GET":
+        if id_rol == 1:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id_permiso, nombre_permiso, modulo_permiso FROM permiso WHERE activo_permiso = TRUE ORDER BY id_permiso")
+                rows = cursor.fetchall()
+            return Response({"id_rol": id_rol, "permisos": [{"id": r[0], "nombre": r[1], "modulo": r[2]} for r in rows]})
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT p.id_permiso, p.nombre_permiso, p.modulo_permiso
                 FROM rol_permiso rp
                 INNER JOIN permiso p ON p.id_permiso = rp.id_permiso
-                WHERE rp.id_rol = %s ORDER BY p.id_permiso
+                WHERE rp.id_rol = %s AND p.activo_permiso = TRUE ORDER BY p.id_permiso
             """, [id_rol])
             rows = cursor.fetchall()
         return Response({"id_rol": id_rol, "permisos": [{"id": r[0], "nombre": r[1], "modulo": r[2]} for r in rows]})
         
-    ids_permisos = request.data.get("permisos", [])
-    try:
-        ids_clean = sorted({int(i) for i in ids_permisos if i})
-    except (TypeError, ValueError):
+    if id_rol == 1:
+        return Response({"detail": "El administrador siempre tiene acceso total."}, status=400)
+    if not isinstance(request.data, dict) or not isinstance(request.data.get("permisos"), list):
+        return Response({"detail": "Se requiere una lista de permisos."}, status=400)
+    ids_permisos = request.data["permisos"]
+    if any(type(i) is not int or i <= 0 for i in ids_permisos):
         return Response({"detail": "Todos los permisos deben ser IDs numéricos."}, status=400)
+    ids_clean = sorted(set(ids_permisos))
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id_permiso FROM permiso WHERE activo_permiso = TRUE")
+        valid_ids = {row[0] for row in cursor.fetchall()}
+    if not set(ids_clean).issubset(valid_ids):
+        return Response({"detail": "Hay permisos inexistentes o inactivos."}, status=400)
 
     with transaction.atomic():
         with connection.cursor() as cursor:

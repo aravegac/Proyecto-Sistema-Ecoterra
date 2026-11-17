@@ -91,6 +91,8 @@ class ClienteSerializer(serializers.ModelSerializer):
             "rut",
             "razon_social",
             "nombre_fantasia",
+            "pais",
+            "region",
             "ciudad",
             "telefono",
             "email",

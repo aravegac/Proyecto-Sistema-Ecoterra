@@ -28,14 +28,22 @@ export function readSession(): AuthUser | null {
   return null
 }
 
-export function saveSession(user: AuthUser): void {
+export function saveSession(user: AuthUser, expiresAt = Date.now() + SESSION_DURATION): void {
   try {
     sessionStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ user, expiresAt: Date.now() + SESSION_DURATION }),
+      JSON.stringify({ user, expiresAt }),
     )
   } catch {
     // Si el navegador bloquea el almacenamiento, la sesión sigue en memoria.
+  }
+}
+
+export function sessionExpiresAt(): number {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null")?.expiresAt ?? Date.now() + SESSION_DURATION
+  } catch {
+    return Date.now() + SESSION_DURATION
   }
 }
 

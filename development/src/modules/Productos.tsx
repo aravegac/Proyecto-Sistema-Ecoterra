@@ -15,6 +15,7 @@ export type ProductInput = {
 
 type ProductProps = {
   productos: Product[]
+  loadError?: string
   onCreate: (input: ProductInput) => Promise<Product>
   onUpdate: (product: Product, input: ProductInput) => Promise<Product>
   onDelete: (product: Product) => Promise<void>
@@ -31,7 +32,7 @@ const emptyProduct: ProductInput = {
 }
 
 // Muestra y filtra productos y gestiona sus formularios de creación, edición y eliminación.
-export default function Productos({ productos, onCreate, onUpdate, onDelete }: ProductProps) {
+export default function Productos({ productos, loadError, onCreate, onUpdate, onDelete }: ProductProps) {
   const [tipo, setTipo] = useState("")
   const [estado, setEstado] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -93,6 +94,7 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
           <Ico p={I.plus ?? "M12 5v14M5 12h14"} size={14} /> Nuevo producto
         </button>
       </PageTitle>
+      {loadError && <p className="panel" role="alert" style={{ padding: 16, color: "#b91c1c", marginBottom: 12 }}>{loadError}</p>}
       <div className="panel">
         <div className="panel-header">
           <div className="productos-filter-row">
@@ -278,31 +280,6 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                 />
               </div>
 
-              {/* Tipo */}
-              <div className="field productos-span-1">
-                <label className="label">Tipo</label>
-                <input
-                  className="input"
-                  placeholder="Tipo"
-                  value={form.tipo}
-                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
-                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
-                  }
-                />
-              </div>
-
-              {/* Unidad (readonly) */}
-              <div className="field productos-span-1">
-                <label className="label">Unidad</label>
-                <input
-                  className="input"
-                  value="Litros"
-                  readOnly
-                  disabled
-                  style={{ background: "#F1F5F9", cursor: "not-allowed" }}
-                />
-              </div>
-
               {/* Stock Mínimo (min=0) */}
               <div className="field productos-span-1">
                 <label className="label">Stock Mínimo</label>
@@ -318,6 +295,32 @@ export default function Productos({ productos, onCreate, onUpdate, onDelete }: P
                   }}
                 />
               </div>
+
+              {/* Unidad (readonly) */}
+              <div className="field productos-span-1">
+                <label className="label">Unidad</label>
+                <input
+                  className="input"
+                  value="Litros"
+                  readOnly
+                  disabled
+                  style={{ background: "#F1F5F9", cursor: "not-allowed" }}
+                />
+              </div>
+
+              {/* Tipo */}
+              <div className="field productos-span-1">
+                <label className="label">Tipo</label>
+                <input
+                  className="input"
+                  placeholder="Tipo"
+                  value={form.tipo}
+                  onChange={/* Ejecuta setForm((current) => ({ ...current, tipo: e.target.value })) al invocarse este callback. */ (e) =>
+                    setForm(/* Calcula el nuevo valor de Form devolviendo ({ ...current, tipo: e.target.value }). */ (current) => ({ ...current, tipo: e.target.value }))
+                  }
+                />
+              </div>
+
 
               {/* Estado */}
               <div className="field productos-span-1">

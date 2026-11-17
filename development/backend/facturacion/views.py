@@ -6,16 +6,19 @@ from uuid import uuid4
 from io import BytesIO
 from decimal import Decimal
 from xml.sax.saxutils import escape
+from PIL import Image as PillowImage
 
 logger = logging.getLogger(__name__)
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 
 from reportlab.lib.utils import ImageReader  
 from reportlab.platypus import Image          
@@ -36,7 +39,7 @@ from reportlab.platypus import (
 from supabase import create_client
 
 from usuarios.permissions import PermisoModulo
-from .models import Factura
+from .models import Factura, DetalleFactura
 from ventas.views import OrdenCompraViewSet as VentasOrdenCompraViewSet
 from .serializers import FacturaSerializer, OrdenCompraSerializer
 
@@ -101,8 +104,16 @@ def _num(valor):
 
 
 # Calcula la escala del logo para que quepa en el espacio indicado sin deformarlo.
-def _logo_proporcional(ruta, ancho_max, alto_max):
+def _logo_proporcional(ruta, ancho_max, alto_max, recortar=False):
     """Carga el logo sin deformarlo, ajustado a un recuadro máximo."""
+    if recortar:
+        with PillowImage.open(ruta) as original:
+            imagen = original.convert("RGBA")
+            bounds = imagen.getchannel("A").getbbox()
+            imagen = imagen.crop(bounds) if bounds else imagen
+            ruta = BytesIO()
+            imagen.save(ruta, format="PNG")
+            ruta.seek(0)
     ancho, alto = ImageReader(ruta).getSize()
     escala = min(ancho_max / ancho, alto_max / alto)
     return Image(ruta, width=ancho * escala, height=alto * escala, hAlign="LEFT")
@@ -151,6 +162,9 @@ def generar_pdf_factura(factura):
 
     # ---------------- DATOS ----------------
     cliente = factura.id_cliente
+    operacion = factura.tipo_operacion
+    porcentaje_iva = 0 if operacion == "Internacional" else 19
+    moneda = getattr(factura, "moneda_factura", "CLP")
     razon_social = escape(str(getattr(cliente, "razon_social", "") or "Cliente"))
     partes_dir = [
         getattr(cliente, "direccion", ""),
@@ -166,7 +180,7 @@ def generar_pdf_factura(factura):
 
     # Rejilla de 7 columnas (suman 190 mm).
     # La columna DESCRIPTION de la tabla = columnas 2 y 3 combinadas.
-    col_w = [11 * mm, 17 * mm, 70 * mm, 34 * mm, 20 * mm, 20 * mm, 18 * mm]
+    col_w = [11 * mm, 17 * mm, 60 * mm, 34 * mm, 20 * mm, 20 * mm, 28 * mm]
     ULT = 6
 
     rows, alturas, cmds = [], [], []
@@ -180,7 +194,7 @@ def generar_pdf_factura(factura):
     # ---------------- 0. LOGO ----------------
     logo_path = os.path.join(settings.BASE_DIR, "static", "logo.png")
     if os.path.exists(logo_path):
-        logo = _logo_proporcional(logo_path, 110 * mm, 19 * mm)
+        logo = _logo_proporcional(logo_path, 110 * mm, 19 * mm, recortar=True)
     else:
         logger.warning("No se encontró el logo en %s", logo_path)
         logo = Paragraph(
@@ -199,7 +213,7 @@ def generar_pdf_factura(factura):
     # ---------------- 1-2. EMPRESA / INVOICE / FECHA ----------------
     r = fila(
         [Paragraph("Ecoterra LLC.", s_empresa), "", "", "",
-         Paragraph("Invoice", s_invoice), Paragraph(escape(str(factura.numero_factura)), s_inv_num), ""],
+         Paragraph("Factura", s_invoice), Paragraph(escape(str(factura.numero_factura)), s_inv_num), ""],
         9,
     )
     cmds += [
@@ -244,7 +258,10 @@ def generar_pdf_factura(factura):
 
     # ---------------- 5. TEXTO INTRODUCTORIO ----------------
     r = fila(
-        [Paragraph("De acuerdo a lo solicitado, nos es grato cotizarles lo siguiente :", s_bold)],
+        [Paragraph(
+            f"OC: {escape(str(factura.id_orden_compra.numero_oc))} - Tipo de operación: {operacion} - Moneda: {moneda}",
+            s_bold,
+        )],
         4.2,
     )
     cmds += [
@@ -289,7 +306,13 @@ def generar_pdf_factura(factura):
             celdas = [Paragraph(str(i), s_center), "", "", "", "", "", ""]
 
         primera = i == 1
-        r = fila(celdas, 4.2 + (3.5 if primera else 0))
+        anchos = [col_w[0], col_w[1], col_w[2] + col_w[3], col_w[3], col_w[4], col_w[5], col_w[6]]
+        alto_texto = max(
+            (celda.wrap(anchos[col] - 8, doc.height)[1] for col, celda in enumerate(celdas) if isinstance(celda, Paragraph)),
+            default=0,
+        )
+        alto_fila = max(4.2 + (3.5 if primera else 0), (alto_texto + (3.5 * mm if primera else 1) + 1) / mm)
+        r = fila(celdas, alto_fila)
         cmds += [
             ("SPAN", (2, r), (3, r)),
             ("VALIGN", (0, r), (ULT, r), "MIDDLE"),
@@ -316,10 +339,14 @@ def generar_pdf_factura(factura):
         7.5,
     )
     r_t2 = fila(
-        ["", "", "", "", Paragraph("TOTAL", s_center), "", Paragraph(_num(factura.total), s_right)],
+        ["", "", "", "", Paragraph(f"IVA ({porcentaje_iva}%)", s_center), "", Paragraph(_num(factura.iva), s_right)],
         7.5,
     )
-    for rr in (r_t1, r_t2):
+    r_t3 = fila(
+        ["", "", "", "", Paragraph(f"TOTAL {moneda}", s_center), "", Paragraph(_num(factura.total), s_right)],
+        7.5,
+    )
+    for rr in (r_t1, r_t2, r_t3):
         cmds += [
             ("SPAN", (0, rr), (3, rr)),
             ("SPAN", (4, rr), (5, rr)),
@@ -327,9 +354,9 @@ def generar_pdf_factura(factura):
             ("RIGHTPADDING", (6, rr), (6, rr), 3 * mm),
         ]
     cmds += [
-        ("LINEBEFORE", (4, r_t1), (4, r_t2), 0.7, colors.black),
-        ("LINEBEFORE", (6, r_t1), (6, r_t2), 0.7, colors.black),
-        ("LINEBELOW", (0, r_t2), (ULT, r_t2), 0.7, colors.black),
+        ("LINEBEFORE", (4, r_t1), (4, r_t3), 0.7, colors.black),
+        ("LINEBEFORE", (6, r_t1), (6, r_t3), 0.7, colors.black),
+        ("LINEBELOW", (0, r_t3), (ULT, r_t3), 0.7, colors.black),
     ]
 
     # Franja vacía entre totales y observaciones
@@ -337,30 +364,10 @@ def generar_pdf_factura(factura):
     cmds.append(("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black))
 
     # ---------------- 9. OBSERVACIONES (ocupa el resto de la hoja) ----------------
-    # obs_text = "Mendoza, Argentina"
     alto_total = 242 * mm
     alto_obs = max(25 * mm, alto_total - sum(alturas))
 
-    rows.append([
-        [
-            Paragraph("Observaciones:", s_bold),
-            Spacer(1, 4 * mm),
-            Paragraph(
-                "",
-            ),
-        ],
-        "", "", "", "", "", "",
-    ])
-    alturas.append(alto_obs)
-    r = len(rows) - 1
-    cmds += [
-        ("SPAN", (0, r), (ULT, r)),
-        ("VALIGN", (0, r), (ULT, r), "TOP"),
-        ("TOPPADDING", (0, r), (ULT, r), 4 * mm),
-    ]
-
-    # ---------------- ESTILO GLOBAL Y CONSTRUCCIÓN ----------------
-    tabla = Table(rows, colWidths=col_w, rowHeights=alturas, hAlign="CENTER")
+    tabla = Table(rows, colWidths=col_w, rowHeights=alturas, hAlign="CENTER", splitInRow=1)
     tabla.setStyle(TableStyle([
         ("TOPPADDING", (0, 0), (-1, -1), 1),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
@@ -369,7 +376,26 @@ def generar_pdf_factura(factura):
         ("BOX", (0, 0), (-1, -1), 0.8, colors.black),
     ] + cmds))
 
-    doc.build([tabla])
+    observaciones = Table([
+        [Paragraph("Observaciones:", s_bold)],
+        [Paragraph(escape(factura.observacion_factura).replace("\n", "<br/>"), s_txt)],
+    ], colWidths=[sum(col_w)], rowHeights=[8*mm, None],
+        minRowHeights=[0, max(0, alto_obs - 8*mm)], repeatRows=1, splitInRow=1)
+    observaciones.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), .8, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    def pie_pagina(canvas, document):
+        canvas.setFont("Helvetica", 7)
+        canvas.drawString(10*mm, 5*mm, f"Factura {factura.numero_factura}")
+        canvas.drawRightString(200*mm, 5*mm, f"Página {document.page}")
+
+    doc.build([tabla, observaciones], onFirstPage=pie_pagina, onLaterPages=pie_pagina)
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -390,10 +416,17 @@ class OrdenCompraViewSet(VentasOrdenCompraViewSet):
 # ============================================================
 
 class FacturaViewSet(viewsets.ModelViewSet):
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
     queryset = Factura.objects.select_related(
         "id_cliente",
-        "id_orden_compra",
-    ).all()
+        "id_orden_compra"
+    ).prefetch_related(
+        "id_cliente__direcciones",
+        Prefetch(
+            "detalles",
+            queryset=DetalleFactura.objects.select_related("id_producto")
+        )
+    )
 
     serializer_class = FacturaSerializer
     permission_classes = [PermisoModulo]
@@ -408,8 +441,31 @@ class FacturaViewSet(viewsets.ModelViewSet):
         "DELETE": ("facturacion", "Eliminar"),
     }
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        cliente = self.request.query_params.get("cliente_id")
+        estado = self.request.query_params.get("estado")
+        if cliente:
+            if not cliente.isdecimal():
+                raise ValidationError({"cliente_id": "Selecciona un cliente válido."})
+            queryset = queryset.filter(id_cliente_id=cliente)
+        if estado:
+            queryset = queryset.filter(estado=estado.upper())
+        return queryset
+
+    def get_permissions(self):
+        if self.action == "anular" or (
+            self.action == "estado" and isinstance(self.request.data, dict) and self.request.data.get("estado") == "ANULADA"
+        ):
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("facturacion", "Eliminar")}
+        elif self.action in {"emitir", "generar_pdf", "marcar_pagada", "estado"}:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("facturacion", "Editar")}
+        return super().get_permissions()
+
     # Actualiza la factura y convierte los conflictos de integridad en una respuesta HTTP 409.
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         try:
             return super().update(request, *args, **kwargs)
         except IntegrityError:
@@ -449,58 +505,50 @@ class FacturaViewSet(viewsets.ModelViewSet):
     # POST /api/facturas/{id}/generar-pdf/
     # --------------------------------------------------------
 
-    # Genera y sube un PDF nuevo de la factura a Supabase y guarda su ruta en la factura.
-    @action(
-        detail=True,
-        methods=["post"],
-        url_path="generar-pdf",
-    )
-    
+    @action(detail=True, methods=["post"], url_path="generar-pdf")
+    @transaction.atomic
     def generar_pdf(self, request, pk=None):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         factura = self.get_object()
+        if self.action in {"emitir", "estado"} and factura.estado not in {"PENDIENTE", "EMITIDA"}:
+            raise ValidationError("El estado actual no permite emitir esta factura.")
+        if factura.estado == "ANULADA":
+            raise ValidationError("Una factura anulada solo permite consultar su documento histórico.")
+        if factura.estado in {"EMITIDA", "PAGADA"} and factura.ruta_pdf_factura:
+            return Response(self.get_serializer(factura).data)
+        if not factura.detalles.exists():
+            raise ValidationError("La factura necesita al menos un producto para emitirse.")
+        self.get_serializer(factura).validar_orden_disponible(factura.id_orden_compra)
+        if factura.id_orden_compra.id_cliente_id != factura.id_cliente_id:
+            raise ValidationError("El cliente de la factura no corresponde a la orden de compra.")
+        if factura.estado == "PENDIENTE":
+            factura.estado = "EMITIDA"
+            factura.fecha_emision = timezone.localdate()
 
+        bucket = None
+        ruta = f"facturas/{factura.pk}/{uuid4().hex}.pdf"
+        uploaded = False
         try:
-            contenido_pdf = generar_pdf_factura(factura)
-
-            cliente_supabase = obtener_cliente_supabase()
-            bucket = obtener_nombre_bucket()
-
-            ruta_storage = f"facturas/{factura.pk}/{uuid4().hex}.pdf"
-
-            cliente_supabase.storage.from_(bucket).upload(
-                ruta_storage,
-                contenido_pdf,
-                file_options={
-                    "content-type": "application/pdf",
-                    "upsert": "false",
-                },
-            )
-
-            factura.ruta_pdf_factura = ruta_storage
-            factura.save(update_fields=["ruta_pdf_factura"])
-
-            return Response(
-                {
-                    "mensaje": "PDF generado y guardado correctamente.",
-                    "numero_factura": factura.numero_factura,
-                    "ruta_pdf_factura": factura.ruta_pdf_factura,
-                },
-                status=status.HTTP_200_OK,
-            )
-
+            contenido = generar_pdf_factura(factura)
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, contenido, file_options={"content-type": "application/pdf", "upsert": "false"})
+            uploaded = True
+            factura.ruta_pdf_factura = ruta
+            factura.save(update_fields=["estado", "fecha_emision", "ruta_pdf_factura"])
+            return Response(self.get_serializer(factura).data)
         except Exception:
-            logger.exception("Error al generar o guardar el PDF de la factura")
-            return Response(
-                {
-                    "error": (
-                        "No se pudo generar o guardar el PDF. "
-                        "Revisa la configuración de Supabase Storage "
-                        "y los registros del backend."
-                    )
-                },
-                status=500,
-            )
+            transaction.set_rollback(True)
+            if uploaded:
+                try:
+                    bucket.remove([ruta])
+                except Exception:
+                    logger.exception("No se pudo retirar el PDF de una emisión fallida")
+            logger.exception("Error al emitir o generar el PDF de la factura")
+            return Response({"error": "No se pudo emitir la factura y guardar su PDF. Intenta nuevamente."}, status=502)
 
+    @action(detail=True, methods=["post"], url_path="emitir")
+    def emitir(self, request, pk=None):
+        return self.generar_pdf(request, pk)
 
     # --------------------------------------------------------
     # OBTENER URL FIRMADA TEMPORAL
@@ -516,12 +564,11 @@ class FacturaViewSet(viewsets.ModelViewSet):
     def obtener_pdf(self, request, pk=None):
         factura = self.get_object()
 
-        if not factura.ruta_pdf_factura:
+        if factura.estado == "PENDIENTE" or not factura.ruta_pdf_factura:
             return Response(
                 {
                     "error": (
-                        "Esta factura todavía no tiene un PDF guardado. "
-                        "Primero debes generarlo."
+                        "La factura debe estar emitida y tener un PDF guardado para consultarlo."
                     )
                 },
                 status=status.HTTP_404_NOT_FOUND,
@@ -582,35 +629,43 @@ class FacturaViewSet(viewsets.ModelViewSet):
     # PATCH /api/facturas/{id}/acciones/
     # --------------------------------------------------------
 
-    # Valida y cambia el estado de la factura e invalida el PDF guardado anteriormente.
-    @action(
-        detail=True,
-        methods=["patch"],
-        url_path="acciones",
-    )
-    def estado(self, request, pk=None):
+    @transaction.atomic
+    def cambiar_estado(self, request, nuevo_estado, pk):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         factura = self.get_object()
-        nuevo_estado = request.data.get("estado")
-
-        estados_validos = [
-            opcion[0]
-            for opcion in Factura.ESTADO_CHOICES
-        ]
-
-        if nuevo_estado not in estados_validos:
-            return Response(
-                {
-                    "error": "Estado no válido.",
-                    "estados_permitidos": estados_validos,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        permitidos = {"PENDIENTE": {"ANULADA"}, "EMITIDA": {"PAGADA", "ANULADA"}}
+        if not isinstance(nuevo_estado, str) or nuevo_estado not in permitidos.get(factura.estado, set()):
+            raise ValidationError({"estado": "El estado actual no permite esta acción."})
+        campos = ["estado"]
+        if nuevo_estado == "ANULADA":
+            motivo = request.data.get("motivo_anulacion_factura") if isinstance(request.data, dict) else None
+            if not isinstance(motivo, str) or not motivo.strip():
+                raise ValidationError({"motivo_anulacion_factura": "Ingresa el motivo de anulación."})
+            factura.fecha_anulacion_factura = timezone.now()
+            factura.motivo_anulacion_factura = motivo.strip()
+            factura.id_usuario_anulacion_factura = request.user.pk
+            campos += ["fecha_anulacion_factura", "motivo_anulacion_factura", "id_usuario_anulacion_factura"]
+        else:
+            factura.fecha_pago_factura = timezone.now()
+            factura.id_usuario_pago_factura = request.user.pk
+            campos += ["fecha_pago_factura", "id_usuario_pago_factura"]
         factura.estado = nuevo_estado
-        factura.ruta_pdf_factura = ""
-        factura.save(update_fields=["estado", "ruta_pdf_factura"])
+        factura.save(update_fields=campos)
+        return Response(self.get_serializer(factura).data)
 
-        return Response(
-            FacturaSerializer(factura).data,
-            status=status.HTTP_200_OK,
-        )
+    @action(detail=True, methods=["post"], url_path="anular")
+    def anular(self, request, pk=None):
+        return self.cambiar_estado(request, "ANULADA", pk)
+
+    @action(detail=True, methods=["post"], url_path="pagar")
+    def marcar_pagada(self, request, pk=None):
+        return self.cambiar_estado(request, "PAGADA", pk)
+
+    @action(detail=True, methods=["patch"], url_path="acciones")
+    def estado(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationError("Envía los datos de la acción como un objeto.")
+        nuevo_estado = request.data.get("estado")
+        if nuevo_estado == "EMITIDA":
+            return self.generar_pdf(request, pk)
+        return self.cambiar_estado(request, nuevo_estado, pk)

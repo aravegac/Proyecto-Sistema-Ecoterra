@@ -9,6 +9,55 @@ from config.test_support import SalesTablesMixin
 
 
 class ClienteModelTests(SalesTablesMixin, TestCase):
+    def test_ubicacion_cliente_se_guarda_y_se_actualiza_por_api(self):
+        api = self.authenticated_api()
+        response = api.post(
+            "/api/clientes/",
+            {
+                "rut": "11.111.111-1",
+                "razon_social": "Cliente Ubicación",
+                "pais": "Chile",
+                "region": "Santiago Metropolitan Region",
+                "ciudad": "Santiago",
+                "telefono": "+56 9 1234 5678",
+                "email": "ubicacion@example.com",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        cliente = Cliente.objects.get(pk=response.data["id"])
+        self.assertEqual(cliente.pais, "Chile")
+        self.assertEqual(cliente.region, "Santiago Metropolitan Region")
+        url = f"/api/clientes/{cliente.pk}/"
+        response = api.patch(
+            url,
+            {"region": "Valparaíso", "ciudad": "Viña del Mar"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        response = api.get(url)
+        self.assertEqual(response.data["pais"], "Chile")
+        self.assertEqual(response.data["region"], "Valparaíso")
+        self.assertEqual(response.data["ciudad"], "Viña del Mar")
+
+    def test_cliente_antiguo_puede_editarse_sin_ubicacion_nueva(self):
+        cliente = Cliente.objects.create(
+            rut="11111111-1",
+            razon_social="Cliente antiguo",
+            ciudad="Santiago",
+            telefono="123456",
+            email="antiguo@example.com",
+        )
+        response = self.authenticated_api().patch(
+            f"/api/clientes/{cliente.pk}/",
+            {"razon_social": "Cliente actualizado"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["pais"], "")
+        self.assertEqual(response.data["region"], "")
+        self.assertEqual(response.data["ciudad"], "Santiago")
+
     # Crea un cliente de pruebas autenticado con el token de un usuario administrador.
     def authenticated_api(self):
         user, _ = Usuario.objects.get_or_create(

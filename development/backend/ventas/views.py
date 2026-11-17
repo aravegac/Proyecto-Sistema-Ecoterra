@@ -5,6 +5,7 @@ from uuid import uuid4
 from io import BytesIO
 from decimal import Decimal
 from xml.sax.saxutils import escape
+from PIL import Image as PillowImage
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -12,15 +13,14 @@ from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 
 from supabase import create_client
@@ -60,109 +60,100 @@ def obtener_nombre_bucket():
 # ============================================================
 
 def _logo_proporcional(ruta, ancho_max, alto_max):
+    with PillowImage.open(ruta) as original:
+        imagen = original.convert("RGBA")
+        bounds = imagen.getchannel("A").getbbox()
+        imagen = imagen.crop(bounds) if bounds else imagen
+        ruta = BytesIO()
+        imagen.save(ruta, format="PNG")
+        ruta.seek(0)
     ancho, alto = ImageReader(ruta).getSize()
     escala = min(ancho_max / ancho, alto_max / alto)
     return Image(ruta, width=ancho * escala, height=alto * escala, hAlign="LEFT")
 
 
 def generar_pdf_nota_credito(nota):
-    """Genera el PDF de la Nota de Crédito con el mismo diseño que las facturas."""
     buffer = BytesIO()
+    styles = getSampleStyleSheet()
+    normal = styles["Normal"]
+    normal.fontSize = 9
+    normal.leading = 13
+    moneda = nota.moneda
+    operacion = nota.tipo_operacion
+    porcentaje_iva = 0 if operacion == "Internacional" else 19
+
+    def paragraph(value):
+        return Paragraph(escape(str(value if value is not None else "")).replace("\n", "<br/>"), normal)
+
+    def money(value):
+        numero = f"{Decimal(str(value)):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+        return f"{moneda} {numero}"
+
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=10 * mm, leftMargin=10 * mm, topMargin=10 * mm, bottomMargin=10 * mm,
+        buffer, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm,
+        topMargin=14*mm, bottomMargin=18*mm,
+        title=f"Nota de crédito {nota.numero_nc}", author="Sistema Ecoterra",
     )
+    factura = nota.id_factura
+    cliente = factura.id_cliente
+    logo = _logo_proporcional(os.path.join(settings.BASE_DIR, "static", "logo.png"), 82*mm, 20*mm)
+    header = Table([[
+        [logo, Spacer(1, 3*mm), paragraph("Ecoterra LLC."),
+         paragraph("600 CLEVELAND STREET STE 393 OFC 665")],
+        [Paragraph("NOTA DE CRÉDITO", styles["Heading2"]), paragraph(nota.numero_nc),
+         paragraph(f"Fecha: {nota.fecha_emision:%d-%m-%Y}"),
+         paragraph(f"Factura de origen: {factura.numero_factura}"), paragraph(f"Estado: {nota.estado}")],
+    ]], colWidths=[110*mm, 72*mm])
+    section_style = [
+        ("BOX", (0, 0), (-1, -1), .7, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]
+    header.setStyle(TableStyle(section_style))
+    customer = Table([[
+        [paragraph("CLIENTE"), paragraph(cliente.razon_social),
+         paragraph(f"RUT: {cliente.rut}"),
+         paragraph(" · ".join(filter(None, [cliente.pais, cliente.region, cliente.ciudad])))],
+        [paragraph(f"Teléfono: {cliente.telefono or '-'}"), paragraph(f"Email: {cliente.email or '-'}"),
+         paragraph(f"Moneda: {moneda}"), paragraph(f"Tipo de operación: {operacion}")],
+    ]], colWidths=[110*mm, 72*mm], splitInRow=1)
+    customer.setStyle(TableStyle(section_style + [("LINEAFTER", (0, 0), (0, 0), .7, colors.black)]))
+    rows = [[paragraph(value) for value in ("Concepto", "Cantidad", "Subtotal neto")], [
+        paragraph(f"Ajuste asociado a factura {factura.numero_factura}"), paragraph(1), paragraph(money(nota.subtotal)),
+    ]]
+    detail = Table(rows, colWidths=[110*mm, 24*mm, 48*mm], repeatRows=1)
+    detail.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), .5, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#F1F5F9")),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    totals = Table([
+        [paragraph("Subtotal neto"), paragraph(money(nota.subtotal))],
+        [paragraph(f"IVA ({porcentaje_iva}%)"), paragraph(money(nota.iva))],
+        [paragraph(f"TOTAL {moneda}"), paragraph(money(nota.total))],
+    ], colWidths=[40*mm, 48*mm], hAlign="RIGHT")
+    totals.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), .5, colors.black),
+        ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#DBEADD")),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    elements = [
+        header, customer, Spacer(1, 5*mm), detail, Spacer(1, 4*mm), totals,
+        Spacer(1, 5*mm), Paragraph("Motivo de la nota de crédito", styles["Heading3"]), paragraph(nota.motivo),
+    ]
 
-    base = getSampleStyleSheet()["Normal"]
-    def est(nombre, **kw):
-        params = dict(parent=base, fontName="Helvetica", fontSize=7, leading=8.5)
-        params.update(kw)
-        return ParagraphStyle(nombre, **params)
+    def footer(canvas, document):
+        canvas.setFont("Helvetica", 8)
+        canvas.drawString(14*mm, 10*mm, f"Ecoterra - {nota.numero_nc}")
+        canvas.drawRightString(196*mm, 10*mm, f"Página {document.page}")
 
-    s_txt = est("txt")
-    s_bold = est("bold", fontName="Helvetica-Bold")
-    s_head = est("head", fontName="Helvetica-Bold", alignment=TA_CENTER)
-    s_center = est("center", alignment=TA_CENTER)
-    s_right = est("right", alignment=TA_RIGHT)
-    s_empresa = est("empresa", fontName="Times-Bold", fontSize=13, leading=15)
-    s_invoice = est("invoice", fontName="Times-Bold", fontSize=12, leading=14)
-    s_inv_num = est("invnum", fontName="Times-Roman", fontSize=12, leading=14)
-    s_fecha_lbl = est("fechalbl", fontName="Times-Bold", fontSize=6.5)
-    s_cli_lbl = est("clilbl", fontName="Times-Bold", fontSize=6.5)
-    s_cli = est("cli", fontName="Times-Roman", fontSize=8, leading=9.5)
-    s_contacto = est("contacto", fontName="Times-Roman", fontSize=7, leading=10)
-    s_valor = est("valor", fontSize=7, leading=10)
-
-    cliente = nota.id_factura.id_cliente
-    razon_social = escape(str(getattr(cliente, "razon_social", "") or "Cliente"))
-    telefono = escape(str(getattr(cliente, "telefono", "") or ""))
-    email = escape(str(getattr(cliente, "email", "") or ""))
-    
-    f = nota.fecha_emision
-    fecha_txt = f"{f.month}/{f.day}/{f.year}"
-
-    col_w = [11 * mm, 17 * mm, 70 * mm, 34 * mm, 20 * mm, 20 * mm, 18 * mm]
-    ULT = 6
-    rows, alturas, cmds = [], [], []
-
-    def fila(celdas, alto):
-        rows.append(celdas + [""] * (7 - len(celdas)))
-        alturas.append(alto * mm)
-        return len(rows) - 1
-
-    logo_path = os.path.join(settings.BASE_DIR, "static", "logo.png")
-    if os.path.exists(logo_path):
-        logo = _logo_proporcional(logo_path, 110 * mm, 19 * mm)
-    else:
-        logo = Paragraph('<font size="24" color="#009933"><b>Eco</b></font><font size="24" color="#333333"><b>Terra</b></font>', s_txt)
-    
-    r = fila([Paragraph(f"Nota de Crédito asociada a la Factura {nota.id_factura.numero_factura}", s_bold)], 4.2)
-    cmds += [("SPAN", (0, r), (ULT, r)), ("VALIGN", (0, r), (ULT, r), "MIDDLE"), ("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black)]
-
-    # Tabla Cabecera
-    r_head = fila([Paragraph("ITEM", s_head), Paragraph("CODE", s_head), Paragraph("DESCRIPTION", s_head), Paragraph("", s_txt), Paragraph("QUANTITY", s_head), Paragraph("UNIT PRICE", s_head), Paragraph("AMOUNT", s_head)], 4.2)
-    cmds += [("SPAN", (2, r_head), (3, r_head)), ("VALIGN", (0, r_head), (ULT, r_head), "MIDDLE"), ("LINEBELOW", (0, r_head), (ULT, r_head), 0.7, colors.black)]
-
-    # Cuerpo
-    celdas = [Paragraph("1", s_center), Paragraph("NC", s_txt), Paragraph(escape(str(nota.motivo)), s_txt), Paragraph("", s_txt), Paragraph("1", s_center), Paragraph(f"{Decimal(str(nota.subtotal)):,.2f}", s_center), Paragraph(f"{Decimal(str(nota.subtotal)):,.2f}", s_right)]
-    r = fila(celdas, 8)
-    cmds += [("SPAN", (2, r), (3, r)), ("VALIGN", (0, r), (ULT, r), "MIDDLE"), ("TOPPADDING", (0, r), (ULT, r), 3.5 * mm), ("RIGHTPADDING", (6, r), (6, r), 3 * mm)]
-    
-    r_pad = fila([Paragraph("", s_txt)] * 7, 2) # Relleno con Paragraphs
-    r_body_fin = r_pad
-    for col in (1, 2, 4, 5, 6):
-        cmds.append(("LINEBEFORE", (col, r_head), (col, r_body_fin), 0.7, colors.black))
-    cmds.append(("LINEBELOW", (0, r_body_fin), (ULT, r_body_fin), 0.7, colors.black))
-    
-    r = fila([Paragraph("", s_txt)] * 7, 3.8)
-    cmds.append(("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black))
-
-    # Totales
-    subtotal_num = Decimal(str(nota.subtotal))
-    total_num = Decimal(str(nota.total))
-    
-    r_t1 = fila([Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("NET VALUE", s_center), Paragraph("", s_txt), Paragraph(f"{subtotal_num:,.2f}", s_right)], 7.5)
-    r_t2 = fila([Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("TOTAL", s_center), Paragraph("", s_txt), Paragraph(f"{total_num:,.2f}", s_right)], 7.5)
-    for rr in (r_t1, r_t2):
-        cmds += [("SPAN", (0, rr), (3, rr)), ("SPAN", (4, rr), (5, rr)), ("VALIGN", (0, rr), (ULT, rr), "MIDDLE"), ("RIGHTPADDING", (6, rr), (6, rr), 3 * mm)]
-    cmds += [("LINEBEFORE", (4, r_t1), (4, r_t2), 0.7, colors.black), ("LINEBEFORE", (6, r_t1), (6, r_t2), 0.7, colors.black), ("LINEBELOW", (0, r_t2), (ULT, r_t2), 0.7, colors.black)]
-    
-    r = fila([Paragraph("", s_txt)] * 7, 4)
-    cmds.append(("LINEBELOW", (0, r), (ULT, r), 0.7, colors.black))
-
-    # Observaciones
-    alto_total = 242 * mm
-    alto_obs = max(25 * mm, alto_total - sum(alturas))
-    rows.append([[Paragraph("Observaciones:", s_bold), Spacer(1, 4 * mm), Paragraph(escape(str(nota.motivo)), s_txt)], Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt), Paragraph("", s_txt)])
-    alturas.append(alto_obs)
-    r = len(rows) - 1
-    cmds += [("SPAN", (0, r), (ULT, r)), ("VALIGN", (0, r), (ULT, r), "TOP"), ("TOPPADDING", (0, r), (ULT, r), 4 * mm)]
-
-    tabla = Table(rows, colWidths=col_w, rowHeights=alturas, hAlign="CENTER")
-    tabla.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 1), ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4), ("BOX", (0, 0), (-1, -1), 0.8, colors.black)] + cmds))
-
-    doc.build([tabla])
-    buffer.seek(0)
+    doc.build(elements, onFirstPage=footer, onLaterPages=footer)
     return buffer.getvalue()
 
 
@@ -171,7 +162,7 @@ def generar_pdf_nota_credito(nota):
 # ============================================================
 
 class OrdenCompraViewSet(viewsets.ModelViewSet):
-    queryset = OrdenCompra.objects.all().order_by("-id_oc")
+    queryset = OrdenCompra.objects.select_related("id_cliente", "id_cotizacion", "factura").order_by("-id_oc")
     serializer_class = OrdenCompraSerializer
     permission_classes = [PermisoModulo]
 
@@ -183,6 +174,56 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
         "DELETE": ("ordenes_compra", "Eliminar"),
     }
 
+    def guardar_documento(self, serializer):
+        archivo = serializer.validated_data.pop("archivo", None)
+        if archivo is None:
+            serializer.save()
+            return
+        ruta = f"ordenes-compra/{uuid4().hex}.pdf"
+        try:
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, archivo.read(), {"content-type": "application/pdf", "upsert": "false"})
+        except Exception:
+            logger.exception("Error al guardar el documento de la orden de compra")
+            error = APIException("No se pudo guardar el PDF. Intenta nuevamente.")
+            error.status_code = 502
+            raise error
+        try:
+            serializer.save(ruta_documento_oc=ruta)
+        except Exception:
+            try:
+                bucket.remove([ruta])
+            except Exception:
+                logger.exception("No se pudo retirar un PDF de una orden que no se guardó")
+            raise
+
+    def perform_create(self, serializer):
+        self.guardar_documento(serializer)
+
+    def perform_update(self, serializer):
+        self.guardar_documento(serializer)
+
+    @action(detail=True, methods=["get"], url_path="documento")
+    def documento(self, request, pk=None):
+        orden = self.get_object()
+        ruta = orden.ruta_documento_oc
+        if not ruta:
+            return Response({"detail": "Esta orden no tiene un documento guardado."}, status=404)
+        if ruta.startswith(("https://", "http://")):
+            response = Response({"url": ruta})
+        else:
+            try:
+                result = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket()).create_signed_url(ruta, 300)
+                url = result.get("signedURL") or result.get("signedUrl")
+                if not url:
+                    raise ValueError("Storage no devolvió un enlace")
+                response = Response({"url": url, "expira_en_segundos": 300})
+            except Exception:
+                logger.exception("Error al consultar documento de orden de compra")
+                return Response({"detail": "No se pudo abrir el documento. Intenta nuevamente."}, status=502)
+        response["Cache-Control"] = "no-store"
+        return response
+
     def get_queryset(self):
         queryset = super().get_queryset()
         cliente_id = self.request.query_params.get("cliente_id")
@@ -190,8 +231,11 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
         con_cotizacion = self.request.query_params.get("con_cotizacion")
         fecha_desde = self.request.query_params.get("fecha_desde")
         fecha_hasta = self.request.query_params.get("fecha_hasta")
+        con_factura = self.request.query_params.get("con_factura")
 
         if cliente_id: queryset = queryset.filter(id_cliente_id=cliente_id)
+        if con_factura == "true": queryset = queryset.filter(factura__isnull=False)
+        elif con_factura == "false": queryset = queryset.filter(factura__isnull=True)
         if cotizacion_id: queryset = queryset.filter(id_cotizacion_id=cotizacion_id)
         if con_cotizacion == "true": queryset = queryset.filter(id_cotizacion__isnull=False)
         elif con_cotizacion == "false": queryset = queryset.filter(id_cotizacion__isnull=True)
@@ -234,7 +278,8 @@ class OrdenCompraViewSet(viewsets.ModelViewSet):
 # ============================================================
 
 class NotaCreditoViewSet(viewsets.ModelViewSet):
-    queryset = NotaCredito.objects.select_related("id_factura", "id_factura__id_cliente").all().order_by("-fecha_emision", "-id")
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
+    queryset = NotaCredito.objects.select_related("id_factura", "id_factura__id_cliente", "id_factura__id_orden_compra").all().order_by("-fecha_emision", "-id")
     serializer_class = NotaCreditoSerializer
     permission_classes = [PermisoModulo]
 
@@ -259,44 +304,105 @@ class NotaCreditoViewSet(viewsets.ModelViewSet):
         if cliente_id: queryset = queryset.filter(id_factura__id_cliente_id=cliente_id)
         return queryset
     
+    def get_permissions(self):
+        anular = self.action == "anular" or (
+            self.action == "actualizar_estado" and isinstance(self.request.data, dict) and self.request.data.get("estado") == "ANULADA"
+        )
+        if anular:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("notas_credito", "Eliminar")}
+        elif self.action in {"generar_pdf", "actualizar_estado"}:
+            self.permisos_por_metodo = {**self.permisos_por_metodo, self.request.method: ("notas_credito", "Editar")}
+        return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            return Response({"detail": "No se pudo guardar la nota por un conflicto de datos. Revisa su número y factura de origen."}, status=409)
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
+        try:
+            return super().update(request, *args, **kwargs)
+        except IntegrityError:
+            return Response({"detail": "No se pudo actualizar la nota por un conflicto de datos."}, status=409)
+
     @action(detail=True, methods=["patch"], url_path="estado")
     def actualizar_estado(self, request, pk=None):
+        if not isinstance(request.data, dict):
+            raise ValidationError("Envía los datos de la acción como un objeto.")
+        estado = request.data.get("estado")
+        if estado == "EMITIDA":
+            return self.generar_pdf(request, pk)
+        if estado == "ANULADA":
+            return self.anular(request, pk)
+        raise ValidationError({"estado": "Usa la generación del PDF para emitir o la acción Anular."})
+
+    @action(detail=True, methods=["post"], url_path="anular")
+    @transaction.atomic
+    def anular(self, request, pk=None):
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         nota = self.get_object()
-        nuevo_estado = request.data.get("estado")
-        estados_validos = ["PENDIENTE", "EMITIDA", "ANULADA"]
-        if nuevo_estado not in estados_validos:
-            return Response({"error": "Estado no válido.", "permitidos": estados_validos}, status=status.HTTP_400_BAD_REQUEST)
-        nota.estado = nuevo_estado
-        nota.save(update_fields=["estado"])
-        return Response({"mensaje": "Estado actualizado.", "estado": nota.estado}, status=status.HTTP_200_OK)
-        
+        if nota.estado not in {"PENDIENTE", "EMITIDA"}:
+            raise ValidationError("El estado actual no permite anular esta nota de crédito.")
+        motivo = request.data.get("motivo_anulacion_nc") if isinstance(request.data, dict) else None
+        if not isinstance(motivo, str) or not motivo.strip():
+            raise ValidationError({"motivo_anulacion_nc": "Ingresa el motivo de anulación."})
+        nota.estado = "ANULADA"
+        nota.id_usuario_anulacion_nc = request.user.pk
+        nota.fecha_anulacion_nc = timezone.now()
+        nota.motivo_anulacion_nc = motivo.strip()
+        nota.save(update_fields=["estado", "id_usuario_anulacion_nc", "fecha_anulacion_nc", "motivo_anulacion_nc"])
+        return Response(self.get_serializer(nota).data)
+
     @action(detail=True, methods=["post"], url_path="generar-pdf")
+    @transaction.atomic
     def generar_pdf(self, request, pk=None):
+        from facturacion.models import Factura
+
+        self.queryset = self.get_queryset().select_for_update(of=("self",))
         nota = self.get_object()
+        if nota.estado == "ANULADA":
+            raise ValidationError("Una nota anulada solo permite consultar su PDF histórico.")
+        if nota.estado == "EMITIDA" and nota.ruta_pdf_nc:
+            return Response(self.get_serializer(nota).data)
+        if nota.estado == "PENDIENTE":
+            factura = Factura.objects.select_for_update().select_related("id_orden_compra").get(pk=nota.id_factura_id)
+            if factura.estado not in {"EMITIDA", "PAGADA"}:
+                raise ValidationError("La factura de origen debe estar emitida o pagada para emitir esta nota.")
+            nota.id_factura = factura
+            nota.calcular_totales(nota.subtotal)
+            if nota.total > Decimal("9999999999.99"):
+                raise ValidationError("El total supera el importe máximo permitido.")
+            nota.estado = "EMITIDA"
+
+        bucket = None
+        ruta = f"notas-credito/{nota.pk}/{uuid4().hex}.pdf"
+        uploaded = False
         try:
-            contenido_pdf = generar_pdf_nota_credito(nota)
-            cliente_supabase = obtener_cliente_supabase()
-            bucket = obtener_nombre_bucket()
-            ruta_storage = f"notas-credito/{nota.pk}/{uuid4().hex}.pdf"
-            
-            cliente_supabase.storage.from_(bucket).upload(
-                ruta_storage, contenido_pdf,
-                file_options={"content-type": "application/pdf", "upsert": "false"}
-            )
-            
-            nota.ruta_pdf_nc = ruta_storage
-            nota.save(update_fields=["ruta_pdf_nc"])
-            
-            return Response({"mensaje": "PDF generado.", "ruta_pdf_nc": nota.ruta_pdf_nc}, status=status.HTTP_200_OK)
+            contenido = generar_pdf_nota_credito(nota)
+            bucket = obtener_cliente_supabase().storage.from_(obtener_nombre_bucket())
+            bucket.upload(ruta, contenido, file_options={"content-type": "application/pdf", "upsert": "false"})
+            uploaded = True
+            nota.ruta_pdf_nc = ruta
+            nota.save(update_fields=["estado", "subtotal", "iva", "total", "ruta_pdf_nc"])
+            return Response(self.get_serializer(nota).data)
         except Exception:
-            logger.exception("Error al generar PDF de NC")
-            return Response({"error": "No se pudo generar el PDF."}, status=500)
+            transaction.set_rollback(True)
+            if uploaded:
+                try:
+                    bucket.remove([ruta])
+                except Exception:
+                    logger.exception("No se pudo retirar el PDF de una emisión fallida de NC")
+            logger.exception("Error al emitir o generar PDF de NC")
+            return Response({"error": "No se pudo emitir la nota y guardar su PDF. Intenta nuevamente."}, status=502)
 
     @action(detail=True, methods=["get"], url_path="pdf")
     def obtener_pdf(self, request, pk=None):
         nota = self.get_object()
-        if not nota.ruta_pdf_nc:
-            return Response({"error": "PDF no generado."}, status=status.HTTP_404_NOT_FOUND)
+        if nota.estado == "PENDIENTE" or not nota.ruta_pdf_nc:
+            return Response({"error": "La nota debe estar emitida y tener un PDF guardado."}, status=status.HTTP_404_NOT_FOUND)
         try:
             cliente_supabase = obtener_cliente_supabase()
             bucket = obtener_nombre_bucket()
@@ -306,6 +412,8 @@ class NotaCreditoViewSet(viewsets.ModelViewSet):
             if url.startswith("/"):
                 base_url = os.getenv("SUPABASE_URL") or getattr(settings, "SUPABASE_URL", "")
                 url = base_url.rstrip("/") + url
-            return Response({"url": url})
+            response = Response({"url": url, "expira_en_segundos": 300})
+            response["Cache-Control"] = "no-store"
+            return response
         except Exception:
             return Response({"error": "No se pudo generar el enlace."}, status=502)

@@ -1,4 +1,5 @@
 // client/src/modules/Clientes.tsx
+import LocationFields from "../LocationFields"
 import React, { useState } from "react"
 import { Badge, I, Ico, PageTitle } from "../shared"
 
@@ -7,6 +8,8 @@ export type Client = {
   rut: string
   razon: string
   fantasia: string
+  pais: string
+  region: string
   ciudad: string
   tel: string
   email: string
@@ -45,6 +48,8 @@ const emptyNewClient: NewClientInput = {
   rut: "",
   razon: "",
   fantasia: "",
+  pais: "",
+  region: "",
   ciudad: "",
   tel: "",
   email: "",
@@ -76,6 +81,8 @@ const clientToInput = (client: Client): NewClientInput => ({
   rut: client.rut,
   razon: client.razon,
   fantasia: client.fantasia,
+  pais: client.pais,
+  region: client.region,
   ciudad: client.ciudad,
   tel: client.tel,
   email: client.email,
@@ -139,6 +146,11 @@ export default function Clientes({
   const saveNewClient = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
+    if (!newClient.pais || !newClient.ciudad) {
+      setSaveError("Selecciona el país y la ciudad del cliente.")
+      return
+    }
+
     if (newClient.telefono && !PHONE_REGEX.test(newClient.telefono)) {
       setSaveError("El teléfono solo puede contener números y los símbolos + - ( )")
       return
@@ -190,6 +202,11 @@ export default function Clientes({
   const saveEditedClient = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!selected) return
+
+    if (!editClient.ciudad) {
+      setEditError("Selecciona la ciudad del cliente.")
+      return
+    }
 
     if (editClient.telefono && !PHONE_REGEX.test(editClient.telefono)) {
       setEditError("El teléfono solo puede contener números y los símbolos + - ( )")
@@ -317,7 +334,7 @@ export default function Clientes({
             <tr>
               <th>RUT</th>
               <th>Razón Social</th>
-              <th>Ciudad</th>
+              <th>País / Región / Ciudad</th>
               <th>Representante</th>
               <th>Teléfono</th>
               <th>Dirs.</th>
@@ -337,7 +354,7 @@ export default function Clientes({
                   <div className="clientes-name">{client.razon}</div>
                   <div className="clientes-fantasia">{client.fantasia}</div>
                 </td>
-                <td>{client.ciudad}</td>
+                <td>{[client.pais, client.region, client.ciudad].filter(Boolean).join(" · ")}</td>
                 <td>{client.rep}</td>
                 <td>{client.tel}</td>
                 <td>
@@ -378,10 +395,10 @@ export default function Clientes({
                   <span className="clientes-detail-rut">{selected.rut}</span>
                   <h2 className="clientes-detail-title">{selected.razon}</h2>
                   <p className="clientes-detail-subtitle">
-                    {selected.fantasia} · {selected.ciudad}
+                    {selected.fantasia} · {[selected.pais, selected.region, selected.ciudad].filter(Boolean).join(" · ")}
                   </p>
                 </div>
-                <button onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)} className="clientes-detail-close">
+                <button aria-label="Cerrar detalles del cliente" onClick={/* Ejecuta setSelected(null) al invocarse este callback. */ () => setSelected(null)} className="clientes-detail-close">
                   <Ico p={I.x} size={18} />
                 </button>
               </div>
@@ -392,7 +409,6 @@ export default function Clientes({
                   ["RUT", "rut"],
                   ["Razón Social", "razon_social"],
                   ["Nombre de Fantasía", "nombre_fantasia"],
-                  ["Ciudad", "ciudad"],
                   ["Teléfono", "telefono"],
                   ["Correo Electrónico", "email"],
                   ["Representante", "representante"],
@@ -400,7 +416,6 @@ export default function Clientes({
                   ["RUT", "rut"],
                   ["Razón Social", "razon_social"],
                   ["Nombre de Fantasía", "nombre_fantasia"],
-                  ["Ciudad", "ciudad"],
                   ["Teléfono", "telefono"],
                   ["Correo Electrónico", "email"],
                   ["Representante", "representante"],
@@ -424,6 +439,7 @@ export default function Clientes({
                     />
                   </div>
                 ))}
+                <LocationFields value={editClient} onChange={(location) => setEditClient((current) => ({ ...current, ...location }))} />
                 <div className="field">
                   <label className="label">Estado</label>
                   <select
@@ -436,7 +452,7 @@ export default function Clientes({
                   </select>
                 </div>
                 {editError && <p style={{ color: "#B91C1C" }}>{editError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="submit" disabled={saving}>
                     <Ico p={I.check} size={14} /> Guardar cambios
                   </button>
@@ -448,6 +464,9 @@ export default function Clientes({
             ) : (
               <div className="clientes-detail-body">
                 {[
+                  { label: "País", value: selected.pais || "Sin registrar" },
+                  { label: "Región", value: selected.region || "Sin registrar" },
+                  { label: "Ciudad", value: selected.ciudad },
                   { label: "Estado", value: selected.estado },
                   { label: "Teléfono", value: selected.tel },
                   { label: "Correo Electrónico", value: selected.email },
@@ -537,7 +556,7 @@ export default function Clientes({
                         <input type="checkbox" checked={addressForm.principal} onChange={/* Ejecuta setAddressForm((current) => ({ ...current, principal: event.target.checked })) al invocarse este callback. */ (event) => setAddressForm(/* Calcula el nuevo valor de AddressForm devolviendo ({ ...current, principal: event.target.checked }). */ (current) => ({ ...current, principal: event.target.checked }))} />
                         Dirección principal
                       </label>
-                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <div className="clientes-detail-actions">
                         <button className="btn btn-primary btn-sm" type="submit" disabled={saving}><Ico p={I.check} size={12} /> Guardar dirección</button>
                         <button className="btn btn-ghost btn-sm" type="button" onClick={/* Cancela la edición de dirección, restablece sus campos y cierra el formulario. */ () => { setEditingAddress(null); setAddressForm({ ...emptyAddress }); setShowAddressForm(false) }}>Cancelar</button>
                       </div>
@@ -545,7 +564,7 @@ export default function Clientes({
                   )}
                 </div>
                 {deleteError && <p style={{ color: "#B91C1C", marginTop: 12 }}>{deleteError}</p>}
-                <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <div className="clientes-detail-actions">
                   <button className="btn btn-primary" type="button" onClick={startEditing}>
                     <Ico p={I.edit} size={14} /> Editar cliente
                   </button>
@@ -580,7 +599,6 @@ export default function Clientes({
                 ["RUT", "rut"],
                 ["Razón Social", "razon_social"],
                 ["Nombre de Fantasía", "nombre_fantasia"],
-                ["Ciudad", "ciudad"],
                 ["Teléfono", "telefono"],
                 ["Correo Electrónico", "email"],
                 ["Representante", "representante"],
@@ -588,7 +606,6 @@ export default function Clientes({
                 ["RUT", "rut"],
                 ["Razón Social", "razon_social"],
                 ["Nombre de Fantasía", "nombre_fantasia"],
-                ["Ciudad", "ciudad"],
                 ["Teléfono", "telefono"],
                 ["Correo Electrónico", "email"],
                 ["Representante", "representante"],
@@ -607,6 +624,7 @@ export default function Clientes({
                   />
                 </div>
               ))}
+              <LocationFields value={newClient} onChange={(location) => setNewClient((current) => ({ ...current, ...location }))} />
               <div className="field">
                 <label className="label">Estado</label>
                 <select
